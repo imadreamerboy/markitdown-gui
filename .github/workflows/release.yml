@@ -1,0 +1,70 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'  # Runs when a tag like v1.0.0 is pushed
+
+jobs:
+  build:
+    name: Build for ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'  # Match your Python version
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+
+      - name: Build executable
+        run: |
+          pyinstaller --onefile --windowed main.py
+        shell: bash
+
+      - name: Rename artifact
+        run: |
+          mkdir dist_output
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            mv dist/main.exe dist_output/MarkItDown-${{ runner.os }}.exe
+          elif [[ "$RUNNER_OS" == "Linux" ]]; then
+            mv dist/main dist_output/MarkItDown-${{ runner.os }}
+          elif [[ "$RUNNER_OS" == "macOS" ]]; then
+            mv dist/main dist_output/MarkItDown-${{ runner.os }}
+          fi
+        shell: bash
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MarkItDown-${{ runner.os }}
+          path: dist_output/
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download built artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*  # Upload all artifacts
+          token: ${{ secrets.GITHUB_TOKEN }}

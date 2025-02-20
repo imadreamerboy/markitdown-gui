@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "markitdowngui"
+version = "0.1.0"
+description = "A GUI wrapper for MarkItDown to convert files to Markdown via drag-and-drop."
+authors = [{name = "imadreamerboy", email = "jonas@imadreamerboy.com"}]
+license = {file = "LICENSE"}
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "markitdown",
+    "pyside6>=6.8.2.1",
+]
+
+[project.urls]
+Homepage = "https://github.com/imadreamerboy/markitdowngui"
+Repository = "https://github.com/imadreamerboy/markitdowngui"
