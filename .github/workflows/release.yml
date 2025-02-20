@@ -5,6 +5,10 @@ on:
     tags:
       - 'v*'  # Runs when a tag like v1.0.0 is pushed
 
+permissions:
+  contents: write
+  packages: write
+
 jobs:
   build:
     name: Build for ${{ matrix.os }}
