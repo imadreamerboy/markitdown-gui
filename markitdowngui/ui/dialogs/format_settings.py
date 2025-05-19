@@ -1,5 +1,6 @@
 from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QCheckBox, QSpinBox, QPushButton
 from PySide6.QtCore import QSettings
+from markitdowngui.core.settings import SettingsManager
 
 class FormatSettings(QDialog):
     def __init__(self, settings_manager, parent=None):

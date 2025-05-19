@@ -8,14 +8,14 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QKeySequence, QPalette, QShortcut
 from markitdown import MarkItDown
 
-from ..core.settings import SettingsManager
-from ..core.conversion import ConversionWorker
-from ..core.file_utils import FileManager
-from ..utils.logger import AppLogger
-from .themes import apply_dark_theme, apply_light_theme
-from .drop_widget import DropWidget
-from .dialogs.format_settings import FormatSettings
-from .dialogs.shortcuts import ShortcutDialog
+from markitdowngui.core.settings import SettingsManager
+from markitdowngui.core.conversion import ConversionWorker
+from markitdowngui.core.file_utils import FileManager
+from markitdowngui.utils.logger import AppLogger
+from markitdowngui.ui.themes import apply_dark_theme, apply_light_theme
+from markitdowngui.ui.drop_widget import DropWidget
+from markitdowngui.ui.dialogs.format_settings import FormatSettings
+from markitdowngui.ui.dialogs.shortcuts import ShortcutDialog
 
 class MainWindow(QWidget):
     def __init__(self):
