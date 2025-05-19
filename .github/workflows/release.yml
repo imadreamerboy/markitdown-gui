@@ -33,18 +33,24 @@ jobs:
 
       - name: Build executable
         run: |
-          pyinstaller --onefile --windowed markitdowngui/main.py
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            pyinstaller --clean --onefile --windowed --collect-submodules markitdowngui -n MarkItDown markitdowngui/main.py
+          elif [[ "$RUNNER_OS" == "Linux" ]]; then
+            pyinstaller --clean --strip --onefile --collect-submodules markitdowngui -n MarkItDown markitdowngui/main.py
+          elif [[ "$RUNNER_OS" == "macOS" ]]; then
+            pyinstaller --clean --strip --onefile --collect-submodules markitdowngui -n MarkItDown markitdowngui/main.py
+          fi
         shell: bash
 
       - name: Rename artifact
         run: |
           mkdir dist_output
           if [[ "$RUNNER_OS" == "Windows" ]]; then
-            mv dist/main.exe dist_output/MarkItDown-${{ runner.os }}.exe
+            mv dist/MarkItDown.exe dist_output/MarkItDown-${{ runner.os }}.exe
           elif [[ "$RUNNER_OS" == "Linux" ]]; then
-            mv dist/main dist_output/MarkItDown-${{ runner.os }}
+            mv dist/MarkItDown dist_output/MarkItDown-${{ runner.os }}
           elif [[ "$RUNNER_OS" == "macOS" ]]; then
-            mv dist/main dist_output/MarkItDown-${{ runner.os }}
+            mv dist/MarkItDown dist_output/MarkItDown-${{ runner.os }}
           fi
         shell: bash
 

@@ -1,20 +1,34 @@
 # MarkItDown GUI Wrapper
 
-A simple **GUI wrapper** for `MarkItDown`, built with **PySide6**. Easily convert files to markdown using drag & drop.
+A feature-rich **GUI wrapper** for `MarkItDown`, built with **PySide6**. Easily convert files to markdown using drag & drop.
 
 
 ![alt text](images/image.png)
 ## Features
 
-- 📂 **Drag & Drop** for batch processing
-- ⚙️ **Options**:
+- 📂 **File Management**:
+  - Drag & Drop for batch processing
+  - File type filtering
+  - Recent files history
+  - Batch processing with pause/resume
+  
+- 🎨 **User Interface**:
+  - Dark/Light theme support
+  - Preview panel
+  - Progress tracking
+  - Keyboard shortcuts
+  
+- ⚙️ **Advanced Options**:
+  - Format customization (headers, tables)
+  - Auto-save and backup
   - Enable plugins
-  - Optional **Document Intelligence API**
-- 📜 **Output Choices**:
-  - Save all in **one file** or **separately**
+  - Document Intelligence API support
+  
+- 🛠️ **Output Options**:
+  - Save all in one file or separately
   - Choose output directory
-  - Save & copy output
-
+  - Quick copy & paste
+  - Preview before saving
 
 ## Installation
 
@@ -35,16 +49,24 @@ pip install -r requirements.txt
 python -m markitdowngui.main
 ```
 
+### Keyboard Shortcuts
+
+- `Ctrl+O`: Open Files
+- `Ctrl+S`: Save Output
+- `Ctrl+C`: Copy Output
+- `Ctrl+P`: Pause/Resume
+- `Ctrl+B`: Begin Conversion
+- `Ctrl+L`: Clear List
+- `Ctrl+K`: Show Shortcuts
+- `Esc`: Cancel Conversion
+
 ## Build a Standalone Executable
 
 Use `PyInstaller`:
 
 ```sh
-pyinstaller --onefile --windowed --name "MarkItDownGUI" main.py
+pyinstaller --clean --onefile --windowed -n MarkItDown markitdowngui/main.py
 ```
-
-For cross-platform builds, try `cx_Freeze` or `briefcase`.
-
 
 ## License
 

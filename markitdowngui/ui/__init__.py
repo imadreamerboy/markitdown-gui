@@ -1,0 +1,1 @@
+"""UI components for the MarkItDown GUI application."""
