@@ -2,6 +2,8 @@
 
 A simple **GUI wrapper** for `MarkItDown`, built with **PySide6**. Easily convert files to markdown using drag & drop.
 
+
+![alt text](images/image.png)
 ## Features
 
 - 📂 **Drag & Drop** for batch processing
@@ -15,6 +17,8 @@ A simple **GUI wrapper** for `MarkItDown`, built with **PySide6**. Easily conver
 
 
 ## Installation
+
+You can download the precompiled executable from the [Releases](https://github.com/imadreamerboy/markitdown-gui/releases) or build it from source. For that just follow the instructions below.
 
 ### Prerequisites
 
