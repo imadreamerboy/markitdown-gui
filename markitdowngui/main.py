@@ -3,8 +3,8 @@
 import sys
 from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import Qt
-from .ui.main_window import MainWindow
-from .utils.logger import AppLogger
+from markitdowngui.ui.main_window import MainWindow
+from markitdowngui.utils.logger import AppLogger
 
 def main():
     """Start the MarkItDown GUI application."""

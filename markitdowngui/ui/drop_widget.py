@@ -1,6 +1,6 @@
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QListWidget, QComboBox
 from PySide6.QtCore import Qt
-from ..core.file_utils import FileManager
+from markitdowngui.core.file_utils import FileManager
 
 class DropWidget(QWidget):
     def __init__(self):

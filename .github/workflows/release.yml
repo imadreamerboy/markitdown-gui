@@ -34,11 +34,11 @@ jobs:
       - name: Build executable
         run: |
           if [[ "$RUNNER_OS" == "Windows" ]]; then
-            pyinstaller --clean --onefile --windowed -n MarkItDown markitdowngui/main.py
+            pyinstaller --clean --onefile --windowed --collect-submodules markitdowngui -n MarkItDown markitdowngui/main.py
           elif [[ "$RUNNER_OS" == "Linux" ]]; then
-            pyinstaller --clean --strip --onefile -n MarkItDown markitdowngui/main.py
+            pyinstaller --clean --strip --onefile --collect-submodules markitdowngui -n MarkItDown markitdowngui/main.py
           elif [[ "$RUNNER_OS" == "macOS" ]]; then
-            pyinstaller --clean --strip --onefile -n MarkItDown markitdowngui/main.py
+            pyinstaller --clean --strip --onefile --collect-submodules markitdowngui -n MarkItDown markitdowngui/main.py
           fi
         shell: bash
 
