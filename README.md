@@ -1,3 +1,5 @@
+[阅读中文版本](README_zh.md)
+
 # MarkItDown GUI Wrapper
 
 A feature-rich **GUI wrapper** for `MarkItDown`, built with **PySide6**. Easily convert files to markdown using drag & drop.
