@@ -2,7 +2,7 @@
 
 一个功能丰富的 **GUI 封装**，用于 `MarkItDown`，使用 **PySide6** 构建。通过拖放轻松将文件转换为 markdown。
 
-![alt text](images/image.png)
+![alt text](image.png)
 ## 特性
 
 - 📂 **文件管理**:

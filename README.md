@@ -5,7 +5,7 @@
 A feature-rich **GUI wrapper** for `MarkItDown`, built with **PySide6**. Easily convert files to markdown using drag & drop.
 
 
-![alt text](images/image.png)
+![Screenshot of the GUI](image.png)
 ## Features
 
 - 📂 **File Management**:

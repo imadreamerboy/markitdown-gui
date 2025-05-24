@@ -1,4 +1,5 @@
 from PySide6.QtCore import QSettings
+from typing import cast, List
 
 class SettingsManager:
     """Manages application settings and preferences."""
@@ -8,7 +9,7 @@ class SettingsManager:
         
     def get_dark_mode(self) -> bool:
         """Get dark mode preference."""
-        return self.settings.value('darkMode', False, type=bool)
+        return bool(self.settings.value('darkMode', False, type=bool))
         
     def set_dark_mode(self, enabled: bool) -> None:
         """Set dark mode preference."""
@@ -27,26 +28,26 @@ class SettingsManager:
         """Save markdown format settings."""
         for key, value in settings.items():
             self.settings.setValue(key, value)
-            
-    def get_recent_files(self) -> list:
+    def get_recent_files(self) -> List[str]:
         """Get list of recently opened files."""
-        return self.settings.value('recentFiles', [], type=list)
+        return cast(List[str], self.settings.value('recentFiles', [], type=list))
         
     def set_recent_files(self, files: list) -> None:
         """Save list of recently opened files."""
         self.settings.setValue('recentFiles', files)
         
-    def get_recent_outputs(self) -> list:
+    
+    def get_recent_outputs(self) -> List[str]:
         """Get list of recent output locations."""
-        return self.settings.value('recentOutputs', [], type=list)
-        
+        return cast(List[str], self.settings.value('recentOutputs', [], type=list))
     def set_recent_outputs(self, paths: list) -> None:
         """Save list of recent output locations."""
         self.settings.setValue('recentOutputs', paths)
         
     def get_save_mode(self) -> bool:
         """Get save mode preference (True for combined, False for individual)."""
-        return self.settings.value('combinedSaveMode', True, type=bool)
+        # Ensure returned value is a bool for type checking
+        return cast(bool, self.settings.value('combinedSaveMode', True, type=bool))
         
     def set_save_mode(self, combined: bool) -> None:
         """Set save mode preference."""

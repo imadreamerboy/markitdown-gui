@@ -7,14 +7,17 @@ name = "markitdowngui"
 version = "0.1.0"
 description = "A GUI wrapper for MarkItDown to convert files to Markdown via drag-and-drop."
 authors = [{name = "imadreamerboy", email = "jonas@imadreamerboy.com"}]
-license = {file = "LICENSE"}
+license = "MIT"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "markitdown",
+    "markitdown[all]",
     "pyside6>=6.8.2.1",
 ]
 
 [project.urls]
 Homepage = "https://github.com/imadreamerboy/markitdowngui"
 Repository = "https://github.com/imadreamerboy/markitdowngui"
+
+[tool.setuptools.packages.find]
+include = ["markitdowngui"]
