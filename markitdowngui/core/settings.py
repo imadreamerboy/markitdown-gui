@@ -44,6 +44,14 @@ class SettingsManager:
         """Save list of recent output locations."""
         self.settings.setValue('recentOutputs', paths)
         
+    def get_current_language(self) -> str:
+        """Get current language code."""
+        return str(self.settings.value('currentLanguage', 'en', type=str))
+
+    def set_current_language(self, lang_code: str) -> None:
+        """Set current language code."""
+        self.settings.setValue('currentLanguage', lang_code)
+        
     def get_save_mode(self) -> bool:
         """Get save mode preference (True for combined, False for individual)."""
         # Ensure returned value is a bool for type checking

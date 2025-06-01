@@ -5,7 +5,7 @@ from PySide6.QtWidgets import (
     QApplication, QComboBox, QSpinBox, QMessageBox, QSplitter, QDialog
 )
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QKeySequence, QPalette, QShortcut
+from PySide6.QtGui import QKeySequence, QPalette, QShortcut, QAction, QActionGroup
 from markitdown import MarkItDown
 
 from markitdowngui.core.settings import SettingsManager
@@ -16,12 +16,14 @@ from markitdowngui.ui.themes import apply_dark_theme, apply_light_theme
 from markitdowngui.ui.drop_widget import DropWidget
 from markitdowngui.ui.dialogs.format_settings import FormatSettings
 from markitdowngui.ui.dialogs.shortcuts import ShortcutDialog
+from markitdowngui.utils.translations import get_translation, get_available_languages, DEFAULT_LANG
 
 class MainWindow(QWidget):
     def __init__(self):
         super().__init__()
         self.settings_manager = SettingsManager()
         self.file_manager = FileManager()
+        self.current_lang = self.settings_manager.get_current_language() or DEFAULT_LANG
         self.setup_window()
         self.setup_ui()
         self.setup_shortcuts()
@@ -31,7 +33,7 @@ class MainWindow(QWidget):
 
     def setup_window(self):
         """Initialize window properties."""
-        self.setWindowTitle("MarkItDown GUI Wrapper")
+        self.setWindowTitle(self.translate("app_title"))
         self.setMinimumSize(600, 500)
         self.isDarkMode = self.settings_manager.get_dark_mode()
         self.apply_theme()
@@ -59,11 +61,11 @@ class MainWindow(QWidget):
         # Right side: Preview
         rightWidget = QWidget()
         rightLayout = QVBoxLayout(rightWidget)
-        previewLabel = QLabel("Preview:")
+        self.previewLabel = QLabel(self.translate("preview_label"))
         self.previewText = QTextEdit()
         self.previewText.setReadOnly(True)
-        self.previewText.setPlaceholderText("Select a file to see preview")
-        rightLayout.addWidget(previewLabel)
+        self.previewText.setPlaceholderText(self.translate("preview_placeholder"))
+        rightLayout.addWidget(self.previewLabel)
         rightLayout.addWidget(self.previewText)
         
         # Add widgets to splitter
@@ -85,30 +87,50 @@ class MainWindow(QWidget):
     def setup_menu_bar(self):
         """Set up the application menu bar."""
         self.menuBar = QMenuBar()
-        
+        self.update_menu_bar_texts()
+
+    def update_menu_bar_texts(self):
+        """Update all texts in the menubar based on the current language."""
+        self.menuBar.clear()
+
         # View menu
-        viewMenu = QMenu("View", self)
+        viewMenu = QMenu(self.translate("menu_view"), self)
         self.menuBar.addMenu(viewMenu)
         
         # Dark mode toggle
-        self.darkModeAction = viewMenu.addAction("Dark Mode")
+        self.darkModeAction = viewMenu.addAction(self.translate("menu_dark_mode"))
         self.darkModeAction.setCheckable(True)
         self.darkModeAction.setChecked(self.isDarkMode)
         self.darkModeAction.triggered.connect(self.toggle_dark_mode)
+
+        # Language menu
+        self.languageMenu = viewMenu.addMenu(self.translate("menu_language"))
+        self.languageActionGroup = QActionGroup(self)
+        self.languageActionGroup.setExclusive(True)
+        self.languageActionGroup.triggered.connect(self.change_language)
+
+        available_langs = get_available_languages()
+        for lang_code, lang_name in available_langs.items():
+            action = QAction(lang_name, self, checkable=True)
+            action.setData(lang_code)
+            if lang_code == self.current_lang:
+                action.setChecked(True)
+            self.languageMenu.addAction(action)
+            self.languageActionGroup.addAction(action)
         
         # Settings menu
-        settingsMenu = self.menuBar.addMenu("Settings")
-        formatAction = settingsMenu.addAction("Format Settings")
+        settingsMenu = self.menuBar.addMenu(self.translate("menu_settings"))
+        formatAction = settingsMenu.addAction(self.translate("menu_format_settings"))
         formatAction.triggered.connect(self.show_format_settings)
         
         # Help menu
-        helpMenu = self.menuBar.addMenu("Help")
-        shortcutsAction = helpMenu.addAction("Keyboard Shortcuts")
+        helpMenu = self.menuBar.addMenu(self.translate("menu_help"))
+        shortcutsAction = helpMenu.addAction(self.translate("menu_keyboard_shortcuts"))
         shortcutsAction.triggered.connect(self.show_shortcuts)
 
     def setup_file_area(self):
         """Set up the file handling area."""
-        self.dropWidget = DropWidget()
+        self.dropWidget = DropWidget(self.translate)
         self.dropWidget.listWidget.currentItemChanged.connect(self.update_preview)
         
         # Add file list to main layout
@@ -116,39 +138,39 @@ class MainWindow(QWidget):
 
     def setup_file_controls(self):
         """Set up the file control buttons."""
-        fileControls = QHBoxLayout()
+        fileControlsLayout = QHBoxLayout()
         
         # Browse button
-        browseButton = QPushButton("Browse Files")
-        browseButton.clicked.connect(self.browse_files)
-        browseButton.setToolTip("Open file browser to select files")
+        self.browseButton = QPushButton(self.translate("browse_files_button"))
+        self.browseButton.clicked.connect(self.browse_files)
+        self.browseButton.setToolTip(self.translate("browse_files_tooltip"))
         
         # Clear button
-        clearButton = QPushButton("Clear List")
-        clearButton.clicked.connect(self.clear_file_list)
-        clearButton.setToolTip("Clear the file list")
+        self.clearButton = QPushButton(self.translate("clear_list_button"))
+        self.clearButton.clicked.connect(self.clear_file_list)
+        self.clearButton.setToolTip(self.translate("clear_list_tooltip"))
         
-        fileControls.addWidget(browseButton)
-        fileControls.addWidget(clearButton)
+        fileControlsLayout.addWidget(self.browseButton)
+        fileControlsLayout.addWidget(self.clearButton)
         
-        self.mainLayout.addLayout(fileControls)
-        return fileControls
+        self.mainLayout.addLayout(fileControlsLayout)
 
     def setup_settings_area(self):
         """Set up the settings area."""
         settingsLayout = QHBoxLayout()
         
-        self.enablePluginsCheck = QCheckBox("Enable Plugins")
-        self.enablePluginsCheck.setToolTip("Enable third-party plugins for additional conversion features")
+        self.enablePluginsCheck = QCheckBox(self.translate("enable_plugins_checkbox"))
+        self.enablePluginsCheck.setToolTip(self.translate("enable_plugins_tooltip"))
         
         self.docIntelLine = QLineEdit()
-        self.docIntelLine.setPlaceholderText("Document Intelligence Endpoint (optional)")
-        self.docIntelLine.setToolTip("Enter your Azure Document Intelligence endpoint if you want to use it")
+        self.docIntelLine.setPlaceholderText(self.translate("doc_intel_placeholder"))
+        self.docIntelLine.setToolTip(self.translate("doc_intel_tooltip"))
         
         settingsLayout.addWidget(self.enablePluginsCheck)
         settingsLayout.addWidget(self.docIntelLine)
         
-        self.mainLayout.addWidget(QLabel("Settings:"))
+        self.settingsGroupLabel = QLabel(self.translate("settings_group_label"))
+        self.mainLayout.addWidget(self.settingsGroupLabel)
         self.mainLayout.addLayout(settingsLayout)
 
     def setup_conversion_controls(self):
@@ -158,24 +180,25 @@ class MainWindow(QWidget):
         self.batchSizeSpinBox = QSpinBox()
         self.batchSizeSpinBox.setRange(1, 10)
         self.batchSizeSpinBox.setValue(3)
-        self.batchSizeSpinBox.setToolTip("Number of files to process simultaneously")
+        self.batchSizeSpinBox.setToolTip(self.translate("batch_size_tooltip"))
         
-        self.pauseButton = QPushButton("Pause")
+        self.pauseButton = QPushButton(self.translate("pause_button"))
         self.pauseButton.setEnabled(False)
         self.pauseButton.setCheckable(True)
         self.pauseButton.toggled.connect(self.toggle_pause)
         
-        self.cancelButton = QPushButton("Cancel")
+        self.cancelButton = QPushButton(self.translate("cancel_button"))
         self.cancelButton.setEnabled(False)
         self.cancelButton.clicked.connect(self.cancel_conversion)
         
-        batchLayout.addWidget(QLabel("Batch Size:"))
+        self.batchSizeLabel = QLabel(self.translate("batch_size_label"))
+        batchLayout.addWidget(self.batchSizeLabel)
         batchLayout.addWidget(self.batchSizeSpinBox)
         batchLayout.addWidget(self.pauseButton)
         batchLayout.addWidget(self.cancelButton)
         
         # Convert button and progress bar
-        self.convertButton = QPushButton("Convert Files")
+        self.convertButton = QPushButton(self.translate("convert_files_button"))
         self.convertButton.clicked.connect(self.convert_files)
         self.progressBar = QProgressBar()
         
@@ -190,18 +213,18 @@ class MainWindow(QWidget):
         
         # Save mode toggle with saved preference
         saveModeLayout = QHBoxLayout()
-        self.combinedSaveCheck = QCheckBox("Save all files in one document")
+        self.combinedSaveCheck = QCheckBox(self.translate("output_save_all_in_one_checkbox"))
         self.combinedSaveCheck.setChecked(self.settings_manager.get_save_mode())
-        self.combinedSaveCheck.setToolTip("When unchecked, each file will be saved separately")
+        self.combinedSaveCheck.setToolTip(self.translate("output_save_all_in_one_tooltip"))
         self.combinedSaveCheck.toggled.connect(self.settings_manager.set_save_mode)
         saveModeLayout.addWidget(self.combinedSaveCheck)
         saveModeLayout.addStretch()
         
         # Output controls
         outputControls = QHBoxLayout()
-        self.copyButton = QPushButton("Copy Output")
+        self.copyButton = QPushButton(self.translate("copy_output_button"))
         self.copyButton.clicked.connect(self.copy_output)
-        self.saveButton = QPushButton("Save Output")
+        self.saveButton = QPushButton(self.translate("save_output_button"))
         self.saveButton.clicked.connect(self.save_output)
         
         outputControls.addWidget(self.copyButton)
@@ -246,7 +269,7 @@ class MainWindow(QWidget):
         
         if not files:
             AppLogger.info("Conversion attempted with no files")
-            QMessageBox.warning(self, "No Files", "Please add files to convert.")
+            QMessageBox.warning(self, self.translate("no_files_to_convert_title"), self.translate("no_files_to_convert_message"))
             return
 
         AppLogger.info(f"Starting conversion of {len(files)} files")
@@ -279,7 +302,7 @@ class MainWindow(QWidget):
     def update_progress(self, progress, current_file):
         """Update the progress bar during conversion."""
         self.progressBar.setValue(progress)
-        self.progressBar.setFormat(f"{progress}% - Processing: {os.path.basename(current_file)}")
+        self.progressBar.setFormat(self.translate("conversion_progress_format").format(progress=progress, file=os.path.basename(current_file)))
 
     def handle_conversion_finished(self, results):
         """Handle completion of the conversion process."""
@@ -290,7 +313,7 @@ class MainWindow(QWidget):
         
         self.outputText.setPlainText(combined_output)
         self.progressBar.setValue(100)
-        self.progressBar.setFormat("Conversion Complete")
+        self.progressBar.setFormat(self.translate("conversion_complete_message"))
         
         self.pauseButton.setEnabled(False)
         self.cancelButton.setEnabled(False)
@@ -300,7 +323,7 @@ class MainWindow(QWidget):
     def handle_conversion_error(self, error_msg):
         """Handle conversion errors."""
         AppLogger.error(error_msg)
-        QMessageBox.critical(self, "Error", error_msg)
+        QMessageBox.critical(self, self.translate("conversion_error_title"), error_msg)
         self.pauseButton.setEnabled(False)
         self.cancelButton.setEnabled(False)
         self.convertButton.setEnabled(True)
@@ -320,12 +343,13 @@ class MainWindow(QWidget):
     def save_combined_output(self):
         """Save all conversions in a single file."""
         output_path, _ = QFileDialog.getSaveFileName(
-            self, "Save Combined Markdown Output", "", "Markdown Files (*.md);;All Files (*)"
+            self, self.translate("save_combined_title"), "", 
+            self.translate("markdown_files_filter")
         )
         if output_path:
             try:
                 self.file_manager.save_markdown_file(output_path, self.outputText.toPlainText())
-                AppLogger.info(f"Combined output saved to {output_path}")
+                AppLogger.info(self.translate("auto_save_backup_log").format(path=output_path))
                 
                 # Add to recent outputs
                 self.settings_manager.set_recent_outputs(
@@ -336,17 +360,19 @@ class MainWindow(QWidget):
                 )
             except Exception as e:
                 AppLogger.error(f"Error saving combined output: {str(e)}")
-                QMessageBox.critical(self, "Error", f"Failed to save output: {str(e)}")
+                QMessageBox.critical(self, self.translate("error_saving_combined_title"), 
+                                     self.translate("error_saving_combined_message").format(error=str(e)))
 
     def save_individual_outputs(self):
         """Save each conversion to a separate file."""
         if not hasattr(self, 'conversionResults') or not self.conversionResults:
-            QMessageBox.warning(self, "No Output", "No conversion results to save.")
+            QMessageBox.warning(self, self.translate("no_output_to_save_title"), 
+                                self.translate("no_output_to_save_message"))
             return
             
         output_dir = QFileDialog.getExistingDirectory(
             self,
-            "Select Directory for Individual Files"
+            self.translate("select_directory_title")
         )
         
         if output_dir:
@@ -365,15 +391,15 @@ class MainWindow(QWidget):
                     
                     self.file_manager.save_markdown_file(output_path, content)
                     success_count += 1
-                    AppLogger.info(f"Saved individual output to {output_path}")
+                    AppLogger.info(self.translate("added_file_to_recent_log").format(file=output_path))
                 except Exception as e:
-                    AppLogger.error(f"Error saving {input_file}: {str(e)}")
+                    AppLogger.error(self.translate("error_handling_new_file_log").format(error=str(e)))
             
             if success_count > 0:
                 QMessageBox.information(
                     self,
-                    "Save Complete",
-                    f"Successfully saved {success_count} file(s) to {output_dir}"
+                    self.translate("save_individual_complete_title"),
+                    self.translate("save_individual_complete_message").format(count=success_count, dir=output_dir)
                 )
                 
                 # Add to recent outputs
@@ -386,15 +412,15 @@ class MainWindow(QWidget):
 
     def show_shortcuts(self):
         """Show the keyboard shortcuts dialog."""
-        dialog = ShortcutDialog(self)
+        dialog = ShortcutDialog(self.translate, self)
         dialog.exec()
 
     def show_format_settings(self):
         """Show the format settings dialog."""
-        dialog = FormatSettings(self.settings_manager, self)
+        dialog = FormatSettings(self.settings_manager, self.translate, self)
         if dialog.exec() == QDialog.Accepted:
             self.update_auto_save_timer()
-            AppLogger.info("Format settings updated")
+            AppLogger.info(self.translate("format_settings_updated_log"))
 
     def perform_auto_save(self):
         """Perform auto-save of current output."""
@@ -405,9 +431,9 @@ class MainWindow(QWidget):
             )
             try:
                 self.file_manager.save_markdown_file(backup_path, self.outputText.toPlainText())
-                AppLogger.info(f"Auto-saved backup to {backup_path}")
+                AppLogger.info(self.translate("auto_save_backup_log").format(path=backup_path))
             except Exception as e:
-                AppLogger.error(f"Auto-save failed: {str(e)}")
+                AppLogger.error(self.translate("auto_save_failed_log").format(error=str(e)))
 
     def update_auto_save_timer(self):
         """Update the auto-save timer based on current settings."""
@@ -422,7 +448,7 @@ class MainWindow(QWidget):
         """Update the preview of the selected file."""
         if not current:
             self.previewText.clear()
-            self.previewText.setPlaceholderText("Select a file to see preview")
+            self.previewText.setPlaceholderText(self.translate("preview_placeholder"))
             return
             
         try:
@@ -450,15 +476,15 @@ class MainWindow(QWidget):
         except Exception as e:
             error_msg = f"Error previewing file: {str(e)}"
             self.previewText.setPlainText(error_msg)
-            AppLogger.error(error_msg, filepath)
+            AppLogger.error(self.translate("preview_error_log").format(error=str(e)), filepath)
 
     def browse_files(self):
         """Open file browser dialog to select files."""
         files, _ = QFileDialog.getOpenFileNames(
             self,
-            "Select Files to Convert",
+            self.translate("select_files_title"),
             "",
-            "All Files (*.*)"
+            self.translate("all_files_filter")
         )
         for file in files:
             self.dropWidget.listWidget.addItem(file)
@@ -468,8 +494,8 @@ class MainWindow(QWidget):
         """Clear the file list."""
         self.dropWidget.listWidget.clear()
         self.previewText.clear()
-        self.previewText.setPlaceholderText("Select a file to see preview")
-        AppLogger.info("File list cleared")
+        self.previewText.setPlaceholderText(self.translate("preview_placeholder"))
+        AppLogger.info(self.translate("file_list_cleared_log"))
     
     def handleNewFile(self, filepath):
         """Handle newly added file."""
@@ -480,16 +506,16 @@ class MainWindow(QWidget):
                     self.settings_manager.get_recent_files()
                 )
             )
-            AppLogger.info(f"Added file to recent list: {filepath}")
+            AppLogger.info(self.translate("added_file_to_recent_log").format(file=filepath))
         except Exception as e:
-            AppLogger.error(f"Error handling new file: {str(e)}")
+            AppLogger.error(self.translate("error_handling_new_file_log").format(error=str(e)))
 
     def toggle_pause(self, paused):
         """Toggle conversion pause state."""
         if hasattr(self, 'worker') and self.worker:
             self.worker.is_paused = paused
-            self.pauseButton.setText("Resume" if paused else "Pause")
-            AppLogger.info("Conversion " + ("paused" if paused else "resumed"))
+            self.pauseButton.setText(self.translate("resume_button") if paused else self.translate("pause_button"))
+            AppLogger.info(self.translate("conversion_paused_log") if paused else self.translate("conversion_resumed_log"))
 
     def cancel_conversion(self):
         """Cancel the ongoing conversion."""
@@ -497,4 +523,55 @@ class MainWindow(QWidget):
             self.worker.is_cancelled = True
             self.worker.is_paused = False
             self.pauseButton.setChecked(False)
-            AppLogger.info("Conversion cancelled")
+            AppLogger.info(self.translate("conversion_cancelled_log"))
+
+    def change_language(self, action):
+        """Change the application language."""
+        lang_code = action.data()
+        if lang_code and lang_code != self.current_lang:
+            self.current_lang = lang_code
+            self.settings_manager.set_current_language(lang_code)
+            self.retranslate_ui()
+
+    def translate(self, key):
+        """Translate a key using the current language."""
+        return get_translation(self.current_lang, key)
+
+    def retranslate_ui(self):
+        """Retranslate all UI elements after language change."""
+        AppLogger.info(f"Changing language to: {self.current_lang}")
+        self.setup_window()
+        self.update_menu_bar_texts()
+
+        # Retranslate other UI elements
+        self.dropWidget.retranslate_ui(self.translate)
+        self.previewText.setPlaceholderText(self.translate("preview_placeholder"))
+
+        # File controls - Assuming these are created in setup_file_controls and accessible
+        # Need to ensure buttons are attributes of self or passed to a retranslate method
+        if hasattr(self, 'browseButton'):
+             self.browseButton.setText(self.translate("browse_files_button"))
+             self.browseButton.setToolTip(self.translate("browse_files_tooltip"))
+        if hasattr(self, 'clearButton'):
+            self.clearButton.setText(self.translate("clear_list_button"))
+            self.clearButton.setToolTip(self.translate("clear_list_tooltip"))
+
+        self.settingsGroupLabel.setText(self.translate("settings_group_label"))
+        self.enablePluginsCheck.setText(self.translate("enable_plugins_checkbox"))
+        self.enablePluginsCheck.setToolTip(self.translate("enable_plugins_tooltip"))
+        self.docIntelLine.setPlaceholderText(self.translate("doc_intel_placeholder"))
+        self.docIntelLine.setToolTip(self.translate("doc_intel_tooltip"))
+
+        self.batchSizeLabel.setText(self.translate("batch_size_label"))
+        self.batchSizeSpinBox.setToolTip(self.translate("batch_size_tooltip"))
+        self.pauseButton.setText(self.translate("pause_button") if not self.pauseButton.isChecked() else self.translate("resume_button"))
+        self.cancelButton.setText(self.translate("cancel_button"))
+        self.convertButton.setText(self.translate("convert_files_button"))
+
+        self.combinedSaveCheck.setText(self.translate("output_save_all_in_one_checkbox"))
+        self.combinedSaveCheck.setToolTip(self.translate("output_save_all_in_one_tooltip"))
+        self.copyButton.setText(self.translate("copy_output_button"))
+        self.saveButton.setText(self.translate("save_output_button"))
+        
+        self.update()
+        QApplication.processEvents()

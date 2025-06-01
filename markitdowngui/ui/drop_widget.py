@@ -3,32 +3,41 @@ from PySide6.QtCore import Qt
 from markitdowngui.core.file_utils import FileManager
 
 class DropWidget(QWidget):
-    def __init__(self):
+    def __init__(self, translate_func):
         super().__init__()
+        self.translate = translate_func
         self.setAcceptDrops(True)
         self.accepted_extensions = ["*.*"]
         self.setup_ui()
+        self.retranslate_ui(translate_func) # Initial translation
     
     def setup_ui(self):
         layout = QVBoxLayout(self)
         
         # Add file type filter
         filterLayout = QHBoxLayout()
-        filterLabel = QLabel("File Type:")
+        self.filterLabel = QLabel() # Initialize, text set in retranslate_ui
         self.filterCombo = QComboBox()
-        self.filterCombo.addItems(FileManager.SUPPORTED_TYPES.keys())
+        self.filterCombo.addItems(FileManager.SUPPORTED_TYPES.keys()) # Keys are not translated
         self.filterCombo.currentTextChanged.connect(self.update_filter)
-        filterLayout.addWidget(filterLabel)
+        filterLayout.addWidget(self.filterLabel)
         filterLayout.addWidget(self.filterCombo)
         
         # List widget and drop label
         self.listWidget = QListWidget()
-        dropLabel = QLabel("Drag and drop files here")
-        dropLabel.setToolTip("Drag files you want to convert into Markdown and drop them here.")
+        self.dropLabel = QLabel() # Initialize, text set in retranslate_ui
         
         layout.addLayout(filterLayout)
-        layout.addWidget(dropLabel)
+        layout.addWidget(self.dropLabel)
         layout.addWidget(self.listWidget)
+    
+    def retranslate_ui(self, translate_func):
+        """Update UI element texts using the translate function."""
+        self.translate = translate_func # Update translate function reference if needed
+        self.filterLabel.setText(self.translate("drop_widget_file_type_label"))
+        self.dropLabel.setText(self.translate("drop_widget_drop_label"))
+        self.dropLabel.setToolTip(self.translate("drop_widget_tooltip"))
+        # Add other elements that need retranslation if any
     
     def update_filter(self, filter_name):
         """Update accepted extensions based on selected filter."""
