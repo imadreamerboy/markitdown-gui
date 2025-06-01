@@ -83,7 +83,10 @@ TRANSLATIONS = {
         "shortcut_begin_conversion": "Begin Conversion",
         "shortcut_clear_list": "Clear List",
         "shortcut_show_shortcuts": "Show Shortcuts",
-        "shortcut_cancel_conversion": "Cancel Conversion"
+        "shortcut_cancel_conversion": "Cancel Conversion",
+        "update_dialog_title": "Update Available",
+        "update_dialog_message": "A new version (<b>{version}</b>) of MarkItDown is available!",
+        "update_dialog_info": "You can download it from the <a href='{url}'>GitHub releases page</a>."
     },
     "zh_CN": {
         "app_title": "MarkItDown GUI 包装器",
@@ -167,7 +170,10 @@ TRANSLATIONS = {
         "shortcut_begin_conversion": "开始转换",
         "shortcut_clear_list": "清除列表",
         "shortcut_show_shortcuts": "显示快捷键",
-        "shortcut_cancel_conversion": "取消转换"
+        "shortcut_cancel_conversion": "取消转换",
+        "update_dialog_title": "可用更新",
+        "update_dialog_message": "MarkItDown 的一个新版本 (<b>{version}</b>) 可用！",
+        "update_dialog_info": "您可以从 <a href=\'{url}\'>GitHub 发布页面</a> 下载。"
     }
 }
 

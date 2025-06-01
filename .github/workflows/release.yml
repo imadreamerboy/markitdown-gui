@@ -31,6 +31,18 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt pyinstaller
 
+      - name: Update version in __init__.py
+        run: |
+          TAG_NAME="${GITHUB_REF#refs/tags/}"
+          VERSION="${TAG_NAME#v}"
+          echo "Updating __version__ to $VERSION in markitdowngui/__init__.py"
+          # Using a temporary file for sed on macOS compatibility
+          sed -i.bak "s/__version__ = .*/__version__ = \"$VERSION\"/g" markitdowngui/__init__.py
+          rm markitdowngui/__init__.py.bak
+          echo "Contents of __init__.py after update:"
+          cat markitdowngui/__init__.py
+        shell: bash
+
       - name: Build executable
         run: |
           if [[ "$RUNNER_OS" == "Windows" ]]; then

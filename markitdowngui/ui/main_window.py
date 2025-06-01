@@ -21,6 +21,7 @@ from markitdowngui.utils.translations import get_translation, get_available_lang
 class MainWindow(QWidget):
     def __init__(self):
         super().__init__()
+        self.is_main_window = True
         self.settings_manager = SettingsManager()
         self.file_manager = FileManager()
         self.current_lang = self.settings_manager.get_current_language() or DEFAULT_LANG
