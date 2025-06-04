@@ -3,31 +3,37 @@
 import requests
 import json
 
-from PySide6.QtWidgets import QApplication # Added for main window access
+from PySide6.QtWidgets import QApplication, QWidget # MODIFIED: Added QWidget for type hinting
 from packaging.version import parse # Import parse
 
 from markitdowngui import __version__ as app_version # Import the version
 from markitdowngui.ui.dialogs.update_dialog import UpdateDialog # Added import
-# It's better to get translate from the main_window if possible
-# from markitdowngui.utils.translations import get_translation # Fallback if needed
 
-# Placeholder for current application version
-# This should be replaced with a proper version retrieval mechanism
-# CURRENT_VERSION = "0.1.0" # Example version, replace with actual version logic - REMOVED
 
 GITHUB_API_URL = "https://api.github.com/repos/imadreamerboy/markitdown-gui/releases/latest"
 
 def get_current_version():
     """Retrieves the current application version.
-    
-    This is a placeholder. In a real implementation, this would read the version
-    from a file or a variable set during the build process.
+
+    This version is sourced from the `__version__` attribute
+    in the `markitdowngui` package, which is updated during the
+    build process based on Git tags.
     """
-    #    return CURRENT_VERSION - REMOVED
     return app_version # Use the imported version
 
 def check_for_updates():
     """Checks for application updates using GitHub releases."""
+
+    # Import MainWindow here to avoid potential circular imports
+    # and to ensure it's only imported when needed.
+    try:
+        from markitdowngui.ui.main_window import MainWindow
+        MAIN_WINDOW_CLASS_LOADED = True
+    except ImportError:
+        print("Warning: MainWindow class could not be imported for update_checker. Update dialog may lack optimal parent or translations.")
+        MainWindow = None # type: ignore # Define for logic below, even if None
+        MAIN_WINDOW_CLASS_LOADED = False
+
     print("Checking for updates...")
     current_version = get_current_version()
     if not current_version:
@@ -41,31 +47,40 @@ def check_for_updates():
         latest_version = latest_release.get("tag_name")
 
         if latest_version:
-            # Simple version comparison (can be improved with packaging.version)
             # Assuming versions are like v0.3.0 or 0.3.0
             normalized_latest = latest_version.lstrip('v')
             normalized_current = current_version.lstrip('v')
 
             print(f"Current version: {normalized_current}, Latest version from GitHub: {normalized_latest}")
 
-            # A more robust comparison would use packaging.version
-            # from packaging.version import parse
             # if parse(normalized_latest) > parse(normalized_current):
             if parse(normalized_latest) > parse(normalized_current): # USE packaging.version
                 print(f"A new version ({latest_version}) is available!")
-                # Here you would typically notify the user, e.g., show a dialog
-                # Find the main window to use as parent for the dialog
-                main_window = next((w for w in QApplication.topLevelWidgets() if hasattr(w, 'is_main_window') and w.is_main_window), None)
                 
-                translate_func = lambda key: key # Default pass-through
-                if main_window and hasattr(main_window, 'translate'):
-                    translate_func = main_window.translate
-                # else: # If main_window or its translate method isn't found, we could use get_translation directly
-                #     # This would require knowing the current language, which might be tricky here.
-                #     # For simplicity, using a pass-through if main_window.translate is not available.
-                #     pass
+                main_window_for_dialog: QWidget | None = None
+                translate_func_for_dialog = lambda key: key # Default pass-through
 
-                dialog = UpdateDialog(latest_version, translate_func, parent=main_window)
+                if MAIN_WINDOW_CLASS_LOADED and MainWindow is not None:
+                    for widget in QApplication.topLevelWidgets():
+                        if isinstance(widget, MainWindow):
+                            # Now 'widget' is confirmed to be an instance of MainWindow.
+                            # Access 'is_main_window' and 'translate' safely.
+                            if widget.is_main_window:
+                                main_window_for_dialog = widget
+                                # Ensure translate method exists, though it should per user info
+                                if hasattr(widget, 'translate'):
+                                    translate_func_for_dialog = widget.translate
+                                else:
+                                    print("Warning: MainWindow instance found, but 'translate' method is unexpectedly missing.")
+                                break 
+                
+                if not main_window_for_dialog:
+                    print("Info: MainWindow instance not found via specific type check. Update dialog may be parentless and use default translations.")
+                    # As a less type-safe fallback, we could try the generic hasattr approach,
+                    # but the primary goal is to resolve linter issues with the specific MainWindow type.
+                    # For now, if specific check fails, the dialog proceeds with defaults.
+
+                dialog = UpdateDialog(latest_version, translate_func_for_dialog, parent=main_window_for_dialog)
                 dialog.exec()
             else:
                 print("Application is up to date.")
