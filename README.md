@@ -78,7 +78,22 @@ Licensed under **MIT**.
 
 ## Contributing
 
-Contributions welcome! Fork, open issues, or submit PRs.
+Contributions are welcome! Please follow these steps to contribute:
+
+1.  **Fork the repository** and create a new branch for your feature or bug fix.
+2.  **Set up the development environment**:
+    - It is recommended to use a virtual environment.
+    - This project uses `uv` for package management.
+    - To install all dependencies, including for development and testing, run:
+      ```sh
+      uv pip install -e .[dev]
+      ```
+3.  **Make your changes**.
+4.  **Run the tests** to ensure everything is working correctly:
+    ```sh
+    pytest
+    ```
+5.  **Submit a pull request** with a clear description of your changes.
 
 ## Credits
 

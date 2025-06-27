@@ -21,3 +21,17 @@ Repository = "https://github.com/imadreamerboy/markitdowngui"
 
 [tool.setuptools.packages.find]
 include = ["markitdowngui"]
+
+[project.optional-dependencies]
+dev = [
+    "markitdowngui[test]",
+]
+test = [
+    "pytest",
+    "pytest-mock",
+]
+
+[tool.pytest.ini_options]
+pythonpath = [
+  "."
+]
