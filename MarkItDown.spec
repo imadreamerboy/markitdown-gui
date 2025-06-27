@@ -4,23 +4,11 @@ import sys
 from importlib.util import find_spec
 from PyInstaller.utils.hooks import collect_submodules, collect_data_files
 
-def get_magika_model_path():
-    """Find the path to the installed magika models."""
-    try:
-        spec = find_spec("magika")
-        if spec and spec.origin:
-            magika_path = os.path.dirname(spec.origin)
-            model_path = os.path.join(magika_path, "models")
-            if os.path.isdir(model_path):
-                return model_path
-    except Exception:
-        pass
-    return None
-
 # Collect hidden imports
 hiddenimports = []
 hiddenimports += collect_submodules('markitdowngui')
 hiddenimports += collect_submodules('PySide6')
+hiddenimports += collect_submodules('magika')
 hiddenimports += [
     'PySide6.QtCore',
     'PySide6.QtWidgets', 
@@ -31,15 +19,18 @@ hiddenimports += [
     'markitdowngui.utils.update_checker',
     'packaging.version',
     'requests',
+    'magika',
+    'magika.magika',
 ]
 
 # Collect data files
 datas = []
 
-# Add magika models if available
-magika_model_path = get_magika_model_path()
-if magika_model_path:
-    datas.append((magika_model_path, 'magika/models'))
+# Add all magika data files (models, config, etc.)
+try:
+    datas += collect_data_files('magika')
+except Exception as e:
+    print(f"Warning: Could not collect magika data files: {e}")
 
 # Collect PySide6 data files
 try:
