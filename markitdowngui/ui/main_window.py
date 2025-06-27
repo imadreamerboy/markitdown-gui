@@ -52,7 +52,7 @@ class MainWindow(QWidget):
         self.setup_file_area()
         
         # Create a splitter for file list and preview
-        self.splitter = QSplitter(Qt.Horizontal)
+        self.splitter = QSplitter(Qt.Orientation.Horizontal)
         
         # Left side: File list
         leftWidget = QWidget()
@@ -133,27 +133,18 @@ class MainWindow(QWidget):
         """Set up the file handling area."""
         self.dropWidget = DropWidget(self.translate)
         self.dropWidget.listWidget.currentItemChanged.connect(self.update_preview)
-        
+        self.dropWidget.filesAdded.connect(self.handle_files_added)
         # Add file list to main layout
         self.mainLayout.addWidget(self.dropWidget)
 
     def setup_file_controls(self):
         """Set up the file control buttons."""
         fileControlsLayout = QHBoxLayout()
-        
-        # Browse button
-        self.browseButton = QPushButton(self.translate("browse_files_button"))
-        self.browseButton.clicked.connect(self.browse_files)
-        self.browseButton.setToolTip(self.translate("browse_files_tooltip"))
-        
-        # Clear button
+        # Clear button only (browse now in DropWidget)
         self.clearButton = QPushButton(self.translate("clear_list_button"))
         self.clearButton.clicked.connect(self.clear_file_list)
         self.clearButton.setToolTip(self.translate("clear_list_tooltip"))
-        
-        fileControlsLayout.addWidget(self.browseButton)
         fileControlsLayout.addWidget(self.clearButton)
-        
         self.mainLayout.addLayout(fileControlsLayout)
 
     def setup_settings_area(self):
@@ -419,7 +410,7 @@ class MainWindow(QWidget):
     def show_format_settings(self):
         """Show the format settings dialog."""
         dialog = FormatSettings(self.settings_manager, self.translate, self)
-        if dialog.exec() == QDialog.Accepted:
+        if dialog.exec() == QDialog.DialogCode.Accepted:
             self.update_auto_save_timer()
             AppLogger.info(self.translate("format_settings_updated_log"))
 
@@ -550,9 +541,6 @@ class MainWindow(QWidget):
 
         # File controls - Assuming these are created in setup_file_controls and accessible
         # Need to ensure buttons are attributes of self or passed to a retranslate method
-        if hasattr(self, 'browseButton'):
-             self.browseButton.setText(self.translate("browse_files_button"))
-             self.browseButton.setToolTip(self.translate("browse_files_tooltip"))
         if hasattr(self, 'clearButton'):
             self.clearButton.setText(self.translate("clear_list_button"))
             self.clearButton.setToolTip(self.translate("clear_list_tooltip"))
@@ -576,3 +564,11 @@ class MainWindow(QWidget):
         
         self.update()
         QApplication.processEvents()
+
+    def handle_files_added(self, files):
+        # Add only files not already in the list
+        existing = set(self.dropWidget.listWidget.item(i).text() for i in range(self.dropWidget.listWidget.count()))
+        for file in files:
+            if file not in existing:
+                self.dropWidget.listWidget.addItem(file)
+                self.handleNewFile(file)

@@ -182,8 +182,13 @@ TRANSLATIONS = {
 DEFAULT_LANG = "en"
 
 def get_translation(lang_code, key):
-    """Retrieves a translation for a given key and language code."""
-    return TRANSLATIONS.get(lang_code, TRANSLATIONS.get(DEFAULT_LANG, {})).get(key, key)
+    """
+    Retrieves a translation for a given key.
+    Falls back to English if the key is not found in the specified language,
+    and then to the key itself if it's not in English either.
+    """
+    lang_dict = TRANSLATIONS.get(lang_code, TRANSLATIONS[DEFAULT_LANG])
+    return lang_dict.get(key, TRANSLATIONS[DEFAULT_LANG].get(key, key))
 
 def get_available_languages():
     """Returns a dictionary of available language codes and their native names."""

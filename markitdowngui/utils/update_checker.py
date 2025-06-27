@@ -24,14 +24,13 @@ def get_current_version():
 def check_for_updates():
     """Checks for application updates using GitHub releases."""
 
-    # Import MainWindow here to avoid potential circular imports
-    # and to ensure it's only imported when needed.
+
     try:
         from markitdowngui.ui.main_window import MainWindow
         MAIN_WINDOW_CLASS_LOADED = True
     except ImportError:
         print("Warning: MainWindow class could not be imported for update_checker. Update dialog may lack optimal parent or translations.")
-        MainWindow = None # type: ignore # Define for logic below, even if None
+        MainWindow = None 
         MAIN_WINDOW_CLASS_LOADED = False
 
     print("Checking for updates...")
@@ -47,7 +46,6 @@ def check_for_updates():
         latest_version = latest_release.get("tag_name")
 
         if latest_version:
-            # Assuming versions are like v0.3.0 or 0.3.0
             normalized_latest = latest_version.lstrip('v')
             normalized_current = current_version.lstrip('v')
 
@@ -63,11 +61,8 @@ def check_for_updates():
                 if MAIN_WINDOW_CLASS_LOADED and MainWindow is not None:
                     for widget in QApplication.topLevelWidgets():
                         if isinstance(widget, MainWindow):
-                            # Now 'widget' is confirmed to be an instance of MainWindow.
-                            # Access 'is_main_window' and 'translate' safely.
                             if widget.is_main_window:
                                 main_window_for_dialog = widget
-                                # Ensure translate method exists, though it should per user info
                                 if hasattr(widget, 'translate'):
                                     translate_func_for_dialog = widget.translate
                                 else:
@@ -76,9 +71,7 @@ def check_for_updates():
                 
                 if not main_window_for_dialog:
                     print("Info: MainWindow instance not found via specific type check. Update dialog may be parentless and use default translations.")
-                    # As a less type-safe fallback, we could try the generic hasattr approach,
-                    # but the primary goal is to resolve linter issues with the specific MainWindow type.
-                    # For now, if specific check fails, the dialog proceeds with defaults.
+
 
                 dialog = UpdateDialog(latest_version, translate_func_for_dialog, parent=main_window_for_dialog)
                 dialog.exec()
