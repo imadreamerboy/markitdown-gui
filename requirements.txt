@@ -84,7 +84,7 @@ pdfminer-six==20250506
     # via markitdown
 pillow==11.2.1
     # via python-pptx
-protobuf==6.31.0
+protobuf==6.31.1
     # via onnxruntime
 pycparser==2.22
     # via cffi
