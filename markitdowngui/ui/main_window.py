@@ -262,40 +262,122 @@ class MainWindow(QWidget):
 
     def convert_files(self):
         """Start the file conversion process."""
-        files = [self.dropWidget.listWidget.item(i).text() 
-                for i in range(self.dropWidget.listWidget.count())]
-        
-        if not files:
-            AppLogger.info("Conversion attempted with no files")
-            QMessageBox.warning(self, self.translate("no_files_to_convert_title"), self.translate("no_files_to_convert_message"))
-            return
+        try:
+            # Check if conversion is already in progress
+            if hasattr(self, 'worker') and self.worker and self.worker.isRunning():
+                AppLogger.warning("Conversion already in progress")
+                QMessageBox.warning(
+                    self, 
+                    self.translate("conversion_in_progress_title"), 
+                    self.translate("conversion_in_progress_message")
+                )
+                return
 
-        AppLogger.info(f"Starting conversion of {len(files)} files")
-        
-        # Prepare conversion settings
-        settings = self.settings_manager.get_format_settings()
-        # Create a base MarkItDown instance
-        md = MarkItDown()
-        
-        # Configure plugins if enabled
-        if self.enablePluginsCheck.isChecked():
-            md.enable_plugins()
-        
-        # Configure Document Intelligence if endpoint provided
-        endpoint = self.docIntelLine.text().strip()
-        if endpoint:
-            md.set_docintel_endpoint(endpoint)
+            # Get file list
+            files = [self.dropWidget.listWidget.item(i).text() 
+                    for i in range(self.dropWidget.listWidget.count())]
+            
+            if not files:
+                AppLogger.info("Conversion attempted with no files")
+                QMessageBox.warning(self, self.translate("no_files_to_convert_title"), self.translate("no_files_to_convert_message"))
+                return
 
-        # Start conversion with configured instance
-        self.worker = ConversionWorker([md, files, settings], self.batchSizeSpinBox.value())
-        self.worker.progress.connect(self.update_progress)
-        self.worker.finished.connect(self.handle_conversion_finished)
-        self.worker.error.connect(self.handle_conversion_error)
+            # Validate files exist and are accessible
+            valid_files = []
+            for file in files:
+                if not os.path.exists(file):
+                    AppLogger.warning(f"File not found: {file}")
+                    continue
+                if not os.access(file, os.R_OK):
+                    AppLogger.warning(f"File not readable: {file}")
+                    continue
+                valid_files.append(file)
+            
+            if not valid_files:
+                QMessageBox.warning(
+                    self, 
+                    self.translate("no_valid_files_title"), 
+                    self.translate("no_valid_files_message")
+                )
+                return
 
-        self.pauseButton.setEnabled(True)
-        self.cancelButton.setEnabled(True)
-        self.convertButton.setEnabled(False)
-        self.worker.start()
+            AppLogger.info(f"Starting conversion of {len(valid_files)} files")
+            
+            # Prepare conversion settings
+            try:
+                settings = self.settings_manager.get_format_settings()
+            except Exception as e:
+                AppLogger.error(f"Error loading format settings: {str(e)}")
+                QMessageBox.critical(
+                    self, 
+                    self.translate("settings_error_title"), 
+                    self.translate("settings_error_message").format(error=str(e))
+                )
+                return
+            
+            # Create and configure MarkItDown instance
+            try:
+                # Prepare MarkItDown configuration
+                md_kwargs = {}
+                
+                # Configure plugins if enabled
+                if self.enablePluginsCheck.isChecked():
+                    md_kwargs['enable_plugins'] = True
+                
+                # Configure Document Intelligence if endpoint provided
+                endpoint = self.docIntelLine.text().strip()
+                if endpoint:
+                    md_kwargs['docintel_endpoint'] = endpoint
+                    AppLogger.info("Document Intelligence endpoint configured")
+                
+                md = MarkItDown(**md_kwargs)
+                    
+            except Exception as e:
+                AppLogger.error(f"Error configuring MarkItDown: {str(e)}")
+                QMessageBox.critical(
+                    self, 
+                    self.translate("markitdown_config_error_title"), 
+                    self.translate("markitdown_config_error_message").format(error=str(e))
+                )
+                return
+
+            # Clean up any existing worker
+            self._cleanup_worker()
+
+            # Start conversion with configured instance
+            try:
+                self.worker = ConversionWorker([md, valid_files, settings], self.batchSizeSpinBox.value())
+                self.worker.progress.connect(self.update_progress)
+                self.worker.finished.connect(self.handle_conversion_finished)
+                self.worker.error.connect(self.handle_conversion_error)
+
+                # Update UI state
+                self.pauseButton.setEnabled(True)
+                self.cancelButton.setEnabled(True)
+                self.convertButton.setEnabled(False)
+                self.progressBar.setValue(0)
+                self.progressBar.setFormat(self.translate("conversion_starting_message"))
+                
+                self.worker.start()
+                AppLogger.info("Conversion worker started successfully")
+                
+            except Exception as e:
+                AppLogger.error(f"Error starting conversion worker: {str(e)}")
+                QMessageBox.critical(
+                    self, 
+                    self.translate("conversion_start_error_title"), 
+                    self.translate("conversion_start_error_message").format(error=str(e))
+                )
+                self._reset_ui_state()
+                
+        except Exception as e:
+            AppLogger.error(f"Unexpected error in convert_files: {str(e)}")
+            QMessageBox.critical(
+                self, 
+                self.translate("unexpected_error_title"), 
+                self.translate("unexpected_error_message").format(error=str(e))
+            )
+            self._reset_ui_state()
 
     def update_progress(self, progress, current_file):
         """Update the progress bar during conversion."""
@@ -456,16 +538,18 @@ class MainWindow(QWidget):
             # Get current format settings
             settings = self.settings_manager.get_format_settings()
             # Create MarkItDown instance with format settings only
-            self.preview_md = MarkItDown()
+            preview_kwargs = {}
             
             # Configure plugins if enabled
             if self.enablePluginsCheck.isChecked():
-                self.preview_md.enable_plugins()
+                preview_kwargs['enable_plugins'] = True
             
             # Configure Document Intelligence if endpoint provided
             endpoint = self.docIntelLine.text().strip()
             if endpoint:
-                self.preview_md.set_docintel_endpoint(endpoint)
+                preview_kwargs['docintel_endpoint'] = endpoint
+                
+            self.preview_md = MarkItDown(**preview_kwargs)
             
             result = self.preview_md.convert(filepath)
             self.previewText.setPlainText(result.text_content)
@@ -522,6 +606,39 @@ class MainWindow(QWidget):
             self.worker.is_paused = False
             self.pauseButton.setChecked(False)
             AppLogger.info(self.translate("conversion_cancelled_log"))
+    
+
+    def _cleanup_worker(self):
+        """Clean up any existing worker thread."""
+        if hasattr(self, 'worker') and self.worker:
+            if self.worker.isRunning():
+                self.worker.is_cancelled = True
+                self.worker.is_paused = False
+                self.worker.wait(3000)  # Wait up to 3 seconds
+                if self.worker.isRunning():
+                    self.worker.terminate()
+                    self.worker.wait()
+            
+            # Disconnect signals to prevent conflicts
+            try:
+                self.worker.progress.disconnect()
+                self.worker.finished.disconnect()
+                self.worker.error.disconnect()
+            except:
+                pass  # Signals might already be disconnected
+                
+            self.worker = None
+            AppLogger.info("Worker thread cleaned up")
+    
+    def _reset_ui_state(self):
+        """Reset UI to initial state after error or completion."""
+        self.pauseButton.setEnabled(False)
+        self.cancelButton.setEnabled(False)
+        self.convertButton.setEnabled(True)
+        self.pauseButton.setChecked(False)
+        self.pauseButton.setText(self.translate("pause_button"))
+        self.progressBar.setValue(0)
+        self.progressBar.setFormat("")
 
     def change_language(self, action):
         """Change the application language."""
