@@ -16,7 +16,9 @@ from markitdowngui.ui.themes import apply_dark_theme, apply_light_theme
 from markitdowngui.ui.drop_widget import DropWidget
 from markitdowngui.ui.dialogs.format_settings import FormatSettings
 from markitdowngui.ui.dialogs.shortcuts import ShortcutDialog
+from markitdowngui.ui.dialogs.update_dialog import UpdateDialog
 from markitdowngui.utils.translations import get_translation, get_available_languages, DEFAULT_LANG
+from markitdowngui.utils.update_checker import UpdateChecker
 
 class MainWindow(QWidget):
     def __init__(self):
@@ -30,6 +32,7 @@ class MainWindow(QWidget):
         self.setup_shortcuts()
         self.setup_auto_save()
         self.preview_md = MarkItDown()
+        self.setup_update_checker()
         AppLogger.info("Application started")
 
     def setup_window(self):
@@ -128,6 +131,9 @@ class MainWindow(QWidget):
         helpMenu = self.menuBar.addMenu(self.translate("menu_help"))
         shortcutsAction = helpMenu.addAction(self.translate("menu_keyboard_shortcuts"))
         shortcutsAction.triggered.connect(self.show_shortcuts)
+        
+        checkUpdateAction = helpMenu.addAction(self.translate("menu_check_updates"))
+        checkUpdateAction.triggered.connect(self.manual_update_check)
 
     def setup_file_area(self):
         """Set up the file handling area."""
@@ -572,3 +578,64 @@ class MainWindow(QWidget):
             if file not in existing:
                 self.dropWidget.listWidget.addItem(file)
                 self.handleNewFile(file)
+
+    def setup_update_checker(self):
+        """Set up the update checker to run after the app has started."""
+        # Only check for updates if notifications are enabled
+        if self.settings_manager.get_update_notifications_enabled():
+            # Use a timer to delay the update check until after the UI is fully loaded
+            self.update_check_timer = QTimer()
+            self.update_check_timer.setSingleShot(True)
+            self.update_check_timer.timeout.connect(self.start_update_check)
+            self.update_check_timer.start(2000)  # Check for updates 2 seconds after startup
+
+    def start_update_check(self):
+        """Start the update check in a separate thread."""
+        self.update_checker = UpdateChecker(self)
+        self.update_checker.update_available.connect(self.show_update_notification)
+        self.update_checker.update_error.connect(self.handle_update_error)
+        self.update_checker.no_update_available.connect(self.handle_no_update)
+        self.update_checker.start()
+
+    def show_update_notification(self, new_version):
+        """Show the update notification dialog."""
+        dialog = UpdateDialog(new_version, self.translate, self.settings_manager, self)
+        dialog.exec()
+
+    def handle_update_error(self, error_message):
+        """Handle update check errors (silently log them)."""
+        AppLogger.error(f"Update check failed: {error_message}")
+
+    def handle_no_update(self):
+        """Handle when no update is available (silently log)."""
+        AppLogger.info("No updates available")
+
+    def manual_update_check(self):
+        """Manually trigger an update check."""
+        # For manual checks, always proceed regardless of notification settings
+        self.update_checker = UpdateChecker(self)
+        self.update_checker.update_available.connect(self.show_update_notification_manual)
+        self.update_checker.update_error.connect(self.handle_manual_update_error)
+        self.update_checker.no_update_available.connect(self.handle_manual_no_update)
+        self.update_checker.start()
+
+    def show_update_notification_manual(self, new_version):
+        """Show the update notification dialog for manual checks."""
+        dialog = UpdateDialog(new_version, self.translate, self.settings_manager, self)
+        dialog.exec()
+
+    def handle_manual_update_error(self, error_message):
+        """Handle update check errors for manual checks with user feedback."""
+        QMessageBox.warning(
+            self,
+            self.translate("update_check_error_title"),
+            self.translate("update_check_error_message").format(error=error_message)
+        )
+
+    def handle_manual_no_update(self):
+        """Handle when no update is available for manual checks with user feedback."""
+        QMessageBox.information(
+            self,
+            self.translate("update_check_no_update_title"),
+            self.translate("update_check_no_update_message")
+        )

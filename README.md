@@ -64,6 +64,12 @@ python -m markitdowngui.main
 
 ## Build a Standalone Executable
 
+First activate the development environment:
+
+```sh
+uv pip install -e .[dev]
+```
+
 Use `PyInstaller`:
 
 ```sh
