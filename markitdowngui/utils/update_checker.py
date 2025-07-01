@@ -68,7 +68,17 @@ class UpdateChecker(QThread):
             self.update_error.emit(f"An unexpected error occurred during update check: {e}")
 
 def check_for_updates():
-    """Legacy function for command-line checking (kept for compatibility)."""
+    """Checks for application updates using GitHub releases."""
+
+
+    try:
+        from markitdowngui.ui.main_window import MainWindow
+        MAIN_WINDOW_CLASS_LOADED = True
+    except ImportError:
+        print("Warning: MainWindow class could not be imported for update_checker. Update dialog may lack optimal parent or translations.")
+        MainWindow = None 
+        MAIN_WINDOW_CLASS_LOADED = False
+
     print("Checking for updates...")
     current_version = get_current_version()
     if not current_version:
@@ -90,8 +100,8 @@ def check_for_updates():
         latest_version = latest_release.get("tag_name")
 
         if latest_version:
-            normalized_latest = normalize_version(latest_version)
-            normalized_current = normalize_version(current_version)
+            normalized_latest = latest_version.lstrip('v')
+            normalized_current = current_version.lstrip('v')
 
             print(f"Current version: {normalized_current}, Latest version from GitHub: {normalized_latest}")
 
@@ -114,6 +124,7 @@ def check_for_updates():
                 
                 if not main_window_for_dialog:
                     print("Info: MainWindow instance not found via specific type check. Update dialog may be parentless and use default translations.")
+
 
                 dialog = UpdateDialog(latest_version, translate_func_for_dialog, parent=main_window_for_dialog)
                 dialog.exec()

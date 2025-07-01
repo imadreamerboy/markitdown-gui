@@ -56,6 +56,7 @@ class MainWindow(QWidget):
         
         # Create a splitter for file list and preview
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.splitter = QSplitter(Qt.Orientation.Horizontal)
         
         # Left side: File list
         leftWidget = QWidget()
@@ -140,12 +141,14 @@ class MainWindow(QWidget):
         self.dropWidget = DropWidget(self.translate)
         self.dropWidget.listWidget.currentItemChanged.connect(self.update_preview)
         self.dropWidget.filesAdded.connect(self.handle_files_added)
+        self.dropWidget.filesAdded.connect(self.handle_files_added)
         # Add file list to main layout
         self.mainLayout.addWidget(self.dropWidget)
 
     def setup_file_controls(self):
         """Set up the file control buttons."""
         fileControlsLayout = QHBoxLayout()
+        # Clear button only (browse now in DropWidget)
         # Clear button only (browse now in DropWidget)
         self.clearButton = QPushButton(self.translate("clear_list_button"))
         self.clearButton.clicked.connect(self.clear_file_list)
@@ -498,6 +501,7 @@ class MainWindow(QWidget):
     def show_format_settings(self):
         """Show the format settings dialog."""
         dialog = FormatSettings(self.settings_manager, self.translate, self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self.update_auto_save_timer()
             AppLogger.info(self.translate("format_settings_updated_log"))

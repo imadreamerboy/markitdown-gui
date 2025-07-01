@@ -110,7 +110,7 @@ python-pptx==1.0.2
     # via markitdown
 pytz==2025.2
     # via pandas
-requests==2.32.3
+requests==2.32.4
     # via
     #   azure-core
     #   markitdown

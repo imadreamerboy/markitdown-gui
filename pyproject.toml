@@ -36,3 +36,17 @@ test = [
 pythonpath = [
   "."
 ]
+
+[project.optional-dependencies]
+dev = [
+    "markitdowngui[test]",
+]
+test = [
+    "pytest",
+    "pytest-mock",
+]
+
+[tool.pytest.ini_options]
+pythonpath = [
+  "."
+]
