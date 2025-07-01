@@ -12,7 +12,7 @@ beautifulsoup4==4.13.4
     # via
     #   markdownify
     #   markitdown
-certifi==2025.4.26
+certifi==2025.6.15
     # via requests
 cffi==1.17.1
     # via cryptography
@@ -29,14 +29,16 @@ colorama==0.4.6
     # via click
 coloredlogs==15.0.1
     # via onnxruntime
-cryptography==45.0.2
+cryptography==45.0.4
     # via
     #   azure-identity
     #   msal
     #   pdfminer-six
     #   pyjwt
 defusedxml==0.7.1
-    # via youtube-transcript-api
+    # via
+    #   markitdown
+    #   youtube-transcript-api
 et-xmlfile==2.0.0
     # via openpyxl
 flatbuffers==25.2.10
@@ -47,15 +49,17 @@ idna==3.10
     # via requests
 isodate==0.7.2
     # via azure-ai-documentintelligence
-lxml==5.4.0
-    # via python-pptx
+lxml==6.0.0
+    # via
+    #   markitdown
+    #   python-pptx
 magika==0.6.2
     # via markitdown
-mammoth==1.9.0
+mammoth==1.9.1
     # via markitdown
 markdownify==1.1.0
     # via markitdown
-markitdown==0.1.1
+markitdown==0.1.2
     # via markitdowngui (pyproject.toml)
 mpmath==1.3.0
     # via sympy
@@ -78,13 +82,13 @@ openpyxl==3.1.5
     # via markitdown
 packaging==25.0
     # via onnxruntime
-pandas==2.2.3
+pandas==2.3.0
     # via markitdown
 pdfminer-six==20250506
     # via markitdown
-pillow==11.2.1
+pillow==11.3.0
     # via python-pptx
-protobuf==6.31.0
+protobuf==6.31.1
     # via onnxruntime
 pycparser==2.22
     # via cffi
@@ -94,17 +98,17 @@ pyjwt==2.10.1
     # via msal
 pyreadline3==3.5.4
     # via humanfriendly
-pyside6==6.9.0
+pyside6==6.9.1
     # via markitdowngui (pyproject.toml)
-pyside6-addons==6.9.0
+pyside6-addons==6.9.1
     # via pyside6
-pyside6-essentials==6.9.0
+pyside6-essentials==6.9.1
     # via
     #   pyside6
     #   pyside6-addons
 python-dateutil==2.9.0.post0
     # via pandas
-python-dotenv==1.1.0
+python-dotenv==1.1.1
     # via magika
 python-pptx==1.0.2
     # via markitdown
@@ -116,7 +120,7 @@ requests==2.32.4
     #   markitdown
     #   msal
     #   youtube-transcript-api
-shiboken6==6.9.0
+shiboken6==6.9.1
     # via
     #   pyside6
     #   pyside6-addons
@@ -132,7 +136,7 @@ speechrecognition==3.14.3
     # via markitdown
 sympy==1.14.0
     # via onnxruntime
-typing-extensions==4.13.2
+typing-extensions==4.14.0
     # via
     #   azure-ai-documentintelligence
     #   azure-core
@@ -142,11 +146,11 @@ typing-extensions==4.13.2
     #   speechrecognition
 tzdata==2025.2
     # via pandas
-urllib3==2.4.0
+urllib3==2.5.0
     # via requests
-xlrd==2.0.1
+xlrd==2.0.2
     # via markitdown
-xlsxwriter==3.2.3
+xlsxwriter==3.2.5
     # via python-pptx
 youtube-transcript-api==1.0.3
     # via markitdown

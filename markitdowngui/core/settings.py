@@ -60,3 +60,11 @@ class SettingsManager:
     def set_save_mode(self, combined: bool) -> None:
         """Set save mode preference."""
         self.settings.setValue('combinedSaveMode', combined)
+        
+    def get_update_notifications_enabled(self) -> bool:
+        """Get whether update notifications are enabled."""
+        return bool(self.settings.value('updateNotifications', True, type=bool))
+        
+    def set_update_notifications_enabled(self, enabled: bool) -> None:
+        """Set whether update notifications are enabled."""
+        self.settings.setValue('updateNotifications', enabled)

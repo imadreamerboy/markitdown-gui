@@ -12,6 +12,7 @@ TRANSLATIONS = {
         "menu_format_settings": "&Format Settings...",
         "menu_help": "&Help",
         "menu_keyboard_shortcuts": "&Keyboard Shortcuts...",
+        "menu_check_updates": "&Check for Updates...",
         "drop_widget_file_type_label": "File Type:",
         "drop_widget_drop_label": "Drag and drop files here",
         "drop_widget_tooltip": "Drag files you want to convert into Markdown and drop them here.",
@@ -86,7 +87,28 @@ TRANSLATIONS = {
         "shortcut_cancel_conversion": "Cancel Conversion",
         "update_dialog_title": "Update Available",
         "update_dialog_message": "A new version (<b>{version}</b>) of MarkItDown is available!",
-        "update_dialog_info": "You can download it from the <a href='{url}'>GitHub releases page</a>."
+        "update_dialog_info": "You can download it from the <a href='{url}'>GitHub releases page</a>.",
+        "update_dialog_dont_notify": "Don't notify me again",
+        "update_dialog_ok": "OK",
+        "update_check_error_title": "Update Check Failed",
+        "update_check_error_message": "Failed to check for updates: {error}",
+        "update_check_no_update_title": "No Updates Available",
+        "update_check_no_update_message": "You are using the latest version of MarkItDown GUI.",
+        
+        # Error handling translations
+        "conversion_in_progress_title": "Conversion In Progress",
+        "conversion_in_progress_message": "A conversion is already in progress. Please wait for it to complete or cancel it first.",
+        "no_valid_files_title": "No Valid Files",
+        "no_valid_files_message": "No valid files found. Please check that the files exist and are readable.",
+        "settings_error_title": "Settings Error",
+        "settings_error_message": "Error loading format settings: {error}",
+        "markitdown_config_error_title": "Configuration Error",
+        "markitdown_config_error_message": "Error configuring MarkItDown: {error}",
+        "conversion_start_error_title": "Conversion Start Error",
+        "conversion_start_error_message": "Error starting conversion: {error}",
+        "unexpected_error_title": "Unexpected Error",
+        "unexpected_error_message": "An unexpected error occurred: {error}",
+        "conversion_starting_message": "Starting conversion..."
     },
     "zh_CN": {
         "app_title": "MarkItDown GUI 包装器",
@@ -99,6 +121,7 @@ TRANSLATIONS = {
         "menu_format_settings": "格式设置(&F)...",
         "menu_help": "帮助(&H)",
         "menu_keyboard_shortcuts": "键盘快捷键(&K)...",
+        "menu_check_updates": "检查更新(&C)...",
         "drop_widget_file_type_label": "文件类型:",
         "drop_widget_drop_label": "将文件拖放到此处",
         "drop_widget_tooltip": "将要转换为 Markdown 的文件拖放到此处。",
@@ -173,7 +196,28 @@ TRANSLATIONS = {
         "shortcut_cancel_conversion": "取消转换",
         "update_dialog_title": "可用更新",
         "update_dialog_message": "MarkItDown 的一个新版本 (<b>{version}</b>) 可用！",
-        "update_dialog_info": "您可以从 <a href=\'{url}\'>GitHub 发布页面</a> 下载。"
+        "update_dialog_info": "您可以从 <a href=\'{url}\'>GitHub 发布页面</a> 下载。",
+        "update_dialog_dont_notify": "不再提醒",
+        "update_dialog_ok": "确定",
+        "update_check_error_title": "更新检查失败",
+        "update_check_error_message": "检查更新失败: {error}",
+        "update_check_no_update_title": "没有可用更新",
+        "update_check_no_update_message": "您正在使用最新版本的 MarkItDown GUI。",
+        
+        # Error handling translations
+        "conversion_in_progress_title": "转换进行中",
+        "conversion_in_progress_message": "转换已在进行中。请等待完成或先取消当前转换。",
+        "no_valid_files_title": "无有效文件",
+        "no_valid_files_message": "未找到有效文件。请检查文件是否存在且可读取。",
+        "settings_error_title": "设置错误",
+        "settings_error_message": "加载格式设置时出错: {error}",
+        "markitdown_config_error_title": "配置错误", 
+        "markitdown_config_error_message": "配置 MarkItDown 时出错: {error}",
+        "conversion_start_error_title": "转换启动错误",
+        "conversion_start_error_message": "启动转换时出错: {error}",
+        "unexpected_error_title": "意外错误",
+        "unexpected_error_message": "发生意外错误: {error}",
+        "conversion_starting_message": "正在启动转换..."
     }
 }
 

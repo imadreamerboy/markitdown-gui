@@ -6,6 +6,7 @@ class FileManager:
     """Handles file operations and tracking of recent files."""
     
     SUPPORTED_TYPES = {
+        "Auto Detect": "*.*",
         "Word Documents": "*.docx",
         "PowerPoint": "*.pptx",
         "Excel": "*.xlsx",

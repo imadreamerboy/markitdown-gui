@@ -16,7 +16,9 @@ from markitdowngui.ui.themes import apply_dark_theme, apply_light_theme
 from markitdowngui.ui.drop_widget import DropWidget
 from markitdowngui.ui.dialogs.format_settings import FormatSettings
 from markitdowngui.ui.dialogs.shortcuts import ShortcutDialog
+from markitdowngui.ui.dialogs.update_dialog import UpdateDialog
 from markitdowngui.utils.translations import get_translation, get_available_languages, DEFAULT_LANG
+from markitdowngui.utils.update_checker import UpdateChecker
 
 class MainWindow(QWidget):
     def __init__(self):
@@ -30,6 +32,7 @@ class MainWindow(QWidget):
         self.setup_shortcuts()
         self.setup_auto_save()
         self.preview_md = MarkItDown()
+        self.setup_update_checker()
         AppLogger.info("Application started")
 
     def setup_window(self):
@@ -128,6 +131,9 @@ class MainWindow(QWidget):
         helpMenu = self.menuBar.addMenu(self.translate("menu_help"))
         shortcutsAction = helpMenu.addAction(self.translate("menu_keyboard_shortcuts"))
         shortcutsAction.triggered.connect(self.show_shortcuts)
+        
+        checkUpdateAction = helpMenu.addAction(self.translate("menu_check_updates"))
+        checkUpdateAction.triggered.connect(self.manual_update_check)
 
     def setup_file_area(self):
         """Set up the file handling area."""
@@ -136,16 +142,6 @@ class MainWindow(QWidget):
         self.dropWidget.filesAdded.connect(self.handle_files_added)
         # Add file list to main layout
         self.mainLayout.addWidget(self.dropWidget)
-
-    def setup_file_controls(self):
-        """Set up the file control buttons."""
-        fileControlsLayout = QHBoxLayout()
-        # Clear button only (browse now in DropWidget)
-        self.clearButton = QPushButton(self.translate("clear_list_button"))
-        self.clearButton.clicked.connect(self.clear_file_list)
-        self.clearButton.setToolTip(self.translate("clear_list_tooltip"))
-        fileControlsLayout.addWidget(self.clearButton)
-        self.mainLayout.addLayout(fileControlsLayout)
 
     def setup_settings_area(self):
         """Set up the settings area."""
@@ -256,40 +252,122 @@ class MainWindow(QWidget):
 
     def convert_files(self):
         """Start the file conversion process."""
-        files = [self.dropWidget.listWidget.item(i).text() 
-                for i in range(self.dropWidget.listWidget.count())]
-        
-        if not files:
-            AppLogger.info("Conversion attempted with no files")
-            QMessageBox.warning(self, self.translate("no_files_to_convert_title"), self.translate("no_files_to_convert_message"))
-            return
+        try:
+            # Check if conversion is already in progress
+            if hasattr(self, 'worker') and self.worker and self.worker.isRunning():
+                AppLogger.warning("Conversion already in progress")
+                QMessageBox.warning(
+                    self, 
+                    self.translate("conversion_in_progress_title"), 
+                    self.translate("conversion_in_progress_message")
+                )
+                return
 
-        AppLogger.info(f"Starting conversion of {len(files)} files")
-        
-        # Prepare conversion settings
-        settings = self.settings_manager.get_format_settings()
-        # Create a base MarkItDown instance
-        md = MarkItDown()
-        
-        # Configure plugins if enabled
-        if self.enablePluginsCheck.isChecked():
-            md.enable_plugins()
-        
-        # Configure Document Intelligence if endpoint provided
-        endpoint = self.docIntelLine.text().strip()
-        if endpoint:
-            md.set_docintel_endpoint(endpoint)
+            # Get file list
+            files = [self.dropWidget.listWidget.item(i).text() 
+                    for i in range(self.dropWidget.listWidget.count())]
+            
+            if not files:
+                AppLogger.info("Conversion attempted with no files")
+                QMessageBox.warning(self, self.translate("no_files_to_convert_title"), self.translate("no_files_to_convert_message"))
+                return
 
-        # Start conversion with configured instance
-        self.worker = ConversionWorker([md, files, settings], self.batchSizeSpinBox.value())
-        self.worker.progress.connect(self.update_progress)
-        self.worker.finished.connect(self.handle_conversion_finished)
-        self.worker.error.connect(self.handle_conversion_error)
+            # Validate files exist and are accessible
+            valid_files = []
+            for file in files:
+                if not os.path.exists(file):
+                    AppLogger.warning(f"File not found: {file}")
+                    continue
+                if not os.access(file, os.R_OK):
+                    AppLogger.warning(f"File not readable: {file}")
+                    continue
+                valid_files.append(file)
+            
+            if not valid_files:
+                QMessageBox.warning(
+                    self, 
+                    self.translate("no_valid_files_title"), 
+                    self.translate("no_valid_files_message")
+                )
+                return
 
-        self.pauseButton.setEnabled(True)
-        self.cancelButton.setEnabled(True)
-        self.convertButton.setEnabled(False)
-        self.worker.start()
+            AppLogger.info(f"Starting conversion of {len(valid_files)} files")
+            
+            # Prepare conversion settings
+            try:
+                settings = self.settings_manager.get_format_settings()
+            except Exception as e:
+                AppLogger.error(f"Error loading format settings: {str(e)}")
+                QMessageBox.critical(
+                    self, 
+                    self.translate("settings_error_title"), 
+                    self.translate("settings_error_message").format(error=str(e))
+                )
+                return
+            
+            # Create and configure MarkItDown instance
+            try:
+                # Prepare MarkItDown configuration
+                md_kwargs = {}
+                
+                # Configure plugins if enabled
+                if self.enablePluginsCheck.isChecked():
+                    md_kwargs['enable_plugins'] = True
+                
+                # Configure Document Intelligence if endpoint provided
+                endpoint = self.docIntelLine.text().strip()
+                if endpoint:
+                    md_kwargs['docintel_endpoint'] = endpoint
+                    AppLogger.info("Document Intelligence endpoint configured")
+                
+                md = MarkItDown(**md_kwargs)
+                    
+            except Exception as e:
+                AppLogger.error(f"Error configuring MarkItDown: {str(e)}")
+                QMessageBox.critical(
+                    self, 
+                    self.translate("markitdown_config_error_title"), 
+                    self.translate("markitdown_config_error_message").format(error=str(e))
+                )
+                return
+
+            # Clean up any existing worker
+            self._cleanup_worker()
+
+            # Start conversion with configured instance
+            try:
+                self.worker = ConversionWorker([md, valid_files, settings], self.batchSizeSpinBox.value())
+                self.worker.progress.connect(self.update_progress)
+                self.worker.finished.connect(self.handle_conversion_finished)
+                self.worker.error.connect(self.handle_conversion_error)
+
+                # Update UI state
+                self.pauseButton.setEnabled(True)
+                self.cancelButton.setEnabled(True)
+                self.convertButton.setEnabled(False)
+                self.progressBar.setValue(0)
+                self.progressBar.setFormat(self.translate("conversion_starting_message"))
+                
+                self.worker.start()
+                AppLogger.info("Conversion worker started successfully")
+                
+            except Exception as e:
+                AppLogger.error(f"Error starting conversion worker: {str(e)}")
+                QMessageBox.critical(
+                    self, 
+                    self.translate("conversion_start_error_title"), 
+                    self.translate("conversion_start_error_message").format(error=str(e))
+                )
+                self._reset_ui_state()
+                
+        except Exception as e:
+            AppLogger.error(f"Unexpected error in convert_files: {str(e)}")
+            QMessageBox.critical(
+                self, 
+                self.translate("unexpected_error_title"), 
+                self.translate("unexpected_error_message").format(error=str(e))
+            )
+            self._reset_ui_state()
 
     def update_progress(self, progress, current_file):
         """Update the progress bar during conversion."""
@@ -450,16 +528,18 @@ class MainWindow(QWidget):
             # Get current format settings
             settings = self.settings_manager.get_format_settings()
             # Create MarkItDown instance with format settings only
-            self.preview_md = MarkItDown()
+            preview_kwargs = {}
             
             # Configure plugins if enabled
             if self.enablePluginsCheck.isChecked():
-                self.preview_md.enable_plugins()
+                preview_kwargs['enable_plugins'] = True
             
             # Configure Document Intelligence if endpoint provided
             endpoint = self.docIntelLine.text().strip()
             if endpoint:
-                self.preview_md.set_docintel_endpoint(endpoint)
+                preview_kwargs['docintel_endpoint'] = endpoint
+                
+            self.preview_md = MarkItDown(**preview_kwargs)
             
             result = self.preview_md.convert(filepath)
             self.previewText.setPlainText(result.text_content)
@@ -516,6 +596,39 @@ class MainWindow(QWidget):
             self.worker.is_paused = False
             self.pauseButton.setChecked(False)
             AppLogger.info(self.translate("conversion_cancelled_log"))
+    
+
+    def _cleanup_worker(self):
+        """Clean up any existing worker thread."""
+        if hasattr(self, 'worker') and self.worker:
+            if self.worker.isRunning():
+                self.worker.is_cancelled = True
+                self.worker.is_paused = False
+                self.worker.wait(3000)  # Wait up to 3 seconds
+                if self.worker.isRunning():
+                    self.worker.terminate()
+                    self.worker.wait()
+            
+            # Disconnect signals to prevent conflicts
+            try:
+                self.worker.progress.disconnect()
+                self.worker.finished.disconnect()
+                self.worker.error.disconnect()
+            except:
+                pass  # Signals might already be disconnected
+                
+            self.worker = None
+            AppLogger.info("Worker thread cleaned up")
+    
+    def _reset_ui_state(self):
+        """Reset UI to initial state after error or completion."""
+        self.pauseButton.setEnabled(False)
+        self.cancelButton.setEnabled(False)
+        self.convertButton.setEnabled(True)
+        self.pauseButton.setChecked(False)
+        self.pauseButton.setText(self.translate("pause_button"))
+        self.progressBar.setValue(0)
+        self.progressBar.setFormat("")
 
     def change_language(self, action):
         """Change the application language."""
@@ -538,12 +651,6 @@ class MainWindow(QWidget):
         # Retranslate other UI elements
         self.dropWidget.retranslate_ui(self.translate)
         self.previewText.setPlaceholderText(self.translate("preview_placeholder"))
-
-        # File controls - Assuming these are created in setup_file_controls and accessible
-        # Need to ensure buttons are attributes of self or passed to a retranslate method
-        if hasattr(self, 'clearButton'):
-            self.clearButton.setText(self.translate("clear_list_button"))
-            self.clearButton.setToolTip(self.translate("clear_list_tooltip"))
 
         self.settingsGroupLabel.setText(self.translate("settings_group_label"))
         self.enablePluginsCheck.setText(self.translate("enable_plugins_checkbox"))
@@ -572,3 +679,64 @@ class MainWindow(QWidget):
             if file not in existing:
                 self.dropWidget.listWidget.addItem(file)
                 self.handleNewFile(file)
+
+    def setup_update_checker(self):
+        """Set up the update checker to run after the app has started."""
+        # Only check for updates if notifications are enabled
+        if self.settings_manager.get_update_notifications_enabled():
+            # Use a timer to delay the update check until after the UI is fully loaded
+            self.update_check_timer = QTimer()
+            self.update_check_timer.setSingleShot(True)
+            self.update_check_timer.timeout.connect(self.start_update_check)
+            self.update_check_timer.start(2000)  # Check for updates 2 seconds after startup
+
+    def start_update_check(self):
+        """Start the update check in a separate thread."""
+        self.update_checker = UpdateChecker(self)
+        self.update_checker.update_available.connect(self.show_update_notification)
+        self.update_checker.update_error.connect(self.handle_update_error)
+        self.update_checker.no_update_available.connect(self.handle_no_update)
+        self.update_checker.start()
+
+    def show_update_notification(self, new_version):
+        """Show the update notification dialog."""
+        dialog = UpdateDialog(new_version, self.translate, self.settings_manager, self)
+        dialog.exec()
+
+    def handle_update_error(self, error_message):
+        """Handle update check errors (silently log them)."""
+        AppLogger.error(f"Update check failed: {error_message}")
+
+    def handle_no_update(self):
+        """Handle when no update is available (silently log)."""
+        AppLogger.info("No updates available")
+
+    def manual_update_check(self):
+        """Manually trigger an update check."""
+        # For manual checks, always proceed regardless of notification settings
+        self.update_checker = UpdateChecker(self)
+        self.update_checker.update_available.connect(self.show_update_notification_manual)
+        self.update_checker.update_error.connect(self.handle_manual_update_error)
+        self.update_checker.no_update_available.connect(self.handle_manual_no_update)
+        self.update_checker.start()
+
+    def show_update_notification_manual(self, new_version):
+        """Show the update notification dialog for manual checks."""
+        dialog = UpdateDialog(new_version, self.translate, self.settings_manager, self)
+        dialog.exec()
+
+    def handle_manual_update_error(self, error_message):
+        """Handle update check errors for manual checks with user feedback."""
+        QMessageBox.warning(
+            self,
+            self.translate("update_check_error_title"),
+            self.translate("update_check_error_message").format(error=error_message)
+        )
+
+    def handle_manual_no_update(self):
+        """Handle when no update is available for manual checks with user feedback."""
+        QMessageBox.information(
+            self,
+            self.translate("update_check_no_update_title"),
+            self.translate("update_check_no_update_message")
+        )
