@@ -25,6 +25,7 @@ hiddenimports += [
 
 # Collect data files
 datas = []
+datas += [('markitdowngui/resources/markitdown-gui.ico', 'markitdowngui/resources')]
 
 # Add all magika data files (models, config, etc.)
 try:
@@ -73,5 +74,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=None,  # You can add an icon file path here if you have one
+    icon=os.path.abspath('markitdowngui/resources/markitdown-gui.ico'),
 )
