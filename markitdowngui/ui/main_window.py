@@ -2,10 +2,10 @@ import os
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QMenuBar, QMenu,
     QFileDialog, QCheckBox, QLineEdit, QLabel, QTextEdit, QProgressBar,
-    QApplication, QComboBox, QSpinBox, QMessageBox, QSplitter, QDialog
+    QApplication, QComboBox, QSpinBox, QMessageBox, QSplitter, QDialog, QToolButton, QTextBrowser
 )
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QKeySequence, QPalette, QShortcut, QAction, QActionGroup
+from PySide6.QtGui import QKeySequence, QPalette, QShortcut, QAction, QActionGroup, QIcon
 from markitdown import MarkItDown
 
 from markitdowngui.core.settings import SettingsManager
@@ -17,6 +17,7 @@ from markitdowngui.ui.drop_widget import DropWidget
 from markitdowngui.ui.dialogs.format_settings import FormatSettings
 from markitdowngui.ui.dialogs.shortcuts import ShortcutDialog
 from markitdowngui.ui.dialogs.update_dialog import UpdateDialog
+from markitdowngui.__init__ import __version__ as APP_VERSION
 from markitdowngui.utils.translations import get_translation, get_available_languages, DEFAULT_LANG
 from markitdowngui.utils.update_checker import UpdateChecker
 
@@ -37,7 +38,7 @@ class MainWindow(QWidget):
 
     def setup_window(self):
         """Initialize window properties."""
-        self.setWindowTitle(self.translate("app_title"))
+        self.setWindowTitle(self.translate("app_title") or "MarkItDown GUI")
         self.setMinimumSize(600, 500)
         self.isDarkMode = self.settings_manager.get_dark_mode()
         self.apply_theme()
@@ -50,6 +51,17 @@ class MainWindow(QWidget):
         # Main layout
         self.mainLayout = QVBoxLayout(self)
         self.mainLayout.setMenuBar(self.menuBar)
+
+        # Top bar with theme toggle button (right-aligned)
+        topBar = QHBoxLayout()
+        topBar.addStretch()
+        self.themeToggleButton = QToolButton(self)
+        self.themeToggleButton.setToolTip(self.translate("menu_dark_mode") or "Dark Mode")
+        self.themeToggleButton.setAutoRaise(True)
+        self.themeToggleButton.clicked.connect(self.toggle_dark_mode)
+        self._update_theme_toggle_icon()
+        topBar.addWidget(self.themeToggleButton)
+        self.mainLayout.addLayout(topBar)
         
         # File handling area
         self.setup_file_area()
@@ -66,9 +78,11 @@ class MainWindow(QWidget):
         rightWidget = QWidget()
         rightLayout = QVBoxLayout(rightWidget)
         self.previewLabel = QLabel(self.translate("preview_label"))
-        self.previewText = QTextEdit()
-        self.previewText.setReadOnly(True)
-        self.previewText.setPlaceholderText(self.translate("preview_placeholder"))
+        # Use QTextBrowser to support rich text/Markdown display
+        self.previewText = QTextBrowser()
+        self.previewText.setOpenExternalLinks(True)
+        # Guard translate() returning None for type checkers
+        self.previewText.setPlaceholderText(self.translate("preview_placeholder") or "")
         rightLayout.addWidget(self.previewLabel)
         rightLayout.addWidget(self.previewText)
         
@@ -98,17 +112,17 @@ class MainWindow(QWidget):
         self.menuBar.clear()
 
         # View menu
-        viewMenu = QMenu(self.translate("menu_view"), self)
+        viewMenu = QMenu(self.translate("menu_view") or "View", self)
         self.menuBar.addMenu(viewMenu)
         
         # Dark mode toggle
-        self.darkModeAction = viewMenu.addAction(self.translate("menu_dark_mode"))
+        self.darkModeAction = viewMenu.addAction(self.translate("menu_dark_mode") or "Dark Mode")
         self.darkModeAction.setCheckable(True)
         self.darkModeAction.setChecked(self.isDarkMode)
         self.darkModeAction.triggered.connect(self.toggle_dark_mode)
 
         # Language menu
-        self.languageMenu = viewMenu.addMenu(self.translate("menu_language"))
+        self.languageMenu = viewMenu.addMenu(self.translate("menu_language") or "Language")
         self.languageActionGroup = QActionGroup(self)
         self.languageActionGroup.setExclusive(True)
         self.languageActionGroup.triggered.connect(self.change_language)
@@ -123,17 +137,21 @@ class MainWindow(QWidget):
             self.languageActionGroup.addAction(action)
         
         # Settings menu
-        settingsMenu = self.menuBar.addMenu(self.translate("menu_settings"))
-        formatAction = settingsMenu.addAction(self.translate("menu_format_settings"))
+        settingsMenu = self.menuBar.addMenu(self.translate("menu_settings") or "Settings")
+        formatAction = settingsMenu.addAction(self.translate("menu_format_settings") or "Format Settings")
         formatAction.triggered.connect(self.show_format_settings)
         
         # Help menu
-        helpMenu = self.menuBar.addMenu(self.translate("menu_help"))
-        shortcutsAction = helpMenu.addAction(self.translate("menu_keyboard_shortcuts"))
+        helpMenu = self.menuBar.addMenu(self.translate("menu_help") or "Help")
+        shortcutsAction = helpMenu.addAction(self.translate("menu_keyboard_shortcuts") or "Keyboard Shortcuts")
         shortcutsAction.triggered.connect(self.show_shortcuts)
         
-        checkUpdateAction = helpMenu.addAction(self.translate("menu_check_updates"))
+        checkUpdateAction = helpMenu.addAction(self.translate("menu_check_updates") or "Check for Updates")
         checkUpdateAction.triggered.connect(self.manual_update_check)
+
+        # About dialog
+        aboutAction = helpMenu.addAction(self.translate("menu_about") or "About")
+        aboutAction.triggered.connect(self.show_about_dialog)
 
     def setup_file_area(self):
         """Set up the file handling area."""
@@ -147,17 +165,17 @@ class MainWindow(QWidget):
         """Set up the settings area."""
         settingsLayout = QHBoxLayout()
         
-        self.enablePluginsCheck = QCheckBox(self.translate("enable_plugins_checkbox"))
-        self.enablePluginsCheck.setToolTip(self.translate("enable_plugins_tooltip"))
+        self.enablePluginsCheck = QCheckBox(self.translate("enable_plugins_checkbox") or "")
+        self.enablePluginsCheck.setToolTip(self.translate("enable_plugins_tooltip") or "")
         
         self.docIntelLine = QLineEdit()
-        self.docIntelLine.setPlaceholderText(self.translate("doc_intel_placeholder"))
-        self.docIntelLine.setToolTip(self.translate("doc_intel_tooltip"))
+        self.docIntelLine.setPlaceholderText(self.translate("doc_intel_placeholder") or "")
+        self.docIntelLine.setToolTip(self.translate("doc_intel_tooltip") or "")
         
         settingsLayout.addWidget(self.enablePluginsCheck)
         settingsLayout.addWidget(self.docIntelLine)
         
-        self.settingsGroupLabel = QLabel(self.translate("settings_group_label"))
+        self.settingsGroupLabel = QLabel(self.translate("settings_group_label") or "")
         self.mainLayout.addWidget(self.settingsGroupLabel)
         self.mainLayout.addLayout(settingsLayout)
 
@@ -168,25 +186,25 @@ class MainWindow(QWidget):
         self.batchSizeSpinBox = QSpinBox()
         self.batchSizeSpinBox.setRange(1, 10)
         self.batchSizeSpinBox.setValue(3)
-        self.batchSizeSpinBox.setToolTip(self.translate("batch_size_tooltip"))
+        self.batchSizeSpinBox.setToolTip(self.translate("batch_size_tooltip") or "")
         
-        self.pauseButton = QPushButton(self.translate("pause_button"))
+        self.pauseButton = QPushButton(self.translate("pause_button") or "")
         self.pauseButton.setEnabled(False)
         self.pauseButton.setCheckable(True)
         self.pauseButton.toggled.connect(self.toggle_pause)
         
-        self.cancelButton = QPushButton(self.translate("cancel_button"))
+        self.cancelButton = QPushButton(self.translate("cancel_button") or "")
         self.cancelButton.setEnabled(False)
         self.cancelButton.clicked.connect(self.cancel_conversion)
         
-        self.batchSizeLabel = QLabel(self.translate("batch_size_label"))
+        self.batchSizeLabel = QLabel(self.translate("batch_size_label") or "")
         batchLayout.addWidget(self.batchSizeLabel)
         batchLayout.addWidget(self.batchSizeSpinBox)
         batchLayout.addWidget(self.pauseButton)
         batchLayout.addWidget(self.cancelButton)
         
         # Convert button and progress bar
-        self.convertButton = QPushButton(self.translate("convert_files_button"))
+        self.convertButton = QPushButton(self.translate("convert_files_button") or "")
         self.convertButton.clicked.connect(self.convert_files)
         self.progressBar = QProgressBar()
         
@@ -201,18 +219,18 @@ class MainWindow(QWidget):
         
         # Save mode toggle with saved preference
         saveModeLayout = QHBoxLayout()
-        self.combinedSaveCheck = QCheckBox(self.translate("output_save_all_in_one_checkbox"))
+        self.combinedSaveCheck = QCheckBox(self.translate("output_save_all_in_one_checkbox") or "")
         self.combinedSaveCheck.setChecked(self.settings_manager.get_save_mode())
-        self.combinedSaveCheck.setToolTip(self.translate("output_save_all_in_one_tooltip"))
+        self.combinedSaveCheck.setToolTip(self.translate("output_save_all_in_one_tooltip") or "")
         self.combinedSaveCheck.toggled.connect(self.settings_manager.set_save_mode)
         saveModeLayout.addWidget(self.combinedSaveCheck)
         saveModeLayout.addStretch()
         
         # Output controls
         outputControls = QHBoxLayout()
-        self.copyButton = QPushButton(self.translate("copy_output_button"))
+        self.copyButton = QPushButton(self.translate("copy_output_button") or "")
         self.copyButton.clicked.connect(self.copy_output)
-        self.saveButton = QPushButton(self.translate("save_output_button"))
+        self.saveButton = QPushButton(self.translate("save_output_button") or "")
         self.saveButton.clicked.connect(self.save_output)
         
         outputControls.addWidget(self.copyButton)
@@ -244,11 +262,32 @@ class MainWindow(QWidget):
         self.isDarkMode = not self.isDarkMode
         self.settings_manager.set_dark_mode(self.isDarkMode)
         self.apply_theme()
+        # Update toggle icon
+        self._update_theme_toggle_icon()
 
     def apply_theme(self):
         """Apply the current theme to the application."""
         palette = apply_dark_theme(QPalette()) if self.isDarkMode else apply_light_theme()
         QApplication.setPalette(palette)
+        # Basic Solarized styling for preview; can be centralized later
+        if hasattr(self, "previewText"):
+            if self.isDarkMode:
+                self.previewText.setStyleSheet(
+                    "QTextBrowser { background:#002b36; color:#93a1a1; }"
+                    "a { color:#268bd2; }"
+                    "h1,h2,h3 { color:#eee8d5; }"
+                    "code, pre { background:#073642; color:#93a1a1; }"
+                )
+            else:
+                self.previewText.setStyleSheet(
+                    "QTextBrowser { background:#fdf6e3; color:#586e75; }"
+                    "a { color:#268bd2; }"
+                    "h1,h2,h3 { color:#073642; }"
+                    "code, pre { background:#eee8d5; color:#586e75; }"
+                )
+        # Ensure toggle icon matches theme
+        if hasattr(self, "themeToggleButton"):
+            self._update_theme_toggle_icon()
 
     def convert_files(self):
         """Start the file conversion process."""
@@ -492,6 +531,44 @@ class MainWindow(QWidget):
             self.update_auto_save_timer()
             AppLogger.info(self.translate("format_settings_updated_log"))
 
+    def show_about_dialog(self):
+        """Display an About dialog with version and license info."""
+        try:
+            qt_ver = os.environ.get("QT_API_VERSION", "")
+        except Exception:
+            qt_ver = ""
+        python_ver = f"{os.sys.version_info.major}.{os.sys.version_info.minor}.{os.sys.version_info.micro}"
+        try:
+            from PySide6 import __version__ as pyside_ver
+        except Exception:
+            pyside_ver = "Unknown"
+
+        license_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "..", "LICENSE")
+        license_path = os.path.abspath(license_path)
+        license_text = ""
+        try:
+            with open(license_path, "r", encoding="utf-8") as f:
+                license_text = f.read()
+        except Exception:
+            license_text = "License file not found."
+
+        msg = (
+            f"MarkItDown GUI\n"
+            f"Version: {APP_VERSION}\n\n"
+            f"Python: {python_ver}\n"
+            f"PySide6: {pyside_ver}\n"
+            f"{'Qt: ' + qt_ver if qt_ver else ''}\n\n"
+            f"License summary:\n"
+            f"{license_text[:800]}{'...' if len(license_text) > 800 else ''}\n\n"
+            f"Repository: https://github.com/imadreamerboy/markitdown-gui"
+        )
+
+        QMessageBox.information(
+            self,
+            self.translate("about_title") or "About",
+            msg
+        )
+
     def perform_auto_save(self):
         """Perform auto-save of current output."""
         if hasattr(self, 'conversionResults') and self.conversionResults:
@@ -514,11 +591,21 @@ class MainWindow(QWidget):
         else:
             self.autoSaveTimer.stop()
 
+    def _update_theme_toggle_icon(self):
+        """Update theme toggle icon to reflect current theme."""
+        try:
+            # Show icon indicating the action (switch to the opposite theme)
+            icon_path = "markitdowngui/resources/sun.svg" if self.isDarkMode else "markitdowngui/resources/moon.svg"
+            self.themeToggleButton.setIcon(QIcon(icon_path))
+        except Exception:
+            # No icon fallback: set text
+            self.themeToggleButton.setText("☀" if self.isDarkMode else "🌙")
+
     def update_preview(self, current, previous):
         """Update the preview of the selected file."""
         if not current:
             self.previewText.clear()
-            self.previewText.setPlaceholderText(self.translate("preview_placeholder"))
+            self.previewText.setPlaceholderText(self.translate("preview_placeholder") or "")
             return
             
         try:
@@ -542,7 +629,14 @@ class MainWindow(QWidget):
             self.preview_md = MarkItDown(**preview_kwargs)
             
             result = self.preview_md.convert(filepath)
-            self.previewText.setPlainText(result.text_content)
+            text = result.text_content or ""
+            # Use Markdown rendering for markdown files, else plain text
+            lower = filepath.lower()
+            if lower.endswith(".md") or lower.endswith(".markdown"):
+                # PySide6 supports Markdown rendering via QTextBrowser.setMarkdown
+                self.previewText.setMarkdown(text)
+            else:
+                self.previewText.setPlainText(text)
             AppLogger.info("Preview generated successfully")
             
         except Exception as e:
@@ -566,7 +660,7 @@ class MainWindow(QWidget):
         """Clear the file list."""
         self.dropWidget.listWidget.clear()
         self.previewText.clear()
-        self.previewText.setPlaceholderText(self.translate("preview_placeholder"))
+        self.previewText.setPlaceholderText(self.translate("preview_placeholder") or "")
         AppLogger.info(self.translate("file_list_cleared_log"))
     
     def handleNewFile(self, filepath):

@@ -1,5 +1,5 @@
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QListWidget, QComboBox, QPushButton, QFileDialog, QAbstractItemView
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QListWidget, QComboBox, QPushButton, QFileDialog, QAbstractItemView, QMenu
+from PySide6.QtCore import Qt, Signal, QPoint
 from markitdowngui.core.file_utils import FileManager
 
 class DropWidget(QWidget):
@@ -19,7 +19,8 @@ class DropWidget(QWidget):
         filterLayout = QHBoxLayout()
         self.filterLabel = QLabel() # Initialize, text set in retranslate_ui
         self.filterCombo = QComboBox()
-        self.filterCombo.addItems(FileManager.SUPPORTED_TYPES.keys()) # Keys are not translated
+        # Convert dict_keys to a list for type checkers and Qt API
+        self.filterCombo.addItems(list(FileManager.SUPPORTED_TYPES.keys()))  # Keys are not translated
         self.filterCombo.currentTextChanged.connect(self.update_filter)
         filterLayout.addWidget(self.filterLabel)
         filterLayout.addWidget(self.filterCombo)
@@ -33,6 +34,10 @@ class DropWidget(QWidget):
         self.listWidget = QListWidget()
         self.listWidget.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.listWidget.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
+        # Context menu for removing selected or clearing all
+        self.listWidget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.listWidget.customContextMenuRequested.connect(self._show_context_menu)
+        self.listWidget.keyPressEvent = self._wrap_keypress(self.listWidget.keyPressEvent)
         self.dropLabel = QLabel() # Initialize, text set in retranslate_ui
         
         layout.addLayout(filterLayout)
@@ -76,8 +81,10 @@ class DropWidget(QWidget):
             if self.isAcceptedFile(filepath):
                 self.listWidget.addItem(filepath)
                 # Notify parent of new file
-                if hasattr(self.parent(), 'handleNewFile'):
-                    self.parent().handleNewFile(filepath)
+                # Notify parent of new file if method exists (runtime check; ignore static type warning)
+                parent = self.parent()
+                if parent is not None and hasattr(parent, 'handleNewFile'):
+                    getattr(parent, 'handleNewFile')(filepath)
     
     def open_file_dialog(self):
         files, _ = QFileDialog.getOpenFileNames(self, self.translate("select_files_title"), "", self.translate("all_files_filter"))
@@ -86,3 +93,28 @@ class DropWidget(QWidget):
                 if self.isAcceptedFile(file):
                     self.listWidget.addItem(file)
             self.filesAdded.emit(files)
+    
+    def _show_context_menu(self, pos: QPoint):
+        menu = QMenu(self)
+        remove_selected = menu.addAction(self.translate("remove_selected_action") if hasattr(self, "translate") else "Remove Selected")
+        clear_all = menu.addAction(self.translate("clear_list_action") if hasattr(self, "translate") else "Clear List")
+        action = menu.exec(self.listWidget.mapToGlobal(pos))
+        if action == remove_selected:
+            self._remove_selected_items()
+        elif action == clear_all:
+            self.listWidget.clear()
+    
+    def _remove_selected_items(self):
+        # Remove from bottom to top to keep indices valid
+        for item in sorted(self.listWidget.selectedItems(), key=lambda it: self.listWidget.row(it), reverse=True):
+            row = self.listWidget.row(item)
+            self.listWidget.takeItem(row)
+    
+    def _wrap_keypress(self, original_handler):
+        def handler(event):
+            # Delete or Backspace removes selected
+            if event.key() in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
+                self._remove_selected_items()
+                return
+            return original_handler(event)
+        return handler
