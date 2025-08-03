@@ -25,7 +25,12 @@ hiddenimports += [
 
 # Collect data files
 datas = []
-datas += [('markitdowngui/resources/markitdown-gui.ico', 'markitdowngui/resources')]
+datas += [
+    ('markitdowngui/resources/markitdown-gui.ico', 'markitdowngui/resources'),
+    ('markitdowngui/resources/moon.svg', 'markitdowngui/resources'),
+    ('markitdowngui/resources/sun.svg', 'markitdowngui/resources'),
+    ('LICENSE', '.'), # Add LICENSE file to the root of the bundle
+]
 
 # Add all magika data files (models, config, etc.)
 try:

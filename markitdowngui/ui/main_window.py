@@ -12,7 +12,7 @@ from markitdowngui.core.settings import SettingsManager
 from markitdowngui.core.conversion import ConversionWorker
 from markitdowngui.core.file_utils import FileManager
 from markitdowngui.utils.logger import AppLogger
-from markitdowngui.ui.themes import apply_dark_theme, apply_light_theme
+from markitdowngui.ui.themes import apply_dark_theme, apply_light_theme, markdown_css
 from markitdowngui.ui.drop_widget import DropWidget
 from markitdowngui.ui.dialogs.format_settings import FormatSettings
 from markitdowngui.ui.dialogs.shortcuts import ShortcutDialog
@@ -39,9 +39,18 @@ class MainWindow(QWidget):
     def setup_window(self):
         """Initialize window properties."""
         self.setWindowTitle(self.translate("app_title") or "MarkItDown GUI")
-        self.setMinimumSize(600, 500)
+        self.setMinimumSize(600, 500) # Keep minimum size
         self.isDarkMode = self.settings_manager.get_dark_mode()
         self.apply_theme()
+
+        # Restore window geometry
+        geometry = self.settings_manager.get_window_geometry()
+        if geometry:
+            self.restoreGeometry(geometry)
+        # Note: QWidget does not have restoreState. Only QMainWindow has it.
+        # If window state (maximized/minimized) needs to be persisted,
+        # the main window should inherit from QMainWindow.
+        # For now, only geometry is restored for QWidget.
 
     def setup_ui(self):
         """Set up the user interface."""
@@ -92,6 +101,11 @@ class MainWindow(QWidget):
         
         # Update main layout
         self.mainLayout.addWidget(self.splitter)
+
+        # Restore splitter state
+        splitter_state = self.settings_manager.get_splitter_state()
+        if splitter_state:
+            self.splitter.restoreState(splitter_state)
         
         # Settings area
         self.setup_settings_area()
@@ -158,8 +172,17 @@ class MainWindow(QWidget):
         self.dropWidget = DropWidget(self.translate)
         self.dropWidget.listWidget.currentItemChanged.connect(self.update_preview)
         self.dropWidget.filesAdded.connect(self.handle_files_added)
+
+        # Clear all button for file list
+        self.clearAllButton = QPushButton(self.translate("clear_all_button") or "Clear All")
+        self.clearAllButton.clicked.connect(self.clear_file_list)
+
+        fileListLayout = QVBoxLayout()
+        fileListLayout.addWidget(self.dropWidget)
+        fileListLayout.addWidget(self.clearAllButton)
+        
         # Add file list to main layout
-        self.mainLayout.addWidget(self.dropWidget)
+        self.mainLayout.addLayout(fileListLayout)
 
     def setup_settings_area(self):
         """Set up the settings area."""
@@ -250,6 +273,7 @@ class MainWindow(QWidget):
         QShortcut(QKeySequence("Ctrl+L"), self, self.clear_file_list)
         QShortcut(QKeySequence("Ctrl+K"), self, self.show_shortcuts)
         QShortcut(QKeySequence("Esc"), self, self.cancel_conversion)
+        QShortcut(QKeySequence("Ctrl+Shift+L"), self, self.clear_file_list) # New shortcut for clear all
 
     def setup_auto_save(self):
         """Initialize auto-save functionality."""
@@ -269,22 +293,9 @@ class MainWindow(QWidget):
         """Apply the current theme to the application."""
         palette = apply_dark_theme(QPalette()) if self.isDarkMode else apply_light_theme()
         QApplication.setPalette(palette)
-        # Basic Solarized styling for preview; can be centralized later
+        # Apply centralized Markdown CSS
         if hasattr(self, "previewText"):
-            if self.isDarkMode:
-                self.previewText.setStyleSheet(
-                    "QTextBrowser { background:#002b36; color:#93a1a1; }"
-                    "a { color:#268bd2; }"
-                    "h1,h2,h3 { color:#eee8d5; }"
-                    "code, pre { background:#073642; color:#93a1a1; }"
-                )
-            else:
-                self.previewText.setStyleSheet(
-                    "QTextBrowser { background:#fdf6e3; color:#586e75; }"
-                    "a { color:#268bd2; }"
-                    "h1,h2,h3 { color:#073642; }"
-                    "code, pre { background:#eee8d5; color:#586e75; }"
-                )
+            self.previewText.setStyleSheet(markdown_css(self.isDarkMode))
         # Ensure toggle icon matches theme
         if hasattr(self, "themeToggleButton"):
             self._update_theme_toggle_icon()
@@ -537,14 +548,19 @@ class MainWindow(QWidget):
             qt_ver = os.environ.get("QT_API_VERSION", "")
         except Exception:
             qt_ver = ""
-        python_ver = f"{os.sys.version_info.major}.{os.sys.version_info.minor}.{os.sys.version_info.micro}"
+        import sys, traceback
+        python_ver = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
         try:
             from PySide6 import __version__ as pyside_ver
         except Exception:
             pyside_ver = "Unknown"
 
-        license_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "..", "LICENSE")
-        license_path = os.path.abspath(license_path)
+        # Resolve LICENSE both in dev and frozen (PyInstaller) builds
+        try:
+            base_dir = getattr(sys, "_MEIPASS", None) or os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+            license_path = os.path.join(base_dir, "LICENSE")
+        except Exception:
+            license_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "LICENSE"))
         license_text = ""
         try:
             with open(license_path, "r", encoding="utf-8") as f:
@@ -563,11 +579,33 @@ class MainWindow(QWidget):
             f"Repository: https://github.com/imadreamerboy/markitdown-gui"
         )
 
-        QMessageBox.information(
-            self,
-            self.translate("about_title") or "About",
-            msg
+        # Use a dialog with QTextBrowser so the repo link is clickable
+        dlg = QDialog(self)
+        dlg.setWindowTitle(self.translate("about_title") or "About")
+        layout = QVBoxLayout(dlg)
+        tb = QTextBrowser(dlg)
+        tb.setOpenExternalLinks(True)
+        lic_snippet = (license_text[:1200] + ("..." if len(license_text) > 1200 else "")) if license_text else "License file not found."
+        html = (
+            "<h3>MarkItDown GUI</h3>"
+            f"<p><b>Version:</b> {APP_VERSION}</p>"
+            f"<p><b>Python:</b> {python_ver}<br>"
+            f"<b>PySide6:</b> {pyside_ver}"
+            f"{('<br><b>Qt:</b> ' + qt_ver) if qt_ver else ''}</p>"
+            "<h4>License summary</h4>"
+            f"<pre style='white-space:pre-wrap; font-family:monospace;'>{lic_snippet}</pre>"
+            "<p><a href='https://github.com/imadreamerboy/markitdown-gui'>Repository: github.com/imadreamerboy/markitdown-gui</a></p>"
         )
+        tb.setHtml(html)
+        layout.addWidget(tb)
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+        ok_btn = QPushButton("OK", dlg)
+        ok_btn.clicked.connect(dlg.accept)
+        btn_row.addWidget(ok_btn)
+        layout.addLayout(btn_row)
+        dlg.resize(560, 460)
+        dlg.exec()
 
     def perform_auto_save(self):
         """Perform auto-save of current output."""
@@ -730,11 +768,13 @@ class MainWindow(QWidget):
         if lang_code and lang_code != self.current_lang:
             self.current_lang = lang_code
             self.settings_manager.set_current_language(lang_code)
-            self.retranslate_ui()
+        self.retranslate_ui()
+        self.clearAllButton.setText(self.translate("clear_all_button"))
 
-    def translate(self, key):
-        """Translate a key using the current language."""
-        return get_translation(self.current_lang, key)
+    def translate(self, key) -> str:
+        """Translate a key using the current language, ensuring a string is always returned."""
+        translation = get_translation(self.current_lang, key)
+        return translation if translation is not None else ""
 
     def retranslate_ui(self):
         """Retranslate all UI elements after language change."""
@@ -773,6 +813,14 @@ class MainWindow(QWidget):
             if file not in existing:
                 self.dropWidget.listWidget.addItem(file)
                 self.handleNewFile(file)
+
+    def closeEvent(self, event):
+        """Save window geometry and splitter state on close."""
+        self.settings_manager.set_window_geometry(self.saveGeometry().data())
+        # QWidget does not have saveState, only QMainWindow.
+        # self.settings_manager.set_window_state(self.saveState().data())
+        self.settings_manager.set_splitter_state(self.splitter.saveState().data())
+        super().closeEvent(event)
 
     def setup_update_checker(self):
         """Set up the update checker to run after the app has started."""
