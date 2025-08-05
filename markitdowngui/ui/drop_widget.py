@@ -14,6 +14,8 @@ class DropWidget(QWidget):
     
     def setup_ui(self):
         layout = QVBoxLayout(self)
+        # Predeclare to satisfy type checkers
+        self.clearAllHeaderButton = None
         
         # Add file type filter
         filterLayout = QHBoxLayout()
@@ -29,7 +31,7 @@ class DropWidget(QWidget):
         self.browseButton = QPushButton(self.translate("browse_files_button"))
         self.browseButton.clicked.connect(self.open_file_dialog)
         filterLayout.addWidget(self.browseButton)
-        
+
         # List widget and drop label
         self.listWidget = QListWidget()
         self.listWidget.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
@@ -39,6 +41,12 @@ class DropWidget(QWidget):
         self.listWidget.customContextMenuRequested.connect(self._show_context_menu)
         self.listWidget.keyPressEvent = self._wrap_keypress(self.listWidget.keyPressEvent)
         self.dropLabel = QLabel() # Initialize, text set in retranslate_ui
+
+        # Add Clear All on the right of the header row
+        self.clearAllHeaderButton = QPushButton(self.translate("clear_all_button"))
+        self.clearAllHeaderButton.setObjectName("clear_all_button_header")
+        self.clearAllHeaderButton.clicked.connect(self.listWidget.clear)
+        filterLayout.addWidget(self.clearAllHeaderButton)
         
         layout.addLayout(filterLayout)
         layout.addWidget(self.dropLabel)
@@ -52,6 +60,9 @@ class DropWidget(QWidget):
         self.dropLabel.setToolTip(self.translate("drop_widget_tooltip"))
         self.browseButton.setText(self.translate("browse_files_button"))
         self.browseButton.setToolTip(self.translate("browse_files_tooltip"))
+        btn = getattr(self, "clearAllHeaderButton", None)
+        if btn is not None:
+            btn.setText(self.translate("clear_all_button"))
         # Add other elements that need retranslation if any
     
     def update_filter(self, filter_name):

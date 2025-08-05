@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QKeySequence, QPalette, QShortcut, QAction, QActionGroup, QIcon
+from typing import cast
 from markitdown import MarkItDown
 
 from markitdowngui.core.settings import SettingsManager
@@ -47,10 +48,6 @@ class MainWindow(QWidget):
         geometry = self.settings_manager.get_window_geometry()
         if geometry:
             self.restoreGeometry(geometry)
-        # Note: QWidget does not have restoreState. Only QMainWindow has it.
-        # If window state (maximized/minimized) needs to be persisted,
-        # the main window should inherit from QMainWindow.
-        # For now, only geometry is restored for QWidget.
 
     def setup_ui(self):
         """Set up the user interface."""
@@ -61,31 +58,36 @@ class MainWindow(QWidget):
         self.mainLayout = QVBoxLayout(self)
         self.mainLayout.setMenuBar(self.menuBar)
 
-        # Top bar with theme toggle button (right-aligned)
-        topBar = QHBoxLayout()
-        topBar.addStretch()
+        # Top controls row: left spacer + theme toggle 
+        topControls = QHBoxLayout()
+        topControls.addStretch()
         self.themeToggleButton = QToolButton(self)
         self.themeToggleButton.setToolTip(self.translate("menu_dark_mode") or "Dark Mode")
         self.themeToggleButton.setAutoRaise(True)
         self.themeToggleButton.clicked.connect(self.toggle_dark_mode)
         self._update_theme_toggle_icon()
-        topBar.addWidget(self.themeToggleButton)
-        self.mainLayout.addLayout(topBar)
-        
+        topControls.addWidget(self.themeToggleButton)
+        self.mainLayout.addLayout(topControls)
+
         # File handling area
         self.setup_file_area()
-        
+
         # Create a splitter for file list and preview
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
-        
+
         # Left side: File list
         leftWidget = QWidget()
         leftLayout = QVBoxLayout(leftWidget)
+        leftLayout.setContentsMargins(0, 0, 0, 0)
+        leftLayout.setSpacing(6)
         leftLayout.addWidget(self.dropWidget)
-        
+        leftWidget.setMinimumWidth(180)
+
         # Right side: Preview
         rightWidget = QWidget()
         rightLayout = QVBoxLayout(rightWidget)
+        rightLayout.setContentsMargins(0, 0, 0, 0)
+        rightLayout.setSpacing(6)
         self.previewLabel = QLabel(self.translate("preview_label"))
         # Use QTextBrowser to support rich text/Markdown display
         self.previewText = QTextBrowser()
@@ -94,11 +96,22 @@ class MainWindow(QWidget):
         self.previewText.setPlaceholderText(self.translate("preview_placeholder") or "")
         rightLayout.addWidget(self.previewLabel)
         rightLayout.addWidget(self.previewText)
-        
+        rightWidget.setMinimumWidth(240)
+
         # Add widgets to splitter
         self.splitter.addWidget(leftWidget)
         self.splitter.addWidget(rightWidget)
-        
+        # Improve alignment and prevent collapsing
+        self.splitter.setChildrenCollapsible(False)
+        try:
+            # PySide6 6.6+ supports per-section collapsible control
+            self.splitter.setCollapsible(0, False)
+            self.splitter.setCollapsible(1, False)
+        except Exception:
+            pass
+        self.splitter.setStretchFactor(0, 1)
+        self.splitter.setStretchFactor(1, 2)
+
         # Update main layout
         self.mainLayout.addWidget(self.splitter)
 
@@ -115,6 +128,8 @@ class MainWindow(QWidget):
         
         # Output area
         self.setup_output_area()
+        # After constructing controls and output, wrap them in a resizable splitter
+        self._make_lower_area_resizable()
 
     def setup_menu_bar(self):
         """Set up the application menu bar."""
@@ -175,13 +190,20 @@ class MainWindow(QWidget):
 
         # Clear all button for file list
         self.clearAllButton = QPushButton(self.translate("clear_all_button") or "Clear All")
+        self.clearAllButton.setObjectName("clear_all_button")
         self.clearAllButton.clicked.connect(self.clear_file_list)
 
         fileListLayout = QVBoxLayout()
+        fileListLayout.setContentsMargins(0, 0, 0, 0)
+        fileListLayout.setSpacing(6)
         fileListLayout.addWidget(self.dropWidget)
-        fileListLayout.addWidget(self.clearAllButton)
-        
-        # Add file list to main layout
+
+        # Row for Clear All aligned to left
+        clearRow = QHBoxLayout()
+        clearRow.addWidget(self.clearAllButton)
+        clearRow.addStretch()
+        fileListLayout.addLayout(clearRow)
+
         self.mainLayout.addLayout(fileListLayout)
 
     def setup_settings_area(self):
@@ -263,6 +285,91 @@ class MainWindow(QWidget):
         self.mainLayout.addLayout(outputControls)
         self.mainLayout.addWidget(self.outputText)
 
+    def _make_lower_area_resizable(self):
+        """Wrap the controls block and output area with a vertical QSplitter."""
+        try:
+            # Build a container for all 'controls' above the output
+            controls_container = QWidget(self)
+            controls_layout = QVBoxLayout(controls_container)
+            controls_layout.setContentsMargins(0, 0, 0, 0)
+            controls_layout.setSpacing(6)
+
+            # Move existing widgets into the container (reparenting removes them from mainLayout)
+            if hasattr(self, "settingsGroupLabel"):
+                self.settingsGroupLabel.setParent(controls_container)
+                controls_layout.addWidget(self.settingsGroupLabel)
+
+            # Settings row widgets are in a layout we added to mainLayout; recreate a compact row
+            settings_row = QWidget(controls_container)
+            settings_h = QHBoxLayout(settings_row)
+            settings_h.setContentsMargins(0, 0, 0, 0)
+            settings_h.addWidget(self.enablePluginsCheck)
+            settings_h.addWidget(self.docIntelLine)
+            controls_layout.addWidget(settings_row)
+
+            # Convert button + progress
+            self.convertButton.setParent(controls_container)
+            controls_layout.addWidget(self.convertButton)
+            self.progressBar.setParent(controls_container)
+            controls_layout.addWidget(self.progressBar)
+
+            # Batch row
+            batch_row = QWidget(controls_container)
+            batch_h = QHBoxLayout(batch_row)
+            batch_h.setContentsMargins(0, 0, 0, 0)
+            batch_h.addWidget(self.batchSizeLabel)
+            batch_h.addWidget(self.batchSizeSpinBox)
+            batch_h.addWidget(self.pauseButton)
+            batch_h.addWidget(self.cancelButton)
+            controls_layout.addWidget(batch_row)
+
+            # Save mode row
+            save_mode_row = QWidget(controls_container)
+            save_mode_h = QHBoxLayout(save_mode_row)
+            save_mode_h.setContentsMargins(0, 0, 0, 0)
+            save_mode_h.addWidget(self.combinedSaveCheck)
+            save_mode_h.addStretch()
+            controls_layout.addWidget(save_mode_row)
+
+            # Output controls row (Copy/Save)
+            output_ctrl_row = QWidget(controls_container)
+            output_ctrl_h = QHBoxLayout(output_ctrl_row)
+            output_ctrl_h.setContentsMargins(0, 0, 0, 0)
+            output_ctrl_h.addWidget(self.copyButton)
+            output_ctrl_h.addWidget(self.saveButton)
+            controls_layout.addWidget(output_ctrl_row)
+
+            # Remove the original outputText from mainLayout before adding splitter
+            self.outputText.setParent(self)
+
+            # Create splitter and insert into mainLayout. The handle should sit visually
+            # between the output control buttons (above) and the output text (below).
+            lower_splitter = QSplitter(Qt.Orientation.Vertical, self)
+            lower_splitter.addWidget(controls_container)
+            lower_splitter.addWidget(self.outputText)
+
+            # Prevent collapsing either side; set sensible minimum sizes.
+            lower_splitter.setChildrenCollapsible(False)
+            try:
+                lower_splitter.setCollapsible(0, False)
+                lower_splitter.setCollapsible(1, False)
+            except Exception:
+                pass
+            controls_container.setMinimumHeight(200)
+            self.outputText.setMinimumHeight(220)
+
+            # Reasonable default sizes
+            lower_splitter.setStretchFactor(0, 0)
+            lower_splitter.setStretchFactor(1, 1)
+            lower_splitter.setSizes([240, 420])
+
+            # Simply add the splitter below; 
+            self.mainLayout.addWidget(lower_splitter)
+            self.lower_splitter = lower_splitter
+        except Exception:
+            # Fallback: do nothing if reparenting fails.
+            pass
+
     def setup_shortcuts(self):
         """Set up keyboard shortcuts."""
         QShortcut(QKeySequence("Ctrl+O"), self, self.browse_files)
@@ -293,9 +400,12 @@ class MainWindow(QWidget):
         """Apply the current theme to the application."""
         palette = apply_dark_theme(QPalette()) if self.isDarkMode else apply_light_theme()
         QApplication.setPalette(palette)
-        # Apply centralized Markdown CSS
+        # Apply centralized QSS for markdown area + menubar/menus
+        app = QApplication.instance()
+        if app is not None:
+            cast(QApplication, app).setStyleSheet(markdown_css(self.isDarkMode))
         if hasattr(self, "previewText"):
-            self.previewText.setStyleSheet(markdown_css(self.isDarkMode))
+            self.previewText.setStyleSheet("")  # global QSS handles it
         # Ensure toggle icon matches theme
         if hasattr(self, "themeToggleButton"):
             self._update_theme_toggle_icon()
@@ -583,28 +693,41 @@ class MainWindow(QWidget):
         dlg = QDialog(self)
         dlg.setWindowTitle(self.translate("about_title") or "About")
         layout = QVBoxLayout(dlg)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(8)
+
         tb = QTextBrowser(dlg)
         tb.setOpenExternalLinks(True)
-        lic_snippet = (license_text[:1200] + ("..." if len(license_text) > 1200 else "")) if license_text else "License file not found."
-        html = (
+        # Make the text browser expand with the dialog
+        from PySide6.QtWidgets import QSizePolicy
+        tb.setSizePolicy(QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding))
+
+        # Show full license (no truncation) with wrapping for readability
+        lic_html = (
             "<h3>MarkItDown GUI</h3>"
             f"<p><b>Version:</b> {APP_VERSION}</p>"
             f"<p><b>Python:</b> {python_ver}<br>"
             f"<b>PySide6:</b> {pyside_ver}"
             f"{('<br><b>Qt:</b> ' + qt_ver) if qt_ver else ''}</p>"
-            "<h4>License summary</h4>"
-            f"<pre style='white-space:pre-wrap; font-family:monospace;'>{lic_snippet}</pre>"
-            "<p><a href='https://github.com/imadreamerboy/markitdown-gui'>Repository: github.com/imadreamerboy/markitdown-gui</a></p>"
+            "<h4>License</h4>"
+            f"<pre style='white-space:pre-wrap; font-family:monospace;'>{license_text if license_text else 'License file not found.'}</pre>"
+            "<h4>Repository</h4>"
+            "<p><a href='https://github.com/imadreamerboy/markitdown-gui'>github.com/imadreamerboy/markitdown-gui</a></p>"
         )
-        tb.setHtml(html)
-        layout.addWidget(tb)
+        tb.setHtml(lic_html)
+
+        layout.addWidget(tb, 1)
+
         btn_row = QHBoxLayout()
         btn_row.addStretch()
-        ok_btn = QPushButton("OK", dlg)
+        ok_btn = QPushButton(self.translate("update_dialog_ok") or "OK", dlg)
         ok_btn.clicked.connect(dlg.accept)
         btn_row.addWidget(ok_btn)
         layout.addLayout(btn_row)
-        dlg.resize(560, 460)
+
+        # Make dialog comfortably large and resizable
+        dlg.resize(720, 560)
+        dlg.setMinimumSize(560, 420)
         dlg.exec()
 
     def perform_auto_save(self):
@@ -633,10 +756,12 @@ class MainWindow(QWidget):
         """Update theme toggle icon to reflect current theme."""
         try:
             # Show icon indicating the action (switch to the opposite theme)
-            icon_path = "markitdowngui/resources/sun.svg" if self.isDarkMode else "markitdowngui/resources/moon.svg"
+            icon_path = os.path.join(os.path.dirname(__file__), "..", "resources", "sun.svg") if self.isDarkMode else os.path.join(os.path.dirname(__file__), "..", "resources", "moon.svg")
+            icon_path = os.path.normpath(icon_path)
             self.themeToggleButton.setIcon(QIcon(icon_path))
+            self.themeToggleButton.setIconSize(self.themeToggleButton.iconSize() if self.themeToggleButton.iconSize().isValid() else self.themeToggleButton.sizeHint())
         except Exception:
-            # No icon fallback: set text
+            # Fallback glyph
             self.themeToggleButton.setText("☀" if self.isDarkMode else "🌙")
 
     def update_preview(self, current, previous):

@@ -3,6 +3,7 @@
 TRANSLATIONS = {
     "en": {
         "app_title": "MarkItDown GUI Wrapper",
+        "about_menu": "About",
         "menu_view": "&View",
         "menu_dark_mode": "&Dark Mode",
         "menu_settings": "&Settings",
@@ -22,6 +23,7 @@ TRANSLATIONS = {
         "browse_files_tooltip": "Open file browser to select files",
         "clear_list_button": "Clear List",
         "clear_list_tooltip": "Clear the file list",
+        "clear_all_button": "Clear All",
         "settings_group_label": "Settings:",
         "enable_plugins_checkbox": "Enable Plugins",
         "enable_plugins_tooltip": "Enable third-party plugins for additional conversion features",
@@ -94,6 +96,14 @@ TRANSLATIONS = {
         "update_check_error_message": "Failed to check for updates: {error}",
         "update_check_no_update_title": "No Updates Available",
         "update_check_no_update_message": "You are using the latest version of MarkItDown GUI.",
+        "enable_plugins_checkbox": "Enable Plugins",
+        "enable_plugins_tooltip": "Enable third-party plugins for additional conversion features",
+        "doc_intel_placeholder": "Document Intelligence Endpoint (optional)",
+        "doc_intel_tooltip": "Enter your Azure Document Intelligence endpoint if you want to use it",
+        "copy_output_button": "Copy Output",
+        "save_output_button": "Save Output",
+        "output_save_all_in_one_checkbox": "Save all files in one document",
+        "output_save_all_in_one_tooltip": "When unchecked, each file will be saved separately",
         
         # Error handling translations
         "conversion_in_progress_title": "Conversion In Progress",
@@ -112,6 +122,7 @@ TRANSLATIONS = {
     },
     "zh_CN": {
         "app_title": "MarkItDown GUI 包装器",
+        "about_menu": "关于",
         "menu_view": "视图(&V)",
         "menu_dark_mode": "深色模式(&D)",
         "menu_settings": "设置(&S)",
@@ -131,6 +142,7 @@ TRANSLATIONS = {
         "browse_files_tooltip": "打开文件浏览器选择文件",
         "clear_list_button": "清除列表",
         "clear_list_tooltip": "清除文件列表",
+        "clear_all_button": "全部清除",
         "settings_group_label": "设置:",
         "enable_plugins_checkbox": "启用插件",
         "enable_plugins_tooltip": "启用第三方插件以获取额外的转换功能",
@@ -239,4 +251,4 @@ def get_available_languages():
     return {
         "en": TRANSLATIONS["en"]["menu_lang_en"],
         "zh_CN": TRANSLATIONS["zh_CN"]["menu_lang_zh_CN"],
-    } 
+    }

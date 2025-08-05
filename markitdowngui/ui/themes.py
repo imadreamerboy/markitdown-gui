@@ -83,20 +83,42 @@ def apply_light_theme() -> QPalette:
     return p
 
 def markdown_css(is_dark: bool) -> str:
-    """Return CSS string for Markdown preview styled in Solarized."""
+    """Return QSS for Markdown preview and themed menus/menubar."""
     if is_dark:
-        return (
-            "QTextBrowser { background:%s; color:%s; }"
-            "a { color:%s; }"
-            "h1,h2,h3 { color:%s; }"
-            "code, pre { background:%s; color:%s; border-radius:4px; padding:2px 4px; }"
-        ) % (DARK_THEME_COLORS["background"], DARK_THEME_COLORS["text"], DARK_THEME_COLORS["link"],
-             DARK_THEME_COLORS["highlighted_text"], DARK_THEME_COLORS["base"], DARK_THEME_COLORS["text"])
+        bg = DARK_THEME_COLORS["background"]
+        text = DARK_THEME_COLORS["text"]
+        link = DARK_THEME_COLORS["link"]
+        base = DARK_THEME_COLORS["base"]
+        highlight = DARK_THEME_COLORS["highlight"]
+        highlighted_text = DARK_THEME_COLORS["highlighted_text"]
     else:
-        return (
-            "QTextBrowser { background:%s; color:%s; }"
-            "a { color:%s; }"
-            "h1,h2,h3 { color:%s; }"
-            "code, pre { background:%s; color:%s; border-radius:4px; padding:2px 4px; }"
-        ) % (LIGHT_THEME_COLORS["background"], LIGHT_THEME_COLORS["text"], LIGHT_THEME_COLORS["link"],
-             LIGHT_THEME_COLORS["text"], LIGHT_THEME_COLORS["base"], LIGHT_THEME_COLORS["text"])
+        bg = LIGHT_THEME_COLORS["background"]
+        text = LIGHT_THEME_COLORS["text"]
+        link = LIGHT_THEME_COLORS["link"]
+        base = LIGHT_THEME_COLORS["base"]
+        highlight = LIGHT_THEME_COLORS["highlight"]
+        highlighted_text = LIGHT_THEME_COLORS["highlighted_text"]
+
+    # QTextBrowser markdown area
+    qss = (
+        f"QTextBrowser {{ background:{bg}; color:{text}; }}"
+        f"a {{ color:{link}; }}"
+        f"h1,h2,h3 {{ color:{text}; }}"
+        f"code, pre {{ background:{base}; color:{text}; border-radius:4px; padding:2px 4px; }}"
+    )
+
+    # Ensure QMenuBar and QMenu follow theme (addresses dark submenu on light theme)
+    qss += (
+        f" QMenuBar {{ background:{bg}; color:{text}; }}"
+        f" QMenuBar::item {{ background:transparent; color:{text}; padding:4px 8px; }}"
+        f" QMenuBar::item:selected {{ background:{highlight}; color:{highlighted_text}; }}"
+        f" QMenu {{ background:{base}; color:{text}; border:1px solid {highlight}; }}"
+        f" QMenu::item {{ padding:4px 18px; background:transparent; color:{text}; }}"
+        f" QMenu::item:selected {{ background:{highlight}; color:{highlighted_text}; }}"
+        f" QMenu::separator {{ height:1px; background:{highlight}; margin:4px 6px; }}"
+        f" QToolTip {{ color:{text}; background:{base}; border:1px solid {highlight}; }}"
+        # Splitter handle styling for clearer affordance
+        f" QSplitter::handle {{ background:{highlight}; width:6px; margin:0px; }}"
+        f" QSplitter::handle:hover {{ background:{highlight}; }}"
+    )
+    return qss
