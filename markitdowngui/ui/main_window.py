@@ -2,10 +2,21 @@ import os
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QMenuBar, QMenu,
     QFileDialog, QCheckBox, QLineEdit, QLabel, QTextEdit, QProgressBar,
-    QApplication, QComboBox, QSpinBox, QMessageBox, QSplitter, QDialog, QToolButton, QTextBrowser
+    QApplication, QSpinBox, QMessageBox, QSplitter, QDialog, QToolButton, QTextBrowser
 )
-from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QKeySequence, QPalette, QShortcut, QAction, QActionGroup, QIcon
+from PySide6.QtCore import Qt, QTimer, QSize
+from PySide6.QtGui import (
+    QKeySequence,
+    QPalette,
+    QShortcut,
+    QAction,
+    QActionGroup,
+    QIcon,
+    QPixmap,
+    QColor,
+    QPainter,
+)
+from PySide6.QtSvg import QSvgRenderer
 from typing import cast
 from markitdown import MarkItDown
 
@@ -179,7 +190,7 @@ class MainWindow(QWidget):
         checkUpdateAction.triggered.connect(self.manual_update_check)
 
         # About dialog
-        aboutAction = helpMenu.addAction(self.translate("menu_about") or "About")
+        aboutAction = helpMenu.addAction(self.translate("about_menu") or "About")
         aboutAction.triggered.connect(self.show_about_dialog)
 
     def setup_file_area(self):
@@ -658,7 +669,7 @@ class MainWindow(QWidget):
             qt_ver = os.environ.get("QT_API_VERSION", "")
         except Exception:
             qt_ver = ""
-        import sys, traceback
+        import sys
         python_ver = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
         try:
             from PySide6 import __version__ as pyside_ver
@@ -677,17 +688,6 @@ class MainWindow(QWidget):
                 license_text = f.read()
         except Exception:
             license_text = "License file not found."
-
-        msg = (
-            f"MarkItDown GUI\n"
-            f"Version: {APP_VERSION}\n\n"
-            f"Python: {python_ver}\n"
-            f"PySide6: {pyside_ver}\n"
-            f"{'Qt: ' + qt_ver if qt_ver else ''}\n\n"
-            f"License summary:\n"
-            f"{license_text[:800]}{'...' if len(license_text) > 800 else ''}\n\n"
-            f"Repository: https://github.com/imadreamerboy/markitdown-gui"
-        )
 
         # Use a dialog with QTextBrowser so the repo link is clickable
         dlg = QDialog(self)
@@ -755,14 +755,54 @@ class MainWindow(QWidget):
     def _update_theme_toggle_icon(self):
         """Update theme toggle icon to reflect current theme."""
         try:
-            # Show icon indicating the action (switch to the opposite theme)
-            icon_path = os.path.join(os.path.dirname(__file__), "..", "resources", "sun.svg") if self.isDarkMode else os.path.join(os.path.dirname(__file__), "..", "resources", "moon.svg")
-            icon_path = os.path.normpath(icon_path)
-            self.themeToggleButton.setIcon(QIcon(icon_path))
-            self.themeToggleButton.setIconSize(self.themeToggleButton.iconSize() if self.themeToggleButton.iconSize().isValid() else self.themeToggleButton.sizeHint())
+            # Show icon indicating the action (switch to the opposite theme),
+            # and tint it for good contrast against the current background.
+            icon_name = "sun" if self.isDarkMode else "moon"
+            tint_color = QColor("#FFD76A") if self.isDarkMode else QColor("#2F2F2F")
+
+            icon = self._make_tinted_svg_icon(icon_name, tint_color)
+            self.themeToggleButton.setIcon(icon)
+            desired_size: QSize = (
+                self.themeToggleButton.iconSize()
+                if self.themeToggleButton.iconSize().isValid()
+                else self.themeToggleButton.sizeHint()
+            )
+            self.themeToggleButton.setIconSize(desired_size)
         except Exception:
             # Fallback glyph
             self.themeToggleButton.setText("☀" if self.isDarkMode else "🌙")
+
+    def _make_tinted_svg_icon(self, base_name: str, color: QColor) -> QIcon:
+        """Load an SVG from resources and return a QIcon tinted with the given color.
+
+        Uses the SVG's alpha as a mask and applies `color` so the icon stays
+        visible in both light and dark themes without modifying the source SVG.
+        """
+        resources_dir = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "resources"))
+        svg_path = os.path.join(resources_dir, f"{base_name}.svg")
+
+        # Choose a reasonable default size if none is set yet
+        target_size: QSize = self.themeToggleButton.iconSize()
+        if not target_size.isValid():
+            target_size = QSize(20, 20)
+
+        # Render SVG to pixmap
+        renderer = QSvgRenderer(svg_path)
+        pixmap = QPixmap(target_size)
+        # Use explicit transparent color to avoid type issues with some linters
+        pixmap.fill(QColor(0, 0, 0, 0))
+        painter = QPainter(pixmap)
+        renderer.render(painter)
+        painter.end()
+
+        # Tint using alpha mask
+        painter = QPainter(pixmap)
+        # Use getattr to avoid stub/typing issues for the enum name in some environments
+        painter.setCompositionMode(getattr(QPainter, "CompositionMode_SourceIn"))
+        painter.fillRect(pixmap.rect(), color)
+        painter.end()
+
+        return QIcon(pixmap)
 
     def update_preview(self, current, previous):
         """Update the preview of the selected file."""
@@ -775,8 +815,6 @@ class MainWindow(QWidget):
             filepath = current.text()
             AppLogger.info(f"Generating preview for {filepath}")
             
-            # Get current format settings
-            settings = self.settings_manager.get_format_settings()
             # Create MarkItDown instance with format settings only
             preview_kwargs = {}
             
@@ -871,8 +909,9 @@ class MainWindow(QWidget):
                 self.worker.progress.disconnect()
                 self.worker.finished.disconnect()
                 self.worker.error.disconnect()
-            except:
-                pass  # Signals might already be disconnected
+            except Exception:
+                # Signals might already be disconnected
+                pass
                 
             self.worker = None
             AppLogger.info("Worker thread cleaned up")
