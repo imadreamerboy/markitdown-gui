@@ -73,13 +73,28 @@ class MainWindow(QWidget):
         # Main layout
         self.mainLayout = QVBoxLayout(self)
         self.mainLayout.setMenuBar(self.menuBar)
+        # Tighten margins/spacings so the theme toggle sits closer to the top-right corner
+        self.mainLayout.setContentsMargins(0, 0, 0, 0)
+        self.mainLayout.setSpacing(0)
 
         # Top controls row: left spacer + theme toggle 
         topControls = QHBoxLayout()
+        topControls.setContentsMargins(0, 0, 4, 0)
+        topControls.setSpacing(0)
         topControls.addStretch()
         self.themeToggleButton = QToolButton(self)
         self.themeToggleButton.setToolTip(self.translate("menu_dark_mode") or "Dark Mode")
         self.themeToggleButton.setAutoRaise(True)
+        # Increase icon size ~1.5x for better visibility and fit
+        try:
+            hint = self.themeToggleButton.sizeHint()
+            scaled = QSize(int(hint.width() * 1.5), int(hint.height() * 1.5))
+            self.themeToggleButton.setIconSize(scaled)
+            # Slightly enlarge click target for accessibility
+            self.themeToggleButton.setFixedSize(scaled.width() + 6, scaled.height() + 6)
+        except Exception:
+            # Fallback to a reasonable default
+            self.themeToggleButton.setIconSize(QSize(28, 28))
         self.themeToggleButton.clicked.connect(self.toggle_dark_mode)
         self._update_theme_toggle_icon()
         topControls.addWidget(self.themeToggleButton)
@@ -555,8 +570,6 @@ class MainWindow(QWidget):
             self.themeToggleButton.setIconSize(desired_size)
         except Exception:
             self.themeToggleButton.setText("☀" if self.isDarkMode else "🌙")
-
-    # Removed: icon rendering is handled by ui.icons.make_tinted_svg_icon
 
     def update_preview(self, current, previous):
         """Update the preview of the selected file."""

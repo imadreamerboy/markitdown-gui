@@ -22,7 +22,8 @@ THE SOFTWARE.
 
 ---
 
-### Third-Party Dependencies:
+Third-Party Dependencies:
+
 This project uses PySide6 (Qt for Python), which is licensed under the GNU Lesser General Public License v3 (LGPLv3).
 
 - PySide6 License: https://www.gnu.org/licenses/lgpl-3.0.html
@@ -32,7 +33,7 @@ Per the LGPLv3, you are allowed to dynamically link PySide6 without affecting th
 
 ---
 
-Third-Party Licenses
+Third-Party Licenses:
 
 Lucide Icons
 ISC License

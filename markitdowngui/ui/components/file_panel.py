@@ -20,9 +20,14 @@ class FilePanel(QWidget):
         layout.setSpacing(6)
 
         self.drop = DropWidget(self.translate)
-        self.drop.listWidget.currentItemChanged.connect(self.current_item_changed)
-        self.drop.filesAdded.connect(self.files_added)
+        # Re-emit QListWidget currentItemChanged via a slot to avoid signal-to-signal connect issues
+        self.drop.listWidget.currentItemChanged.connect(self._on_current_item_changed)
+        # Forward filesAdded explicitly via emit for consistency
+        self.drop.filesAdded.connect(self.files_added.emit)
         layout.addWidget(self.drop)
+
+    def _on_current_item_changed(self, current, previous) -> None:
+        self.current_item_changed.emit(current, previous)
 
     def get_all_files(self) -> list[str]:
         return [self.drop.listWidget.item(i).text() for i in range(self.drop.listWidget.count())]
