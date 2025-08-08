@@ -2,7 +2,7 @@
 
 一个功能丰富的 **GUI 封装**，用于 `MarkItDown`，使用 **PySide6** 构建。通过拖放轻松将文件转换为 markdown。
 
-![alt text](image.png)
+![截图](gui.png)
 ## 特性
 
 - 📂 **文件管理**:
@@ -39,13 +39,19 @@
 - 安装依赖项：
 
 ```sh
+uv sync
+```
+
+或
+
+```sh
 pip install -r requirements.txt
 ```
 
 ### 运行应用程序
 
 ```sh
-python -m markitdowngui.main
+uv python -m markitdowngui.main
 ```
 
 ### 键盘快捷键
@@ -64,7 +70,8 @@ python -m markitdowngui.main
 使用 `PyInstaller`：
 
 ```sh
-pyinstaller --clean --onefile --windowed -n MarkItDown markitdowngui/main.py
+pyinstaller MarkItDown.spec --clean
+
 ```
 
 ## 许可证
@@ -96,3 +103,4 @@ pyinstaller --clean --onefile --windowed -n MarkItDown markitdowngui/main.py
 
 - **MarkItDown** ([MIT 许可证](https://opensource.org/licenses/MIT))
 - **PySide6** ([LGPLv3 许可证](https://www.gnu.org/licenses/lgpl-3.0.html))
+- **Lucide Icons** ([MIT 许可证](https://lucide.dev/))

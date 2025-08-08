@@ -5,7 +5,8 @@
 A feature-rich **GUI wrapper** for `MarkItDown`, built with **PySide6**. Easily convert files to markdown using drag & drop.
 
 
-![Screenshot of the GUI](image.png)
+![Screenshot of the GUI](gui.png)
+
 ## Features
 
 - 📂 **File Management**:
@@ -39,7 +40,13 @@ You can download the precompiled executable from the [Releases](https://github.c
 ### Prerequisites
 
 - Python **3.10+**
-- Install dependencies:
+- create a venv
+- Install dependencies (preferred via `uv`):
+
+```sh
+uv sync 
+```
+or
 
 ```sh
 pip install -r requirements.txt
@@ -48,7 +55,7 @@ pip install -r requirements.txt
 ### Run the App
 
 ```sh
-python -m markitdowngui.main
+uv run python -m markitdowngui.main
 ```
 
 ### Keyboard Shortcuts
@@ -73,7 +80,7 @@ uv pip install -e .[dev]
 Use `PyInstaller`:
 
 ```sh
-pyinstaller --clean --onefile --windowed -n MarkItDown markitdowngui/main.py
+ pyinstaller MarkItDown.spec --clean
 ```
 
 ## License
@@ -105,5 +112,6 @@ Contributions are welcome! Please follow these steps to contribute:
 
 - **MarkItDown** ([MIT License](https://opensource.org/licenses/MIT))
 - **PySide6** ([LGPLv3 License](https://www.gnu.org/licenses/lgpl-3.0.html))
+- **Lucide Icons** ([MIT License](https://lucide.dev/))
 
 

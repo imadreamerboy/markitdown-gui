@@ -68,3 +68,27 @@ class SettingsManager:
     def set_update_notifications_enabled(self, enabled: bool) -> None:
         """Set whether update notifications are enabled."""
         self.settings.setValue('updateNotifications', enabled)
+
+    def get_window_geometry(self) -> bytes | None:
+        """Get stored window geometry."""
+        return cast(bytes | None, self.settings.value('windowGeometry', None))
+
+    def set_window_geometry(self, geometry: bytes) -> None:
+        """Save window geometry."""
+        self.settings.setValue('windowGeometry', geometry)
+
+    def get_window_state(self) -> bytes | None:
+        """Get stored window state (e.g., maximized, minimized)."""
+        return cast(bytes | None, self.settings.value('windowState', None))
+
+    def set_window_state(self, state: bytes) -> None:
+        """Save window state."""
+        self.settings.setValue('windowState', state)
+
+    def get_splitter_state(self) -> bytes | None:
+        """Get stored splitter state."""
+        return cast(bytes | None, self.settings.value('splitterState', None))
+
+    def set_splitter_state(self, state: bytes) -> None:
+        """Save splitter state."""
+        self.settings.setValue('splitterState', state)
