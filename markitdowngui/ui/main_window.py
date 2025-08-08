@@ -1,8 +1,8 @@
 import os
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QMenuBar, QMenu,
-    QFileDialog, QCheckBox, QLineEdit, QLabel, QTextEdit, QProgressBar,
-    QApplication, QSpinBox, QMessageBox, QSplitter, QDialog, QToolButton, QTextBrowser
+    QWidget, QVBoxLayout, QHBoxLayout, QMenuBar, QMenu,
+    QFileDialog,
+    QApplication, QMessageBox, QSplitter, QDialog, QToolButton
 )
 from PySide6.QtCore import Qt, QTimer, QSize
 from PySide6.QtGui import (
@@ -11,12 +11,8 @@ from PySide6.QtGui import (
     QShortcut,
     QAction,
     QActionGroup,
-    QIcon,
-    QPixmap,
     QColor,
-    QPainter,
 )
-from PySide6.QtSvg import QSvgRenderer
 from typing import cast
 from markitdown import MarkItDown
 
@@ -25,11 +21,17 @@ from markitdowngui.core.conversion import ConversionWorker
 from markitdowngui.core.file_utils import FileManager
 from markitdowngui.utils.logger import AppLogger
 from markitdowngui.ui.themes import apply_dark_theme, apply_light_theme, markdown_css
-from markitdowngui.ui.drop_widget import DropWidget
+from markitdowngui.ui.components.file_panel import FilePanel
+from markitdowngui.ui.components.settings_bar import SettingsBar
+from markitdowngui.ui.components.convert_controls import ConvertControls
+from markitdowngui.ui.components.output_panel import OutputPanel
+from markitdowngui.ui.components.preview_panel import PreviewPanel
 from markitdowngui.ui.dialogs.format_settings import FormatSettings
 from markitdowngui.ui.dialogs.shortcuts import ShortcutDialog
 from markitdowngui.ui.dialogs.update_dialog import UpdateDialog
-from markitdowngui.__init__ import __version__ as APP_VERSION
+from markitdowngui.ui.dialogs.about import AboutDialog
+from markitdowngui.ui.icons import make_tinted_svg_icon
+from markitdowngui.ui.preview_worker import PreviewWorker
 from markitdowngui.utils.translations import get_translation, get_available_languages, DEFAULT_LANG
 from markitdowngui.utils.update_checker import UpdateChecker
 
@@ -40,6 +42,9 @@ class MainWindow(QWidget):
         self.settings_manager = SettingsManager()
         self.file_manager = FileManager()
         self.current_lang = self.settings_manager.get_current_language() or DEFAULT_LANG
+        self._preview_request_id = 0
+        self._preview_worker = None
+        self._preview_config_cache = None  # tuple(enable_plugins:bool, endpoint:str)
         self.setup_window()
         self.setup_ui()
         self.setup_shortcuts()
@@ -80,8 +85,10 @@ class MainWindow(QWidget):
         topControls.addWidget(self.themeToggleButton)
         self.mainLayout.addLayout(topControls)
 
-        # File handling area
-        self.setup_file_area()
+        # File handling area component
+        self.filePanel = FilePanel(self.translate)
+        self.filePanel.current_item_changed.connect(self.update_preview)
+        self.filePanel.files_added.connect(self.handle_files_added)
 
         # Create a splitter for file list and preview
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -91,22 +98,12 @@ class MainWindow(QWidget):
         leftLayout = QVBoxLayout(leftWidget)
         leftLayout.setContentsMargins(0, 0, 0, 0)
         leftLayout.setSpacing(6)
-        leftLayout.addWidget(self.dropWidget)
+        leftLayout.addWidget(self.filePanel)
         leftWidget.setMinimumWidth(180)
 
-        # Right side: Preview
-        rightWidget = QWidget()
-        rightLayout = QVBoxLayout(rightWidget)
-        rightLayout.setContentsMargins(0, 0, 0, 0)
-        rightLayout.setSpacing(6)
-        self.previewLabel = QLabel(self.translate("preview_label"))
-        # Use QTextBrowser to support rich text/Markdown display
-        self.previewText = QTextBrowser()
-        self.previewText.setOpenExternalLinks(True)
-        # Guard translate() returning None for type checkers
-        self.previewText.setPlaceholderText(self.translate("preview_placeholder") or "")
-        rightLayout.addWidget(self.previewLabel)
-        rightLayout.addWidget(self.previewText)
+        # Right side: Preview (component)
+        self.previewPanel = PreviewPanel(self.translate)
+        rightWidget = self.previewPanel
         rightWidget.setMinimumWidth(240)
 
         # Add widgets to splitter
@@ -131,16 +128,46 @@ class MainWindow(QWidget):
         if splitter_state:
             self.splitter.restoreState(splitter_state)
         
-        # Settings area
-        self.setup_settings_area()
-        
-        # Conversion controls
-        self.setup_conversion_controls()
-        
-        # Output area
-        self.setup_output_area()
-        # After constructing controls and output, wrap them in a resizable splitter
-        self._make_lower_area_resizable()
+        # Settings bar and controls (components) above output, in a vertical splitter
+        self.settingsBar = SettingsBar(self.translate)
+        self.convertControls = ConvertControls(self.translate)
+        self.convertControls.pause_button.toggled.connect(self.toggle_pause)
+        self.convertControls.cancel_button.clicked.connect(self.cancel_conversion)
+        self.convertControls.convert_button.clicked.connect(self.convert_files)
+
+        # React to settings changes for preview cache invalidation
+        self.settingsBar.plugins_toggled.connect(lambda _: self._invalidate_preview_cache())
+        self.settingsBar.endpoint_changed.connect(lambda _t: self._invalidate_preview_cache())
+
+        # Output area component
+        self.outputPanel = OutputPanel(self.translate, self.settings_manager.get_save_mode())
+        # wire save mode to settings
+        self.outputPanel.combined_toggle.toggled.connect(self.settings_manager.set_save_mode)
+        self.outputPanel.copy_button.clicked.connect(self.copy_output)
+        self.outputPanel.save_button.clicked.connect(self.save_output)
+
+        # Build lower splitter directly (no reparenting)
+        lower_controls_container = QWidget(self)
+        lower_v = QVBoxLayout(lower_controls_container)
+        lower_v.setContentsMargins(0, 0, 0, 0)
+        lower_v.setSpacing(6)
+        lower_v.addWidget(self.settingsBar)
+        lower_v.addWidget(self.convertControls)
+
+        lower_splitter = QSplitter(Qt.Orientation.Vertical, self)
+        lower_splitter.addWidget(lower_controls_container)
+        lower_splitter.addWidget(self.outputPanel)
+        lower_splitter.setChildrenCollapsible(False)
+        try:
+            lower_splitter.setCollapsible(0, False)
+            lower_splitter.setCollapsible(1, False)
+        except Exception:
+            pass
+        lower_splitter.setStretchFactor(0, 0)
+        lower_splitter.setStretchFactor(1, 1)
+        lower_splitter.setSizes([240, 420])
+        self.mainLayout.addWidget(lower_splitter)
+        self.lower_splitter = lower_splitter
 
     def setup_menu_bar(self):
         """Set up the application menu bar."""
@@ -193,200 +220,22 @@ class MainWindow(QWidget):
         aboutAction = helpMenu.addAction(self.translate("about_menu") or "About")
         aboutAction.triggered.connect(self.show_about_dialog)
 
-    def setup_file_area(self):
-        """Set up the file handling area."""
-        self.dropWidget = DropWidget(self.translate)
-        self.dropWidget.listWidget.currentItemChanged.connect(self.update_preview)
-        self.dropWidget.filesAdded.connect(self.handle_files_added)
+    # Removed legacy file area; handled by FilePanel
 
-        # Clear all button for file list
-        self.clearAllButton = QPushButton(self.translate("clear_all_button") or "Clear All")
-        self.clearAllButton.setObjectName("clear_all_button")
-        self.clearAllButton.clicked.connect(self.clear_file_list)
+    # Removed legacy settings area (handled by SettingsBar)
 
-        fileListLayout = QVBoxLayout()
-        fileListLayout.setContentsMargins(0, 0, 0, 0)
-        fileListLayout.setSpacing(6)
-        fileListLayout.addWidget(self.dropWidget)
+    # Removed legacy conversion controls (handled by ConvertControls)
 
-        # Row for Clear All aligned to left
-        clearRow = QHBoxLayout()
-        clearRow.addWidget(self.clearAllButton)
-        clearRow.addStretch()
-        fileListLayout.addLayout(clearRow)
+    # Removed legacy output area; handled by OutputPanel
 
-        self.mainLayout.addLayout(fileListLayout)
-
-    def setup_settings_area(self):
-        """Set up the settings area."""
-        settingsLayout = QHBoxLayout()
-        
-        self.enablePluginsCheck = QCheckBox(self.translate("enable_plugins_checkbox") or "")
-        self.enablePluginsCheck.setToolTip(self.translate("enable_plugins_tooltip") or "")
-        
-        self.docIntelLine = QLineEdit()
-        self.docIntelLine.setPlaceholderText(self.translate("doc_intel_placeholder") or "")
-        self.docIntelLine.setToolTip(self.translate("doc_intel_tooltip") or "")
-        
-        settingsLayout.addWidget(self.enablePluginsCheck)
-        settingsLayout.addWidget(self.docIntelLine)
-        
-        self.settingsGroupLabel = QLabel(self.translate("settings_group_label") or "")
-        self.mainLayout.addWidget(self.settingsGroupLabel)
-        self.mainLayout.addLayout(settingsLayout)
-
-    def setup_conversion_controls(self):
-        """Set up the conversion control area."""
-        # Batch processing controls
-        batchLayout = QHBoxLayout()
-        self.batchSizeSpinBox = QSpinBox()
-        self.batchSizeSpinBox.setRange(1, 10)
-        self.batchSizeSpinBox.setValue(3)
-        self.batchSizeSpinBox.setToolTip(self.translate("batch_size_tooltip") or "")
-        
-        self.pauseButton = QPushButton(self.translate("pause_button") or "")
-        self.pauseButton.setEnabled(False)
-        self.pauseButton.setCheckable(True)
-        self.pauseButton.toggled.connect(self.toggle_pause)
-        
-        self.cancelButton = QPushButton(self.translate("cancel_button") or "")
-        self.cancelButton.setEnabled(False)
-        self.cancelButton.clicked.connect(self.cancel_conversion)
-        
-        self.batchSizeLabel = QLabel(self.translate("batch_size_label") or "")
-        batchLayout.addWidget(self.batchSizeLabel)
-        batchLayout.addWidget(self.batchSizeSpinBox)
-        batchLayout.addWidget(self.pauseButton)
-        batchLayout.addWidget(self.cancelButton)
-        
-        # Convert button and progress bar
-        self.convertButton = QPushButton(self.translate("convert_files_button") or "")
-        self.convertButton.clicked.connect(self.convert_files)
-        self.progressBar = QProgressBar()
-        
-        self.mainLayout.addWidget(self.convertButton)
-        self.mainLayout.addWidget(self.progressBar)
-        self.mainLayout.addLayout(batchLayout)
-
-    def setup_output_area(self):
-        """Set up the output display area."""
-        self.outputText = QTextEdit()
-        self.outputText.setReadOnly(True)
-        
-        # Save mode toggle with saved preference
-        saveModeLayout = QHBoxLayout()
-        self.combinedSaveCheck = QCheckBox(self.translate("output_save_all_in_one_checkbox") or "")
-        self.combinedSaveCheck.setChecked(self.settings_manager.get_save_mode())
-        self.combinedSaveCheck.setToolTip(self.translate("output_save_all_in_one_tooltip") or "")
-        self.combinedSaveCheck.toggled.connect(self.settings_manager.set_save_mode)
-        saveModeLayout.addWidget(self.combinedSaveCheck)
-        saveModeLayout.addStretch()
-        
-        # Output controls
-        outputControls = QHBoxLayout()
-        self.copyButton = QPushButton(self.translate("copy_output_button") or "")
-        self.copyButton.clicked.connect(self.copy_output)
-        self.saveButton = QPushButton(self.translate("save_output_button") or "")
-        self.saveButton.clicked.connect(self.save_output)
-        
-        outputControls.addWidget(self.copyButton)
-        outputControls.addWidget(self.saveButton)
-        
-        self.mainLayout.addLayout(saveModeLayout)
-        self.mainLayout.addLayout(outputControls)
-        self.mainLayout.addWidget(self.outputText)
-
-    def _make_lower_area_resizable(self):
-        """Wrap the controls block and output area with a vertical QSplitter."""
-        try:
-            # Build a container for all 'controls' above the output
-            controls_container = QWidget(self)
-            controls_layout = QVBoxLayout(controls_container)
-            controls_layout.setContentsMargins(0, 0, 0, 0)
-            controls_layout.setSpacing(6)
-
-            # Move existing widgets into the container (reparenting removes them from mainLayout)
-            if hasattr(self, "settingsGroupLabel"):
-                self.settingsGroupLabel.setParent(controls_container)
-                controls_layout.addWidget(self.settingsGroupLabel)
-
-            # Settings row widgets are in a layout we added to mainLayout; recreate a compact row
-            settings_row = QWidget(controls_container)
-            settings_h = QHBoxLayout(settings_row)
-            settings_h.setContentsMargins(0, 0, 0, 0)
-            settings_h.addWidget(self.enablePluginsCheck)
-            settings_h.addWidget(self.docIntelLine)
-            controls_layout.addWidget(settings_row)
-
-            # Convert button + progress
-            self.convertButton.setParent(controls_container)
-            controls_layout.addWidget(self.convertButton)
-            self.progressBar.setParent(controls_container)
-            controls_layout.addWidget(self.progressBar)
-
-            # Batch row
-            batch_row = QWidget(controls_container)
-            batch_h = QHBoxLayout(batch_row)
-            batch_h.setContentsMargins(0, 0, 0, 0)
-            batch_h.addWidget(self.batchSizeLabel)
-            batch_h.addWidget(self.batchSizeSpinBox)
-            batch_h.addWidget(self.pauseButton)
-            batch_h.addWidget(self.cancelButton)
-            controls_layout.addWidget(batch_row)
-
-            # Save mode row
-            save_mode_row = QWidget(controls_container)
-            save_mode_h = QHBoxLayout(save_mode_row)
-            save_mode_h.setContentsMargins(0, 0, 0, 0)
-            save_mode_h.addWidget(self.combinedSaveCheck)
-            save_mode_h.addStretch()
-            controls_layout.addWidget(save_mode_row)
-
-            # Output controls row (Copy/Save)
-            output_ctrl_row = QWidget(controls_container)
-            output_ctrl_h = QHBoxLayout(output_ctrl_row)
-            output_ctrl_h.setContentsMargins(0, 0, 0, 0)
-            output_ctrl_h.addWidget(self.copyButton)
-            output_ctrl_h.addWidget(self.saveButton)
-            controls_layout.addWidget(output_ctrl_row)
-
-            # Remove the original outputText from mainLayout before adding splitter
-            self.outputText.setParent(self)
-
-            # Create splitter and insert into mainLayout. The handle should sit visually
-            # between the output control buttons (above) and the output text (below).
-            lower_splitter = QSplitter(Qt.Orientation.Vertical, self)
-            lower_splitter.addWidget(controls_container)
-            lower_splitter.addWidget(self.outputText)
-
-            # Prevent collapsing either side; set sensible minimum sizes.
-            lower_splitter.setChildrenCollapsible(False)
-            try:
-                lower_splitter.setCollapsible(0, False)
-                lower_splitter.setCollapsible(1, False)
-            except Exception:
-                pass
-            controls_container.setMinimumHeight(200)
-            self.outputText.setMinimumHeight(220)
-
-            # Reasonable default sizes
-            lower_splitter.setStretchFactor(0, 0)
-            lower_splitter.setStretchFactor(1, 1)
-            lower_splitter.setSizes([240, 420])
-
-            # Simply add the splitter below; 
-            self.mainLayout.addWidget(lower_splitter)
-            self.lower_splitter = lower_splitter
-        except Exception:
-            # Fallback: do nothing if reparenting fails.
-            pass
+    # Removed legacy reparenting; lower splitter is constructed in setup_ui
 
     def setup_shortcuts(self):
         """Set up keyboard shortcuts."""
         QShortcut(QKeySequence("Ctrl+O"), self, self.browse_files)
         QShortcut(QKeySequence("Ctrl+S"), self, self.save_output)
         QShortcut(QKeySequence("Ctrl+C"), self, self.copy_output)
-        QShortcut(QKeySequence("Ctrl+P"), self, lambda: self.pauseButton.toggle())
+        QShortcut(QKeySequence("Ctrl+P"), self, lambda: self.convertControls.pause_button.toggle())
         QShortcut(QKeySequence("Ctrl+B"), self, self.convert_files)
         QShortcut(QKeySequence("Ctrl+L"), self, self.clear_file_list)
         QShortcut(QKeySequence("Ctrl+K"), self, self.show_shortcuts)
@@ -415,8 +264,7 @@ class MainWindow(QWidget):
         app = QApplication.instance()
         if app is not None:
             cast(QApplication, app).setStyleSheet(markdown_css(self.isDarkMode))
-        if hasattr(self, "previewText"):
-            self.previewText.setStyleSheet("")  # global QSS handles it
+        # Component owns its styling via global QSS now
         # Ensure toggle icon matches theme
         if hasattr(self, "themeToggleButton"):
             self._update_theme_toggle_icon()
@@ -435,8 +283,7 @@ class MainWindow(QWidget):
                 return
 
             # Get file list
-            files = [self.dropWidget.listWidget.item(i).text() 
-                    for i in range(self.dropWidget.listWidget.count())]
+            files = self.filePanel.get_all_files()
             
             if not files:
                 AppLogger.info("Conversion attempted with no files")
@@ -482,11 +329,11 @@ class MainWindow(QWidget):
                 md_kwargs = {}
                 
                 # Configure plugins if enabled
-                if self.enablePluginsCheck.isChecked():
+                if self.settingsBar.is_plugins_enabled():
                     md_kwargs['enable_plugins'] = True
                 
                 # Configure Document Intelligence if endpoint provided
-                endpoint = self.docIntelLine.text().strip()
+                endpoint = self.settingsBar.get_docintel_endpoint()
                 if endpoint:
                     md_kwargs['docintel_endpoint'] = endpoint
                     AppLogger.info("Document Intelligence endpoint configured")
@@ -507,17 +354,17 @@ class MainWindow(QWidget):
 
             # Start conversion with configured instance
             try:
-                self.worker = ConversionWorker([md, valid_files, settings], self.batchSizeSpinBox.value())
+                self.worker = ConversionWorker([md, valid_files, settings], self.convertControls.batch_spin.value())
                 self.worker.progress.connect(self.update_progress)
                 self.worker.finished.connect(self.handle_conversion_finished)
                 self.worker.error.connect(self.handle_conversion_error)
 
                 # Update UI state
-                self.pauseButton.setEnabled(True)
-                self.cancelButton.setEnabled(True)
-                self.convertButton.setEnabled(False)
-                self.progressBar.setValue(0)
-                self.progressBar.setFormat(self.translate("conversion_starting_message"))
+                self.convertControls.pause_button.setEnabled(True)
+                self.convertControls.cancel_button.setEnabled(True)
+                self.convertControls.convert_button.setEnabled(False)
+                self.convertControls.progress.setValue(0)
+                self.convertControls.progress.setFormat(self.translate("conversion_starting_message"))
                 
                 self.worker.start()
                 AppLogger.info("Conversion worker started successfully")
@@ -542,41 +389,42 @@ class MainWindow(QWidget):
 
     def update_progress(self, progress, current_file):
         """Update the progress bar during conversion."""
-        self.progressBar.setValue(progress)
-        self.progressBar.setFormat(self.translate("conversion_progress_format").format(progress=progress, file=os.path.basename(current_file)))
+        self.convertControls.progress.setValue(progress)
+        self.convertControls.progress.setFormat(self.translate("conversion_progress_format").format(progress=progress, file=os.path.basename(current_file)))
 
     def handle_conversion_finished(self, results):
         """Handle completion of the conversion process."""
         self.conversionResults = results
-        combined_output = ""
+        parts = []
         for file, content in results.items():
-            combined_output += f"File: {file}\n{content}\n\n"
+            parts.append(f"File: {file}\n{content}")
+        combined_output = "\n\n".join(parts)
         
-        self.outputText.setPlainText(combined_output)
-        self.progressBar.setValue(100)
-        self.progressBar.setFormat(self.translate("conversion_complete_message"))
+        self.outputPanel.set_text(combined_output)
+        self.convertControls.progress.setValue(100)
+        self.convertControls.progress.setFormat(self.translate("conversion_complete_message"))
         
-        self.pauseButton.setEnabled(False)
-        self.cancelButton.setEnabled(False)
-        self.convertButton.setEnabled(True)
+        self.convertControls.pause_button.setEnabled(False)
+        self.convertControls.cancel_button.setEnabled(False)
+        self.convertControls.convert_button.setEnabled(True)
         self.worker = None
 
     def handle_conversion_error(self, error_msg):
         """Handle conversion errors."""
         AppLogger.error(error_msg)
         QMessageBox.critical(self, self.translate("conversion_error_title"), error_msg)
-        self.pauseButton.setEnabled(False)
-        self.cancelButton.setEnabled(False)
-        self.convertButton.setEnabled(True)
+        self.convertControls.pause_button.setEnabled(False)
+        self.convertControls.cancel_button.setEnabled(False)
+        self.convertControls.convert_button.setEnabled(True)
         self.worker = None
 
     def copy_output(self):
         """Copy the output text to clipboard."""
-        QApplication.clipboard().setText(self.outputText.toPlainText())
+        QApplication.clipboard().setText(self.outputPanel.get_text())
 
     def save_output(self):
         """Save the conversion output."""
-        if self.combinedSaveCheck.isChecked():
+        if self.outputPanel.is_combined():
             self.save_combined_output()
         else:
             self.save_individual_outputs()
@@ -589,7 +437,7 @@ class MainWindow(QWidget):
         )
         if output_path:
             try:
-                self.file_manager.save_markdown_file(output_path, self.outputText.toPlainText())
+                self.file_manager.save_markdown_file(output_path, self.outputPanel.get_text())
                 AppLogger.info(self.translate("auto_save_backup_log").format(path=output_path))
                 
                 # Add to recent outputs
@@ -665,69 +513,8 @@ class MainWindow(QWidget):
 
     def show_about_dialog(self):
         """Display an About dialog with version and license info."""
-        try:
-            qt_ver = os.environ.get("QT_API_VERSION", "")
-        except Exception:
-            qt_ver = ""
-        import sys
-        python_ver = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
-        try:
-            from PySide6 import __version__ as pyside_ver
-        except Exception:
-            pyside_ver = "Unknown"
-
-        # Resolve LICENSE both in dev and frozen (PyInstaller) builds
-        try:
-            base_dir = getattr(sys, "_MEIPASS", None) or os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-            license_path = os.path.join(base_dir, "LICENSE")
-        except Exception:
-            license_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "LICENSE"))
-        license_text = ""
-        try:
-            with open(license_path, "r", encoding="utf-8") as f:
-                license_text = f.read()
-        except Exception:
-            license_text = "License file not found."
-
-        # Use a dialog with QTextBrowser so the repo link is clickable
-        dlg = QDialog(self)
-        dlg.setWindowTitle(self.translate("about_title") or "About")
-        layout = QVBoxLayout(dlg)
-        layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(8)
-
-        tb = QTextBrowser(dlg)
-        tb.setOpenExternalLinks(True)
-        # Make the text browser expand with the dialog
-        from PySide6.QtWidgets import QSizePolicy
-        tb.setSizePolicy(QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding))
-
-        # Show full license (no truncation) with wrapping for readability
-        lic_html = (
-            "<h3>MarkItDown GUI</h3>"
-            f"<p><b>Version:</b> {APP_VERSION}</p>"
-            f"<p><b>Python:</b> {python_ver}<br>"
-            f"<b>PySide6:</b> {pyside_ver}"
-            f"{('<br><b>Qt:</b> ' + qt_ver) if qt_ver else ''}</p>"
-            "<h4>License</h4>"
-            f"<pre style='white-space:pre-wrap; font-family:monospace;'>{license_text if license_text else 'License file not found.'}</pre>"
-            "<h4>Repository</h4>"
-            "<p><a href='https://github.com/imadreamerboy/markitdown-gui'>github.com/imadreamerboy/markitdown-gui</a></p>"
-        )
-        tb.setHtml(lic_html)
-
-        layout.addWidget(tb, 1)
-
-        btn_row = QHBoxLayout()
-        btn_row.addStretch()
-        ok_btn = QPushButton(self.translate("update_dialog_ok") or "OK", dlg)
-        ok_btn.clicked.connect(dlg.accept)
-        btn_row.addWidget(ok_btn)
-        layout.addLayout(btn_row)
-
-        # Make dialog comfortably large and resizable
-        dlg.resize(720, 560)
-        dlg.setMinimumSize(560, 420)
+        # Delegate to dedicated dialog
+        dlg = AboutDialog(self.translate, self)
         dlg.exec()
 
     def perform_auto_save(self):
@@ -738,7 +525,7 @@ class MainWindow(QWidget):
                 self.file_manager.create_backup_filename()
             )
             try:
-                self.file_manager.save_markdown_file(backup_path, self.outputText.toPlainText())
+                self.file_manager.save_markdown_file(backup_path, self.outputPanel.get_text())
                 AppLogger.info(self.translate("auto_save_backup_log").format(path=backup_path))
             except Exception as e:
                 AppLogger.error(self.translate("auto_save_failed_log").format(error=str(e)))
@@ -755,95 +542,91 @@ class MainWindow(QWidget):
     def _update_theme_toggle_icon(self):
         """Update theme toggle icon to reflect current theme."""
         try:
-            # Show icon indicating the action (switch to the opposite theme),
-            # and tint it for good contrast against the current background.
             icon_name = "sun" if self.isDarkMode else "moon"
             tint_color = QColor("#FFD76A") if self.isDarkMode else QColor("#2F2F2F")
-
-            icon = self._make_tinted_svg_icon(icon_name, tint_color)
-            self.themeToggleButton.setIcon(icon)
+            resources_dir = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "resources"))
             desired_size: QSize = (
                 self.themeToggleButton.iconSize()
                 if self.themeToggleButton.iconSize().isValid()
                 else self.themeToggleButton.sizeHint()
             )
+            icon = make_tinted_svg_icon(resources_dir, icon_name, tint_color, desired_size)
+            self.themeToggleButton.setIcon(icon)
             self.themeToggleButton.setIconSize(desired_size)
         except Exception:
-            # Fallback glyph
             self.themeToggleButton.setText("☀" if self.isDarkMode else "🌙")
 
-    def _make_tinted_svg_icon(self, base_name: str, color: QColor) -> QIcon:
-        """Load an SVG from resources and return a QIcon tinted with the given color.
-
-        Uses the SVG's alpha as a mask and applies `color` so the icon stays
-        visible in both light and dark themes without modifying the source SVG.
-        """
-        resources_dir = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "resources"))
-        svg_path = os.path.join(resources_dir, f"{base_name}.svg")
-
-        # Choose a reasonable default size if none is set yet
-        target_size: QSize = self.themeToggleButton.iconSize()
-        if not target_size.isValid():
-            target_size = QSize(20, 20)
-
-        # Render SVG to pixmap
-        renderer = QSvgRenderer(svg_path)
-        pixmap = QPixmap(target_size)
-        # Use explicit transparent color to avoid type issues with some linters
-        pixmap.fill(QColor(0, 0, 0, 0))
-        painter = QPainter(pixmap)
-        renderer.render(painter)
-        painter.end()
-
-        # Tint using alpha mask
-        painter = QPainter(pixmap)
-        # Use getattr to avoid stub/typing issues for the enum name in some environments
-        painter.setCompositionMode(getattr(QPainter, "CompositionMode_SourceIn"))
-        painter.fillRect(pixmap.rect(), color)
-        painter.end()
-
-        return QIcon(pixmap)
+    # Removed: icon rendering is handled by ui.icons.make_tinted_svg_icon
 
     def update_preview(self, current, previous):
         """Update the preview of the selected file."""
         if not current:
-            self.previewText.clear()
-            self.previewText.setPlaceholderText(self.translate("preview_placeholder") or "")
+            self.previewPanel.clear()
             return
             
         try:
             filepath = current.text()
             AppLogger.info(f"Generating preview for {filepath}")
             
-            # Create MarkItDown instance with format settings only
-            preview_kwargs = {}
-            
-            # Configure plugins if enabled
-            if self.enablePluginsCheck.isChecked():
-                preview_kwargs['enable_plugins'] = True
-            
-            # Configure Document Intelligence if endpoint provided
-            endpoint = self.docIntelLine.text().strip()
-            if endpoint:
-                preview_kwargs['docintel_endpoint'] = endpoint
-                
-            self.preview_md = MarkItDown(**preview_kwargs)
-            
-            result = self.preview_md.convert(filepath)
-            text = result.text_content or ""
-            # Use Markdown rendering for markdown files, else plain text
-            lower = filepath.lower()
-            if lower.endswith(".md") or lower.endswith(".markdown"):
-                # PySide6 supports Markdown rendering via QTextBrowser.setMarkdown
-                self.previewText.setMarkdown(text)
-            else:
-                self.previewText.setPlainText(text)
-            AppLogger.info("Preview generated successfully")
+            # Rebuild preview MarkItDown only if settings changed
+            enable_plugins = bool(self.settingsBar.is_plugins_enabled())
+            endpoint = self.settingsBar.get_docintel_endpoint()
+            cfg = (enable_plugins, endpoint)
+            if cfg != self._preview_config_cache:
+                md_kwargs = {}
+                if enable_plugins:
+                    md_kwargs['enable_plugins'] = True
+                if endpoint:
+                    md_kwargs['docintel_endpoint'] = endpoint
+                self.preview_md = MarkItDown(**md_kwargs)
+                self._preview_config_cache = cfg
+
+            # Cancel previous worker if running
+            if self._preview_worker and self._preview_worker.isRunning():
+                try:
+                    self._preview_worker.terminate()
+                    self._preview_worker.wait()
+                except Exception:
+                    pass
+
+            # Start new worker
+            self._preview_request_id += 1
+            req_id = self._preview_request_id
+            worker = PreviewWorker(self.preview_md, filepath, req_id)
+            worker.result.connect(self._on_preview_ready)
+            worker.error.connect(self._on_preview_error)
+            self._preview_worker = worker
+            worker.start()
             
         except Exception as e:
             error_msg = f"Error previewing file: {str(e)}"
-            self.previewText.setPlainText(error_msg)
+            self.previewPanel.set_plain(error_msg)
             AppLogger.error(self.translate("preview_error_log").format(error=str(e)), filepath)
+
+    def _on_preview_ready(self, request_id: int, text: str):
+        # Ignore stale results
+        if request_id != self._preview_request_id:
+            return
+        # Render Markdown vs plain
+        current_text = self.filePanel.current_item_text()
+        if not current_text:
+            return
+        lower = current_text.lower()
+        if lower.endswith(".md") or lower.endswith(".markdown"):
+            self.previewPanel.set_markdown(text)
+        else:
+            self.previewPanel.set_plain(text)
+        AppLogger.info("Preview generated successfully")
+
+    def _on_preview_error(self, request_id: int, message: str):
+        if request_id != self._preview_request_id:
+            return
+        self.previewPanel.set_plain(f"Error previewing file: {message}")
+        AppLogger.error(self.translate("preview_error_log").format(error=message))
+
+    def _invalidate_preview_cache(self) -> None:
+        """Invalidate preview MarkItDown cache so next selection recreates it."""
+        self._preview_config_cache = None
 
     def browse_files(self):
         """Open file browser dialog to select files."""
@@ -854,14 +637,13 @@ class MainWindow(QWidget):
             self.translate("all_files_filter")
         )
         for file in files:
-            self.dropWidget.listWidget.addItem(file)
+            self.filePanel.add_file(file)
             self.handleNewFile(file)
     
     def clear_file_list(self):
         """Clear the file list."""
-        self.dropWidget.listWidget.clear()
-        self.previewText.clear()
-        self.previewText.setPlaceholderText(self.translate("preview_placeholder") or "")
+        self.filePanel.clear()
+        self.previewPanel.clear()
         AppLogger.info(self.translate("file_list_cleared_log"))
     
     def handleNewFile(self, filepath):
@@ -881,7 +663,7 @@ class MainWindow(QWidget):
         """Toggle conversion pause state."""
         if hasattr(self, 'worker') and self.worker:
             self.worker.is_paused = paused
-            self.pauseButton.setText(self.translate("resume_button") if paused else self.translate("pause_button"))
+            self.convertControls.pause_button.setText(self.translate("resume_button") if paused else self.translate("pause_button"))
             AppLogger.info(self.translate("conversion_paused_log") if paused else self.translate("conversion_resumed_log"))
 
     def cancel_conversion(self):
@@ -889,7 +671,7 @@ class MainWindow(QWidget):
         if hasattr(self, 'worker') and self.worker:
             self.worker.is_cancelled = True
             self.worker.is_paused = False
-            self.pauseButton.setChecked(False)
+            self.convertControls.pause_button.setChecked(False)
             AppLogger.info(self.translate("conversion_cancelled_log"))
     
 
@@ -918,13 +700,13 @@ class MainWindow(QWidget):
     
     def _reset_ui_state(self):
         """Reset UI to initial state after error or completion."""
-        self.pauseButton.setEnabled(False)
-        self.cancelButton.setEnabled(False)
-        self.convertButton.setEnabled(True)
-        self.pauseButton.setChecked(False)
-        self.pauseButton.setText(self.translate("pause_button"))
-        self.progressBar.setValue(0)
-        self.progressBar.setFormat("")
+        self.convertControls.pause_button.setEnabled(False)
+        self.convertControls.cancel_button.setEnabled(False)
+        self.convertControls.convert_button.setEnabled(True)
+        self.convertControls.pause_button.setChecked(False)
+        self.convertControls.pause_button.setText(self.translate("pause_button"))
+        self.convertControls.progress.setValue(0)
+        self.convertControls.progress.setFormat("")
 
     def change_language(self, action):
         """Change the application language."""
@@ -933,7 +715,6 @@ class MainWindow(QWidget):
             self.current_lang = lang_code
             self.settings_manager.set_current_language(lang_code)
         self.retranslate_ui()
-        self.clearAllButton.setText(self.translate("clear_all_button"))
 
     def translate(self, key) -> str:
         """Translate a key using the current language, ensuring a string is always returned."""
@@ -947,35 +728,22 @@ class MainWindow(QWidget):
         self.update_menu_bar_texts()
 
         # Retranslate other UI elements
-        self.dropWidget.retranslate_ui(self.translate)
-        self.previewText.setPlaceholderText(self.translate("preview_placeholder"))
+        self.filePanel.retranslate_ui(self.translate)
+        self.previewPanel.retranslate_ui(self.translate)
+        self.settingsBar.retranslate_ui(self.translate)
+        self.convertControls.retranslate_ui(self.translate)
 
-        self.settingsGroupLabel.setText(self.translate("settings_group_label"))
-        self.enablePluginsCheck.setText(self.translate("enable_plugins_checkbox"))
-        self.enablePluginsCheck.setToolTip(self.translate("enable_plugins_tooltip"))
-        self.docIntelLine.setPlaceholderText(self.translate("doc_intel_placeholder"))
-        self.docIntelLine.setToolTip(self.translate("doc_intel_tooltip"))
-
-        self.batchSizeLabel.setText(self.translate("batch_size_label"))
-        self.batchSizeSpinBox.setToolTip(self.translate("batch_size_tooltip"))
-        self.pauseButton.setText(self.translate("pause_button") if not self.pauseButton.isChecked() else self.translate("resume_button"))
-        self.cancelButton.setText(self.translate("cancel_button"))
-        self.convertButton.setText(self.translate("convert_files_button"))
-
-        self.combinedSaveCheck.setText(self.translate("output_save_all_in_one_checkbox"))
-        self.combinedSaveCheck.setToolTip(self.translate("output_save_all_in_one_tooltip"))
-        self.copyButton.setText(self.translate("copy_output_button"))
-        self.saveButton.setText(self.translate("save_output_button"))
+        self.outputPanel.retranslate_ui(self.translate)
         
         self.update()
         QApplication.processEvents()
 
     def handle_files_added(self, files):
         # Add only files not already in the list
-        existing = set(self.dropWidget.listWidget.item(i).text() for i in range(self.dropWidget.listWidget.count()))
+        existing = set(self.filePanel.get_all_files())
         for file in files:
             if file not in existing:
-                self.dropWidget.listWidget.addItem(file)
+                self.filePanel.add_file(file)
                 self.handleNewFile(file)
 
     def closeEvent(self, event):
@@ -999,48 +767,38 @@ class MainWindow(QWidget):
     def start_update_check(self):
         """Start the update check in a separate thread."""
         self.update_checker = UpdateChecker(self)
-        self.update_checker.update_available.connect(self.show_update_notification)
-        self.update_checker.update_error.connect(self.handle_update_error)
-        self.update_checker.no_update_available.connect(self.handle_no_update)
+        self.update_checker.update_available.connect(self._on_update_available)
+        self.update_checker.update_error.connect(self._on_update_error)
+        self.update_checker.no_update_available.connect(self._on_no_update)
         self.update_checker.start()
 
-    def show_update_notification(self, new_version):
-        """Show the update notification dialog."""
+    def _on_update_available(self, new_version):
         dialog = UpdateDialog(new_version, self.translate, self.settings_manager, self)
         dialog.exec()
 
-    def handle_update_error(self, error_message):
-        """Handle update check errors (silently log them)."""
+    def _on_update_error(self, error_message):
         AppLogger.error(f"Update check failed: {error_message}")
 
-    def handle_no_update(self):
-        """Handle when no update is available (silently log)."""
+    def _on_no_update(self):
         AppLogger.info("No updates available")
 
     def manual_update_check(self):
         """Manually trigger an update check."""
         # For manual checks, always proceed regardless of notification settings
         self.update_checker = UpdateChecker(self)
-        self.update_checker.update_available.connect(self.show_update_notification_manual)
-        self.update_checker.update_error.connect(self.handle_manual_update_error)
-        self.update_checker.no_update_available.connect(self.handle_manual_no_update)
+        self.update_checker.update_available.connect(self._on_update_available)
+        self.update_checker.update_error.connect(self._on_update_error_manual)
+        self.update_checker.no_update_available.connect(self._on_no_update_manual)
         self.update_checker.start()
 
-    def show_update_notification_manual(self, new_version):
-        """Show the update notification dialog for manual checks."""
-        dialog = UpdateDialog(new_version, self.translate, self.settings_manager, self)
-        dialog.exec()
-
-    def handle_manual_update_error(self, error_message):
-        """Handle update check errors for manual checks with user feedback."""
+    def _on_update_error_manual(self, error_message):
         QMessageBox.warning(
             self,
             self.translate("update_check_error_title"),
             self.translate("update_check_error_message").format(error=error_message)
         )
 
-    def handle_manual_no_update(self):
-        """Handle when no update is available for manual checks with user feedback."""
+    def _on_no_update_manual(self):
         QMessageBox.information(
             self,
             self.translate("update_check_no_update_title"),
