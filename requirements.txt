@@ -55,7 +55,7 @@ lxml==6.0.0
     #   python-pptx
 magika==0.6.2
     # via markitdown
-mammoth==1.9.1
+mammoth==1.11.0
     # via markitdown
 markdownify==1.1.0
     # via markitdown
