@@ -2,7 +2,7 @@
 #    uv pip compile pyproject.toml -o requirements.txt
 azure-ai-documentintelligence==1.0.2
     # via markitdown
-azure-core==1.34.0
+azure-core==1.38.0
     # via
     #   azure-ai-documentintelligence
     #   azure-identity
@@ -88,7 +88,7 @@ pdfminer-six==20250506
     # via markitdown
 pillow==11.3.0
     # via python-pptx
-protobuf==6.31.1
+protobuf==7.34.0rc1
     # via onnxruntime
 pycparser==2.22
     # via cffi
@@ -146,7 +146,7 @@ typing-extensions==4.14.0
     #   speechrecognition
 tzdata==2025.2
     # via pandas
-urllib3==2.5.0
+urllib3==2.6.3
     # via requests
 xlrd==2.0.2
     # via markitdown
