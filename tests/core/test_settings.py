@@ -25,24 +25,30 @@ def test_dark_mode(settings_manager):
     settings_manager.set_dark_mode(True)
     assert settings_manager.get_dark_mode()
 
+def test_theme_mode(settings_manager):
+    """Test setting and retrieving explicit theme mode."""
+    assert settings_manager.get_theme_mode() in {"light", "dark", "system"}
+    settings_manager.set_theme_mode("system")
+    assert settings_manager.get_theme_mode() == "system"
+    settings_manager.set_theme_mode("dark")
+    assert settings_manager.get_theme_mode() == "dark"
+    settings_manager.set_theme_mode("invalid")
+    assert settings_manager.get_theme_mode() == "light"
+
 def test_format_settings(settings_manager):
     """Test getting and saving format settings."""
     default_settings = settings_manager.get_format_settings()
-    assert not default_settings['autoSave']
     assert default_settings['headerStyle'] == "ATX (#)"
 
     new_settings = {
         'headerStyle': 'Setext',
         'tableStyle': 'Grid',
-        'autoSave': True,
-        'autoSaveInterval': 15
     }
     settings_manager.save_format_settings(new_settings)
     
     saved_settings = settings_manager.get_format_settings()
-    assert saved_settings['autoSave']
     assert saved_settings['headerStyle'] == 'Setext'
-    assert saved_settings['autoSaveInterval'] == 15
+    assert saved_settings['tableStyle'] == 'Grid'
 
 def test_recent_files(settings_manager):
     """Test getting and setting the recent files list."""
@@ -73,3 +79,23 @@ def test_save_mode(settings_manager):
     
     settings_manager.set_save_mode(False)
     assert not settings_manager.get_save_mode() 
+
+def test_output_defaults(settings_manager, tmp_path):
+    """Test output format and default folder settings."""
+    assert settings_manager.get_default_output_format() == ".md"
+    settings_manager.set_default_output_format("txt")
+    assert settings_manager.get_default_output_format() == ".txt"
+
+    assert settings_manager.get_default_output_folder() == ""
+    settings_manager.set_default_output_folder(str(tmp_path))
+    assert settings_manager.get_default_output_folder() == str(tmp_path)
+
+def test_batch_size(settings_manager):
+    """Test batch size bounds and persistence."""
+    assert settings_manager.get_batch_size() == 3
+    settings_manager.set_batch_size(7)
+    assert settings_manager.get_batch_size() == 7
+    settings_manager.set_batch_size(0)
+    assert settings_manager.get_batch_size() == 1
+    settings_manager.set_batch_size(99)
+    assert settings_manager.get_batch_size() == 10
