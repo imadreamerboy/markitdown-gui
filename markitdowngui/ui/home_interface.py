@@ -20,11 +20,14 @@ from PySide6.QtWidgets import (
 from qfluentwidgets import (
     BodyLabel,
     CaptionLabel,
-    CardWidget,
-    ComboBox,
+    ElevatedCardWidget,
+    InfoBar,
+    InfoBarPosition,
+    PillPushButton,
     PrimaryPushButton,
     ProgressBar,
     PushButton,
+    SegmentedWidget,
 )
 
 from markitdowngui.core.conversion import ConversionWorker
@@ -47,7 +50,6 @@ class HomeInterface(QWidget):
         self.file_manager = FileManager()
         self.worker: ConversionWorker | None = None
         self.conversionResults: dict[str, str] = {}
-        self.sourcePreviewCache: dict[str, str] = {}
         self._is_dark_theme = False
         self._current_markdown = ""
         self.setAcceptDrops(True)
@@ -70,7 +72,7 @@ class HomeInterface(QWidget):
         self.main_layout.setContentsMargins(12, 12, 12, 12)
         self.main_layout.setSpacing(10)
 
-        self.empty_card = CardWidget(self)
+        self.empty_card = ElevatedCardWidget(self)
         empty_layout = QVBoxLayout(self.empty_card)
         empty_layout.setContentsMargins(30, 28, 30, 28)
         empty_layout.setSpacing(10)
@@ -94,7 +96,7 @@ class HomeInterface(QWidget):
             Qt.AlignmentFlag.AlignHCenter,
         )
 
-        self.queue_card = CardWidget(self)
+        self.queue_card = ElevatedCardWidget(self)
         queue_layout = QVBoxLayout(self.queue_card)
         queue_layout.setContentsMargins(12, 12, 12, 12)
         queue_layout.setSpacing(10)
@@ -102,7 +104,7 @@ class HomeInterface(QWidget):
         queue_header = QHBoxLayout()
         queue_header.setSpacing(8)
         self.queue_title = BodyLabel(self.translate("home_queue_title"))
-        self.add_files_btn = PushButton(self.translate("home_add_files_button"))
+        self.add_files_btn = PillPushButton(self.translate("home_add_files_button"))
         self.add_files_btn.clicked.connect(self.browse_files)
         queue_header.addWidget(self.queue_title)
         queue_header.addStretch(1)
@@ -150,7 +152,7 @@ class HomeInterface(QWidget):
         controls.addWidget(self.cancel_button)
         queue_layout.addLayout(controls)
 
-        self.results_card = CardWidget(self)
+        self.results_card = ElevatedCardWidget(self)
         results_layout = QVBoxLayout(self.results_card)
         results_layout.setContentsMargins(12, 12, 12, 12)
         results_layout.setSpacing(10)
@@ -160,10 +162,8 @@ class HomeInterface(QWidget):
         results_header.addWidget(BodyLabel(self.translate("home_results_title")))
         results_header.addStretch(1)
         self.back_to_queue_btn = PushButton(self.translate("home_back_to_queue_button"))
-        self.back_to_queue_btn.setObjectName("resultsBackButton")
         self.back_to_queue_btn.clicked.connect(self.go_back_to_queue)
         self.start_over_btn = PushButton(self.translate("home_start_over_button"))
-        self.start_over_btn.setObjectName("resultsResetButton")
         self.start_over_btn.clicked.connect(self.start_new_conversion)
         results_header.addWidget(self.back_to_queue_btn)
         results_header.addWidget(self.start_over_btn)
@@ -172,37 +172,32 @@ class HomeInterface(QWidget):
         splitter = QSplitter(Qt.Orientation.Horizontal, self.results_card)
         self.result_file_list = QListWidget(splitter)
         self.result_file_list.currentItemChanged.connect(self._on_result_file_changed)
-        self.result_file_list.setMinimumWidth(200)
-
-        left_panel = QWidget(splitter)
-        left_layout = QVBoxLayout(left_panel)
-        left_layout.setContentsMargins(0, 0, 0, 0)
-        left_layout.setSpacing(6)
-        left_layout.addWidget(BodyLabel(self.translate("home_source_label")))
-        self.source_text = QTextEdit(left_panel)
-        self.source_text.setReadOnly(True)
-        self.source_text.setPlaceholderText(self.translate("home_source_placeholder"))
-        left_layout.addWidget(self.source_text, 1)
+        self.result_file_list.setMinimumWidth(240)
 
         right_panel = QWidget(splitter)
         right_layout = QVBoxLayout(right_panel)
         right_layout.setContentsMargins(0, 0, 0, 0)
-        right_layout.setSpacing(6)
-        right_layout.addWidget(BodyLabel(self.translate("home_markdown_preview_label")))
+        right_layout.setSpacing(8)
 
-        markdown_mode_row = QHBoxLayout()
-        markdown_mode_row.setSpacing(6)
-        self.rendered_toggle = PushButton(self.translate("home_rendered_view_button"))
-        self.raw_toggle = PushButton(self.translate("home_raw_view_button"))
-        self.rendered_toggle.setCheckable(True)
-        self.raw_toggle.setCheckable(True)
-        self.rendered_toggle.setChecked(True)
-        self.rendered_toggle.clicked.connect(self._show_rendered_markdown)
-        self.raw_toggle.clicked.connect(self._show_raw_markdown)
-        markdown_mode_row.addWidget(self.rendered_toggle)
-        markdown_mode_row.addWidget(self.raw_toggle)
-        markdown_mode_row.addStretch(1)
-        right_layout.addLayout(markdown_mode_row)
+        right_header = QHBoxLayout()
+        right_header.setSpacing(8)
+        right_header.addWidget(BodyLabel(self.translate("home_markdown_preview_label")))
+        right_header.addStretch(1)
+        self.preview_file_caption = CaptionLabel(
+            self.translate("home_preview_file_default")
+        )
+        right_header.addWidget(self.preview_file_caption)
+        right_layout.addLayout(right_header)
+
+        self.preview_mode_segment = SegmentedWidget(right_panel)
+        self.preview_mode_segment.addItem(
+            "rendered", self.translate("home_rendered_view_button"), self._show_rendered_markdown
+        )
+        self.preview_mode_segment.addItem(
+            "raw", self.translate("home_raw_view_button"), self._show_raw_markdown
+        )
+        self.preview_mode_segment.setCurrentItem("rendered")
+        right_layout.addWidget(self.preview_mode_segment, 0, Qt.AlignmentFlag.AlignLeft)
 
         self.markdown_stack = QStackedWidget(right_panel)
         self.markdown_rendered = QTextBrowser(self.markdown_stack)
@@ -215,35 +210,34 @@ class HomeInterface(QWidget):
         self.markdown_raw.setPlaceholderText(self.translate("home_markdown_placeholder"))
         self.markdown_stack.addWidget(self.markdown_rendered)
         self.markdown_stack.addWidget(self.markdown_raw)
+        self.markdown_stack.setCurrentWidget(self.markdown_rendered)
         right_layout.addWidget(self.markdown_stack, 1)
 
         splitter.addWidget(self.result_file_list)
-        splitter.addWidget(left_panel)
         splitter.addWidget(right_panel)
         splitter.setStretchFactor(0, 1)
-        splitter.setStretchFactor(1, 2)
-        splitter.setStretchFactor(2, 2)
+        splitter.setStretchFactor(1, 3)
         results_layout.addWidget(splitter, 1)
 
         result_actions = QHBoxLayout()
         result_actions.setSpacing(8)
         self.save_mode_label = CaptionLabel(self.translate("home_save_mode_label"))
-        self.save_mode_combo = ComboBox(self.results_card)
-        self.save_mode_combo.addItems(
-            [
-                self.translate("home_save_mode_combined"),
-                self.translate("home_save_mode_separate"),
-            ]
+        self.save_mode_segment = SegmentedWidget(self.results_card)
+        self.save_mode_segment.addItem(
+            "combined",
+            self.translate("home_save_mode_combined"),
+            lambda: self._set_save_mode(True),
         )
-        self.save_mode_combo.setToolTip(
-            self.translate("output_save_all_in_one_tooltip")
+        self.save_mode_segment.addItem(
+            "separate",
+            self.translate("home_save_mode_separate"),
+            lambda: self._set_save_mode(False),
         )
-        self.save_mode_combo.currentIndexChanged.connect(self._on_save_mode_changed)
-        self.save_mode_combo.setCurrentIndex(
-            0 if self.settings_manager.get_save_mode() else 1
+        self.save_mode_segment.setCurrentItem(
+            "combined" if self.settings_manager.get_save_mode() else "separate"
         )
         result_actions.addWidget(self.save_mode_label)
-        result_actions.addWidget(self.save_mode_combo)
+        result_actions.addWidget(self.save_mode_segment)
         result_actions.addStretch(1)
         self.copy_btn = PushButton(self.translate("home_copy_markdown_button"))
         self.copy_btn.clicked.connect(self.copy_output)
@@ -335,11 +329,7 @@ class HomeInterface(QWidget):
     def dropEvent(self, event) -> None:
         if not event.mimeData().hasUrls():
             return
-        files = []
-        for url in event.mimeData().urls():
-            path = url.toLocalFile()
-            if path:
-                files.append(path)
+        files = [url.toLocalFile() for url in event.mimeData().urls() if url.toLocalFile()]
         if files:
             self._add_files_to_queue(files)
             event.acceptProposedAction()
@@ -360,7 +350,6 @@ class HomeInterface(QWidget):
     def _add_files_to_queue(self, files: list[str], add_to_panel: bool = True) -> None:
         existing = set(self.filePanel.get_all_files())
         added = False
-
         for file in files:
             if not file or file in existing:
                 continue
@@ -392,11 +381,7 @@ class HomeInterface(QWidget):
 
     def remove_selected_files(self) -> None:
         widget = self.filePanel.drop.listWidget
-        selected = sorted(
-            widget.selectedItems(),
-            key=lambda item: widget.row(item),
-            reverse=True,
-        )
+        selected = sorted(widget.selectedItems(), key=lambda item: widget.row(item), reverse=True)
         for item in selected:
             widget.takeItem(widget.row(item))
         self._on_queue_rows_removed()
@@ -412,9 +397,7 @@ class HomeInterface(QWidget):
         if self.worker:
             self.worker.is_paused = paused
             self.pause_button.setText(
-                self.translate("resume_button")
-                if paused
-                else self.translate("pause_button")
+                self.translate("resume_button") if paused else self.translate("pause_button")
             )
 
     def cancel_conversion(self) -> None:
@@ -452,14 +435,13 @@ class HomeInterface(QWidget):
             return
 
         try:
-            # Delay importing MarkItDown until conversion starts.
+            # Delay heavy import until conversion starts for faster app startup.
             from markitdown import MarkItDown
 
             md = MarkItDown()
-            settings = self.settings_manager.get_format_settings()
             batch_size = self.settings_manager.get_batch_size()
 
-            self.worker = ConversionWorker([md, valid_files, settings], batch_size)
+            self.worker = ConversionWorker([md, valid_files], batch_size)
             self.worker.progress.connect(self.update_progress)
             self.worker.finished.connect(self.handle_conversion_finished)
             self.worker.error.connect(self.handle_conversion_error)
@@ -492,11 +474,19 @@ class HomeInterface(QWidget):
     def handle_conversion_finished(self, results: dict[str, str]) -> None:
         self.conversionResults = results
         self.progress.setValue(100)
-        self.progress.setFormat(self.translate("conversion_complete_message"))
-        self.progress_status.setText(self.translate("conversion_complete_message"))
+        done_text = self.translate("conversion_complete_message")
+        self.progress.setFormat(done_text)
+        self.progress_status.setText(done_text)
         self._reset_controls()
         self._populate_result_view()
         self._set_state_results()
+        InfoBar.success(
+            self.translate("home_results_title"),
+            self.translate("conversion_complete_message"),
+            duration=2000,
+            position=InfoBarPosition.TOP_RIGHT,
+            parent=self,
+        )
 
     def handle_conversion_error(self, error_msg: str) -> None:
         AppLogger.error(error_msg)
@@ -513,7 +503,6 @@ class HomeInterface(QWidget):
 
     def _populate_result_view(self) -> None:
         self.result_file_list.clear()
-        self.sourcePreviewCache.clear()
         for file in self.conversionResults.keys():
             item_text = os.path.basename(file)
             self.result_file_list.addItem(item_text)
@@ -525,15 +514,13 @@ class HomeInterface(QWidget):
 
     def _on_result_file_changed(self, current, _previous) -> None:
         if not current:
-            self.source_text.clear()
+            self.preview_file_caption.setText(self.translate("home_preview_file_default"))
             self._set_markdown_preview("")
             return
-
         file_path = current.data(Qt.ItemDataRole.UserRole)
-        if file_path not in self.sourcePreviewCache:
-            self.sourcePreviewCache[file_path] = self._read_source_preview(file_path)
-        self.source_text.setPlainText(self.sourcePreviewCache[file_path])
-
+        self.preview_file_caption.setText(
+            self.translate("home_preview_for_file").format(file=os.path.basename(file_path))
+        )
         markdown = self.conversionResults.get(file_path, "")
         self._set_markdown_preview(markdown)
 
@@ -552,51 +539,16 @@ class HomeInterface(QWidget):
         self.markdown_rendered.setHtml(f"<style>{css}</style>{rendered_html}")
 
     def _show_rendered_markdown(self) -> None:
-        self.rendered_toggle.setChecked(True)
-        self.raw_toggle.setChecked(False)
+        self.preview_mode_segment.setCurrentItem("rendered")
         self.markdown_stack.setCurrentWidget(self.markdown_rendered)
 
     def _show_raw_markdown(self) -> None:
-        self.raw_toggle.setChecked(True)
-        self.rendered_toggle.setChecked(False)
+        self.preview_mode_segment.setCurrentItem("raw")
         self.markdown_stack.setCurrentWidget(self.markdown_raw)
 
-    def _on_save_mode_changed(self, index: int) -> None:
-        self.settings_manager.set_save_mode(index == 0)
-
-    def _read_source_preview(self, file_path: str) -> str:
-        extension = os.path.splitext(file_path)[1].lower()
-        text_like_exts = {
-            ".md",
-            ".markdown",
-            ".txt",
-            ".csv",
-            ".json",
-            ".xml",
-            ".html",
-            ".htm",
-            ".py",
-            ".yaml",
-            ".yml",
-            ".log",
-        }
-        if extension not in text_like_exts:
-            return self.translate("home_source_binary_placeholder").format(
-                file=os.path.basename(file_path)
-            )
-
-        try:
-            with open(file_path, "r", encoding="utf-8") as f:
-                text = f.read(24000)
-        except UnicodeDecodeError:
-            with open(file_path, "r", encoding="latin-1", errors="replace") as f:
-                text = f.read(24000)
-        except Exception as e:
-            return self.translate("home_source_error").format(error=str(e))
-
-        if len(text) >= 23999:
-            text += "\n\n... (truncated)"
-        return text
+    def _set_save_mode(self, combined: bool) -> None:
+        self.settings_manager.set_save_mode(combined)
+        self.save_mode_segment.setCurrentItem("combined" if combined else "separate")
 
     def copy_output(self) -> None:
         text = self.markdown_raw.toPlainText().strip()
@@ -611,7 +563,6 @@ class HomeInterface(QWidget):
                 self.translate("no_output_to_save_message"),
             )
             return
-
         if self.settings_manager.get_save_mode():
             self.save_combined_output()
         else:
@@ -623,6 +574,7 @@ class HomeInterface(QWidget):
         default_name = f"converted{output_ext}"
         if output_dir:
             default_name = os.path.join(output_dir, default_name)
+
         output_path, _ = QFileDialog.getSaveFileName(
             self,
             self.translate("save_combined_title"),
@@ -634,9 +586,7 @@ class HomeInterface(QWidget):
         if not output_path.lower().endswith(output_ext.lower()):
             output_path += output_ext
 
-        parts = []
-        for file, content in self.conversionResults.items():
-            parts.append(f"File: {file}\n{content}")
+        parts = [f"File: {file}\n{content}" for file, content in self.conversionResults.items()]
         combined_output = "\n\n".join(parts)
 
         try:
@@ -677,15 +627,12 @@ class HomeInterface(QWidget):
 
     def _get_default_output_dir(self) -> str:
         output_dir = self.settings_manager.get_default_output_folder()
-        if output_dir and os.path.isdir(output_dir):
-            return output_dir
-        return ""
+        return output_dir if output_dir and os.path.isdir(output_dir) else ""
 
     def _clear_result_views(self) -> None:
         self.conversionResults = {}
-        self.sourcePreviewCache.clear()
         self.result_file_list.clear()
-        self.source_text.clear()
+        self.preview_file_caption.setText(self.translate("home_preview_file_default"))
         self._set_markdown_preview("")
 
     def go_back_to_queue(self) -> None:

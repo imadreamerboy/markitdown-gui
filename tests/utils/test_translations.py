@@ -42,6 +42,8 @@ def test_home_translation_keys_exist():
         "home_raw_view_button",
         "home_copy_markdown_button",
         "home_save_markdown_button",
+        "home_preview_file_default",
+        "home_preview_for_file",
         "home_save_mode_label",
         "home_save_mode_combined",
         "home_save_mode_separate",

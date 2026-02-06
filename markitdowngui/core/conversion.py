@@ -7,7 +7,7 @@ class ConversionWorker(QThread):
 
     def __init__(self, args, batch_size):
         super().__init__()
-        self.md, self.files, self.settings = args
+        self.md, self.files = args
         self.batch_size = batch_size
         self.is_paused = False
         self.is_cancelled = False

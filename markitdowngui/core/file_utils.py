@@ -9,9 +9,13 @@ class FileManager:
         "Auto Detect": "*.*",
         "Word Documents": "*.docx",
         "PowerPoint": "*.pptx",
-        "Excel": "*.xlsx",
+        "Excel": "*.xlsx *.xls",
         "PDF": "*.pdf",
-        "Text": "*.txt",
+        "EPUB": "*.epub",
+        "HTML": "*.html *.htm",
+        "Text": "*.txt *.md *.csv *.json *.xml",
+        "Images": "*.png *.jpg *.jpeg *.bmp *.gif *.tiff *.webp",
+        "Archives": "*.zip",
         "All Files": "*.*"
     }
 

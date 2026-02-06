@@ -87,9 +87,10 @@ The default spec builds an `onedir` bundle at `dist/MarkItDown/` for faster star
 
 ## License
 
-Licensed under **MIT**.
+Licensed under **GPLv3 for non-commercial projects**.
 
-**Note:** `PySide6` uses **LGPLv3**, requiring dynamic linking.
+Commercial use requires a separate commercial license.  
+This aligns with the licensing model stated by `PySide6-Fluent-Widgets` (`qfluentwidgets`).
 
 ## Contributing
 
