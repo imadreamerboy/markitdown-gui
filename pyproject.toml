@@ -11,8 +11,9 @@ license = "MIT"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "markitdown[all]",
+    "markitdown[docx,pdf,pptx,xls,xlsx]",
     "pyside6>=6.8.2.1",
+    "pyside6-fluent-widgets>=1.11.0",
 ]
 
 [project.urls]

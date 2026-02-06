@@ -83,6 +83,8 @@ Use `PyInstaller`:
  pyinstaller MarkItDown.spec --clean
 ```
 
+The default spec builds an `onedir` bundle at `dist/MarkItDown/` for faster startup.
+
 ## License
 
 Licensed under **MIT**.
