@@ -1,106 +1,102 @@
 # MarkItDown GUI 封装
 
-一个功能丰富的 **GUI 封装**，用于 `MarkItDown`，使用 **PySide6** 构建。通过拖放轻松将文件转换为 markdown。
+这是一个基于 `PySide6` 和 `QFluentWidgets` 的 `MarkItDown` 桌面 GUI。
+目标是用更直观的界面完成多文件到 Markdown 的转换。
 
-![截图](gui.png)
-## 特性
+![当前界面截图](image.png)
 
-- 📂 **文件管理**:
-  - 拖放以进行批量处理
-  - 文件类型过滤
-  - 最近文件历史记录
-  - 批量处理，支持暂停/恢复
-  
-- 🎨 **用户界面**:
-  - 深色/浅色主题支持
-  - 预览面板
-  - 进度跟踪
-  - 键盘快捷键
-  
-- ⚙️ **高级选项**:
-  - 格式自定义（标题、表格）
-  - 自动保存和备份
-  - 启用插件
-  - 文档智能 API 支持
-  
-- 🛠️ **输出选项**:
-  - 全部保存在一个文件中或单独保存
-  - 选择输出目录
-  - 快速复制和粘贴
-  - 保存前预览
+## 当前开发状态
+
+- 核心转换流程已经稳定，可正常日常使用。
+- `QFluentWidgets` 重构已覆盖主要页面（`Home`、`Settings`、`Help`）。
+- 当前优化重点是视觉一致性（Solarized 浅色 + Nord 深色）、排版细节，以及打包版本的启动速度。
+
+## 功能
+
+- 基于队列的文件流程，支持拖放添加文件。
+- 批量转换，支持开始、暂停/恢复、取消和进度反馈。
+- 结果页支持按文件查看转换结果。
+- 预览模式支持渲染视图和原始 Markdown 视图。
+- 保存模式支持合并为单文件或分别保存多个文件。
+- 常用操作：复制 Markdown、保存输出、返回队列、重新开始。
+- 设置项包括输出目录、批处理大小、标题样式、表格样式、主题模式（浅色/深色/跟随系统）。
+- 内置快捷键面板、检查更新入口和关于对话框。
 
 ## 安装
 
-您可以从 [Releases](https://github.com/imadreamerboy/markitdown-gui/releases) 下载预编译的可执行文件，或从源代码构建。为此，只需按照以下说明操作。
+你可以从 [Releases](https://github.com/imadreamerboy/markitdown-gui/releases) 下载预编译版本，或从源码运行。
 
-### 先决条件
+### 前置要求
 
-- Python **3.10+**
-- 安装依赖项：
+- Python `3.10+`
+- 推荐使用 `uv`
+
+安装依赖：
 
 ```sh
 uv sync
 ```
 
-或
+也可以：
 
 ```sh
-pip install -r requirements.txt
+pip install -e .[dev]
 ```
 
-### 运行应用程序
+## 运行应用
 
 ```sh
-uv python -m markitdowngui.main
+uv run python -m markitdowngui.main
 ```
 
-### 键盘快捷键
+## 键盘快捷键
 
 - `Ctrl+O`: 打开文件
 - `Ctrl+S`: 保存输出
 - `Ctrl+C`: 复制输出
 - `Ctrl+P`: 暂停/恢复
 - `Ctrl+B`: 开始转换
-- `Ctrl+L`: 清空列表
+- `Ctrl+L`: 清空队列
 - `Ctrl+K`: 显示快捷键
 - `Esc`: 取消转换
 
 ## 构建独立可执行文件
 
-使用 `PyInstaller`：
-
 ```sh
-pyinstaller MarkItDown.spec --clean
-
+uv pip install -e .[dev]
+pyinstaller MarkItDown.spec --clean --noconfirm
 ```
+
+默认会生成 `onedir` 结构，输出目录为 `dist/MarkItDown/`。
+发布工作流会将该目录打包为按平台区分的 `.zip` 制品。
 
 ## 许可证
 
-根据 **MIT** 许可证授权。
+本项目采用 **GPLv3（仅限非商业用途）**。
 
-**注意：** `PySide6` 使用 **LGPLv3**，需要动态链接。
+商业用途需要单独的商业授权。
+该策略与 `PySide6-Fluent-Widgets`（`qfluentwidgets`）的非商业许可要求保持一致。
 
 ## 贡献
 
-欢迎贡献！请按照以下步骤进行贡献：
+1. Fork 仓库并创建分支。
+2. 安装开发依赖：
 
-1.  **Fork 本仓库**并为您的功能或错误修复创建一个新分支。
-2.  **设置开发环境**：
-    *   建议使用虚拟环境。
-    *   本项目使用 `uv` 进行包管理。
-    *   要安装所有依赖项（包括开发和测试依赖项），请运行：
-      ```sh
-      uv pip install -e .[dev]
-      ```
-3.  **进行更改**。
-4.  **运行测试**以确保一切正常：
-    ```sh
-    pytest
-    ```
-5.  **提交拉取请求**并清楚地描述您的更改。
+```sh
+uv pip install -e .[dev]
+```
+
+3. 提交代码修改。
+4. 运行测试：
+
+```sh
+uv run pytest -q
+```
+
+5. 提交 PR，并清楚说明变更内容。
 
 ## 鸣谢
 
-- **MarkItDown** ([MIT 许可证](https://opensource.org/licenses/MIT))
-- **PySide6** ([LGPLv3 许可证](https://www.gnu.org/licenses/lgpl-3.0.html))
-- **Lucide Icons** ([MIT 许可证](https://lucide.dev/))
+- MarkItDown ([MIT 许可证](https://opensource.org/licenses/MIT))
+- PySide6 ([LGPLv3 许可证](https://www.gnu.org/licenses/lgpl-3.0.html))
+- PySide6-Fluent-Widgets / QFluentWidgets ([项目主页](https://qfluentwidgets.com))

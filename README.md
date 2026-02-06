@@ -2,119 +2,105 @@
 
 # MarkItDown GUI Wrapper
 
-A feature-rich **GUI wrapper** for `MarkItDown`, built with **PySide6**. Easily convert files to markdown using drag & drop.
+A desktop GUI for `MarkItDown`, built with `PySide6` and `QFluentWidgets`.
+It focuses on fast multi-file conversion to Markdown with a modern Fluent-style interface.
 
+![Current UI screenshot](image.png)
 
-![Screenshot of the GUI](gui.png)
+## Current Status
+
+- Main conversion workflow is stable and production-usable.
+- The UI refactor to `QFluentWidgets` is active and already shipped for the main screens (`Home`, `Settings`, `Help`).
+- Current polish work is focused on visual consistency (Solarized light + Nord dark themes), typography, and startup-time improvements for packaged builds.
 
 ## Features
 
-- 📂 **File Management**:
-  - Drag & Drop for batch processing
-  - File type filtering
-  - Recent files history
-  - Batch processing with pause/resume
-  
-- 🎨 **User Interface**:
-  - Dark/Light theme support
-  - Preview panel
-  - Progress tracking
-  - Keyboard shortcuts
-  
-- ⚙️ **Advanced Options**:
-  - Format customization (headers, tables)
-  - Auto-save and backup
-  - Enable plugins
-  - Document Intelligence API support
-  
-- 🛠️ **Output Options**:
-  - Save all in one file or separately
-  - Choose output directory
-  - Quick copy & paste
-  - Preview before saving
+- Queue-based file workflow with drag and drop.
+- Batch conversion with start, pause/resume, cancel, and progress feedback.
+- Results view with per-file selection and Markdown preview.
+- Preview modes: rendered Markdown view and raw Markdown view.
+- Save modes: export as one combined file or separate files.
+- Quick actions: copy Markdown, save output, back to queue, start over.
+- Settings for output folder, batch size, header style, table style, and theme mode (light/dark/system).
+- Built-in shortcuts dialog, update check action, and about dialog.
 
 ## Installation
 
-You can download the precompiled executable from the [Releases](https://github.com/imadreamerboy/markitdown-gui/releases) or build it from source. For that just follow the instructions below.
+Download prebuilt binaries from [Releases](https://github.com/imadreamerboy/markitdown-gui/releases), or run from source.
 
 ### Prerequisites
 
-- Python **3.10+**
-- create a venv
-- Install dependencies (preferred via `uv`):
+- Python `3.10+`
+- `uv` (recommended)
+
+Install dependencies:
 
 ```sh
-uv sync 
+uv sync
 ```
-or
+
+Alternative:
 
 ```sh
-pip install -r requirements.txt
+pip install -e .[dev]
 ```
 
-### Run the App
+## Run the App
 
 ```sh
 uv run python -m markitdowngui.main
 ```
 
-### Keyboard Shortcuts
+## Keyboard Shortcuts
 
-- `Ctrl+O`: Open Files
-- `Ctrl+S`: Save Output
-- `Ctrl+C`: Copy Output
-- `Ctrl+P`: Pause/Resume
-- `Ctrl+B`: Begin Conversion
-- `Ctrl+L`: Clear List
-- `Ctrl+K`: Show Shortcuts
-- `Esc`: Cancel Conversion
+- `Ctrl+O`: Open files
+- `Ctrl+S`: Save output
+- `Ctrl+C`: Copy output
+- `Ctrl+P`: Pause/resume
+- `Ctrl+B`: Start conversion
+- `Ctrl+L`: Clear queue
+- `Ctrl+K`: Show shortcuts
+- `Esc`: Cancel conversion
 
 ## Build a Standalone Executable
 
-First activate the development environment:
+```sh
+uv pip install -e .[dev]
+pyinstaller MarkItDown.spec --clean --noconfirm
+```
+
+The default spec builds an `onedir` app in `dist/MarkItDown/`.
+Release workflows package this folder into platform-specific `.zip` artifacts.
+
+## License
+
+Licensed under **GPLv3 for non-commercial use**.
+
+Commercial use requires a separate commercial license.
+This follows the non-commercial licensing requirements of `PySide6-Fluent-Widgets` (`qfluentwidgets`).
+
+## Contributing
+
+1. Fork the repository and create a branch.
+2. Install dev dependencies:
 
 ```sh
 uv pip install -e .[dev]
 ```
 
-Use `PyInstaller`:
+3. Make your changes.
+4. Run tests:
 
 ```sh
- pyinstaller MarkItDown.spec --clean
+uv run pytest -q
 ```
 
-The default spec builds an `onedir` bundle at `dist/MarkItDown/` for faster startup.
-
-## License
-
-Licensed under **GPLv3 for non-commercial projects**.
-
-Commercial use requires a separate commercial license.  
-This aligns with the licensing model stated by `PySide6-Fluent-Widgets` (`qfluentwidgets`).
-
-## Contributing
-
-Contributions are welcome! Please follow these steps to contribute:
-
-1.  **Fork the repository** and create a new branch for your feature or bug fix.
-2.  **Set up the development environment**:
-    - It is recommended to use a virtual environment.
-    - This project uses `uv` for package management.
-    - To install all dependencies, including for development and testing, run:
-      ```sh
-      uv pip install -e .[dev]
-      ```
-3.  **Make your changes**.
-4.  **Run the tests** to ensure everything is working correctly:
-    ```sh
-    pytest
-    ```
-5.  **Submit a pull request** with a clear description of your changes.
+5. Open a pull request with a clear summary.
 
 ## Credits
 
-- **MarkItDown** ([MIT License](https://opensource.org/licenses/MIT))
-- **PySide6** ([LGPLv3 License](https://www.gnu.org/licenses/lgpl-3.0.html))
-- **Lucide Icons** ([MIT License](https://lucide.dev/))
+- MarkItDown ([MIT License](https://opensource.org/licenses/MIT))
+- PySide6 ([LGPLv3 License](https://www.gnu.org/licenses/lgpl-3.0.html))
+- PySide6-Fluent-Widgets / QFluentWidgets ([Project site](https://qfluentwidgets.com))
 
 
