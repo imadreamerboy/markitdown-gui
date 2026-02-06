@@ -1,18 +1,13 @@
 from __future__ import annotations
 
-from qfluentwidgets import (
-    FluentIcon as FIF,
-    FluentWindow,
-    NavigationItemPosition,
-    Theme,
-    setTheme,
-)
+from qfluentwidgets import FluentIcon as FIF, FluentWindow, NavigationItemPosition
 
 from markitdowngui.core.settings import SettingsManager
 from markitdowngui.ui.dialogs.about import AboutDialog
 from markitdowngui.ui.help_interface import HelpInterface
 from markitdowngui.ui.home_interface import HomeInterface
 from markitdowngui.ui.settings_interface import SettingsInterface
+from markitdowngui.ui.themes import apply_app_theme, build_app_stylesheet
 from markitdowngui.utils.logger import AppLogger
 from markitdowngui.utils.translations import DEFAULT_LANG, get_translation
 
@@ -80,12 +75,9 @@ class MainWindow(FluentWindow):
 
     def apply_theme(self) -> None:
         theme_mode = self.settings_manager.get_theme_mode()
-        if theme_mode == "dark":
-            setTheme(Theme.DARK)
-        elif theme_mode == "system":
-            setTheme(Theme.AUTO)
-        else:
-            setTheme(Theme.LIGHT)
+        is_dark = apply_app_theme(theme_mode)
+        self.setStyleSheet(build_app_stylesheet(is_dark))
+        self.homeInterface.apply_theme_styles(is_dark)
 
     def show_about(self) -> None:
         dlg = AboutDialog(self.translate, self)

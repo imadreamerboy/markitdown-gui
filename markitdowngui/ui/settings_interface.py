@@ -61,7 +61,7 @@ class SettingsInterface(QWidget):
             self.translate("settings_output_folder_placeholder")
         )
         self.output_folder_edit.editingFinished.connect(self._save_output_folder)
-        self.output_folder_button = PushButton(self.translate("browse_files_button"))
+        self.output_folder_button = PushButton(self.translate("browse_button_compact"))
         self.output_folder_button.clicked.connect(self._browse_output_folder)
         folder_row.addWidget(self.output_folder_edit, 1)
         folder_row.addWidget(self.output_folder_button)

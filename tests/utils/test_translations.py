@@ -30,3 +30,22 @@ def test_get_available_languages():
     assert 'zh_CN' in langs
     assert langs['en'] == "&English"
     assert langs['zh_CN'] == "简体中文(&S)" 
+
+def test_home_translation_keys_exist():
+    """Ensure new Home UX translation keys exist in both languages."""
+    required_keys = [
+        "home_empty_state_title",
+        "home_queue_title_with_count",
+        "home_back_to_queue_button",
+        "home_start_over_button",
+        "home_rendered_view_button",
+        "home_raw_view_button",
+        "home_copy_markdown_button",
+        "home_save_markdown_button",
+        "remove_selected_action",
+        "clear_list_action",
+    ]
+
+    for lang in ["en", "zh_CN"]:
+        for key in required_keys:
+            assert key in TRANSLATIONS[lang]

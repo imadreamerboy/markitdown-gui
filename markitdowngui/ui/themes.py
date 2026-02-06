@@ -1,124 +1,138 @@
-from PySide6.QtGui import QPalette, QColor
-from PySide6.QtCore import Qt
+from __future__ import annotations
 
-# Custom Dark and Light themes
-DARK_THEME_COLORS = {
-    "background": "#202020",
-    "text": "#E0E0E0",
-    "base": "#2B2B2B",
-    "alternate_base": "#353535",
-    "tooltip_base": "#2B2B2B",
-    "tooltip_text": "#E0E0E0",
-    "button": "#404040",
-    "button_text": "#E0E0E0",
-    "link": "#6DA3FF",
-    "highlight": "#6DA3FF",
-    "highlighted_text": "#FFFFFF",
-    "placeholder_text": "#A0A0A0",
-}
+from PySide6.QtGui import QColor, QPalette
+from qfluentwidgets import Theme, isDarkTheme, setTheme, setThemeColor
 
-LIGHT_THEME_COLORS = {
-    "background": "#F0F0F0",
-    "text": "#1E1E1E",
-    "base": "#FFFFFF",
-    "alternate_base": "#F5F5F5",
-    "tooltip_base": "#FFFFFF",
-    "tooltip_text": "#1E1E1E",
-    "button": "#E0E0E0",
-    "button_text": "#1E1E1E",
-    "link": "#0078D7",
-    "highlight": "#0078D7",
-    "highlighted_text": "#FFFFFF",
-    "placeholder_text": "#606060",
-}
+ACCENT_COLOR = "#0E7490"
 
-# Solarized palette (classic) - kept for markdown CSS if needed, but not for main palette
-SOLARIZED = {
-    "base03": "#002b36", "base02": "#073642", "base01": "#586e75", "base00": "#657b83",
-    "base0":  "#839496", "base1":  "#93a1a1", "base2":  "#eee8d5", "base3":  "#fdf6e3",
-    "yellow": "#b58900", "orange": "#cb4b16", "red":    "#dc322f", "magenta":"#d33682",
-    "violet": "#6c71c4", "blue":   "#268bd2", "cyan":   "#2aa198", "green":  "#859900",
-}
 
-def _qcolor(hex_str: str) -> QColor:
-    c = QColor()
-    c.setNamedColor(hex_str)
-    return c
+def apply_app_theme(theme_mode: str) -> bool:
+    """Apply app theme and return whether dark mode is active."""
+    normalized = (theme_mode or "").strip().lower()
+    if normalized == "dark":
+        setTheme(Theme.DARK)
+    elif normalized == "system":
+        setTheme(Theme.AUTO)
+    else:
+        setTheme(Theme.LIGHT)
 
-def apply_dark_theme(palette: QPalette) -> QPalette:
-    """Apply a dark theme palette to the given QPalette."""
-    p = QPalette(palette)  # copy in case a palette is passed in
-    # Use ColorRole enum for PySide6 type checkers
-    p.setColor(QPalette.ColorRole.Window,       _qcolor(DARK_THEME_COLORS["background"]))
-    p.setColor(QPalette.ColorRole.WindowText,   _qcolor(DARK_THEME_COLORS["text"]))
-    p.setColor(QPalette.ColorRole.Base,         _qcolor(DARK_THEME_COLORS["base"]))
-    p.setColor(QPalette.ColorRole.AlternateBase,_qcolor(DARK_THEME_COLORS["alternate_base"]))
-    p.setColor(QPalette.ColorRole.ToolTipBase,  _qcolor(DARK_THEME_COLORS["tooltip_base"]))
-    p.setColor(QPalette.ColorRole.ToolTipText,  _qcolor(DARK_THEME_COLORS["tooltip_text"]))
-    p.setColor(QPalette.ColorRole.Text,         _qcolor(DARK_THEME_COLORS["text"]))
-    p.setColor(QPalette.ColorRole.Button,       _qcolor(DARK_THEME_COLORS["button"]))
-    p.setColor(QPalette.ColorRole.ButtonText,   _qcolor(DARK_THEME_COLORS["button_text"]))
-    p.setColor(QPalette.ColorRole.Link,         _qcolor(DARK_THEME_COLORS["link"]))
-    p.setColor(QPalette.ColorRole.Highlight,    _qcolor(DARK_THEME_COLORS["highlight"]))
-    p.setColor(QPalette.ColorRole.HighlightedText, _qcolor(DARK_THEME_COLORS["highlighted_text"]))
-    p.setColor(QPalette.ColorRole.PlaceholderText, _qcolor(DARK_THEME_COLORS["placeholder_text"]))
-    return p
+    setThemeColor(ACCENT_COLOR)
+    return bool(isDarkTheme())
+
+
+def build_app_stylesheet(is_dark: bool) -> str:
+    """Return global app QSS for cleaner card and section visuals."""
+    if is_dark:
+        panel_bg = "#1f252d"
+        card_bg = "#262d36"
+        border = "#3a4654"
+        text = "#eaf0f7"
+        subtext = "#bdc9d8"
+        input_bg = "#1d232b"
+        hover = "#334456"
+    else:
+        panel_bg = "#f3f7fb"
+        card_bg = "#ffffff"
+        border = "#d7e0ea"
+        text = "#17212e"
+        subtext = "#52657c"
+        input_bg = "#ffffff"
+        hover = "#eef4fb"
+
+    return f"""
+QWidget#SettingsInterface, QWidget#HelpInterface, QWidget#HomeInterface {{
+    background: {panel_bg};
+}}
+CardWidget {{
+    background: {card_bg};
+    border: 1px solid {border};
+    border-radius: 12px;
+}}
+QGroupBox {{
+    border: 1px solid {border};
+    border-radius: 10px;
+    margin-top: 14px;
+    padding: 12px 10px 10px 10px;
+    font-weight: 600;
+    color: {text};
+    background: {card_bg};
+}}
+QGroupBox::title {{
+    subcontrol-origin: margin;
+    left: 10px;
+    padding: 0 6px;
+    color: {subtext};
+}}
+QTextEdit, QTextBrowser, QListWidget, QLineEdit {{
+    background: {input_bg};
+    border: 1px solid {border};
+    border-radius: 8px;
+    color: {text};
+}}
+QTextEdit:focus, QTextBrowser:focus, QListWidget:focus, QLineEdit:focus {{
+    border: 1px solid {ACCENT_COLOR};
+}}
+QListWidget::item {{
+    padding: 6px 8px;
+}}
+QListWidget::item:selected {{
+    background: {hover};
+}}
+"""
+
+
+def markdown_html_css(is_dark: bool) -> str:
+    """Return CSS for rendered markdown HTML."""
+    if is_dark:
+        bg = "#1d232b"
+        text = "#eaf0f7"
+        link = "#6cd8ff"
+        code_bg = "#2a3340"
+        border = "#445365"
+        muted = "#b7c4d3"
+    else:
+        bg = "#ffffff"
+        text = "#17212e"
+        link = "#0b63ce"
+        code_bg = "#f0f5fa"
+        border = "#d7e0ea"
+        muted = "#52657c"
+
+    return (
+        "body {"
+        f"background:{bg}; color:{text}; font-size:13px; line-height:1.5; "
+        "font-family:'Segoe UI', 'Noto Sans', sans-serif; margin:8px;"
+        "}"
+        f"a {{ color:{link}; }}"
+        "h1,h2,h3,h4 { margin-top: 14px; margin-bottom: 8px; }"
+        f"pre, code {{ background:{code_bg}; border-radius:6px; }}"
+        "pre { padding:10px; overflow:auto; border:1px solid transparent; }"
+        "code { padding:1px 4px; }"
+        f"blockquote {{ border-left:4px solid {border}; margin:8px 0; padding:4px 10px; color:{muted}; }}"
+        f"table, th, td {{ border: 1px solid {border}; border-collapse: collapse; }}"
+        "th, td { padding: 6px 8px; }"
+    )
+
+
+def apply_dark_theme(palette: QPalette | None = None) -> QPalette:
+    """Backward-compatible helper."""
+    setTheme(Theme.DARK)
+    setThemeColor(ACCENT_COLOR)
+    return palette or QPalette()
+
 
 def apply_light_theme() -> QPalette:
-    """Return a light theme palette."""
-    p = QPalette()
-    p.setColor(QPalette.ColorRole.Window,       _qcolor(LIGHT_THEME_COLORS["background"]))
-    p.setColor(QPalette.ColorRole.WindowText,   _qcolor(LIGHT_THEME_COLORS["text"]))
-    p.setColor(QPalette.ColorRole.Base,         _qcolor(LIGHT_THEME_COLORS["base"]))
-    p.setColor(QPalette.ColorRole.AlternateBase,_qcolor(LIGHT_THEME_COLORS["alternate_base"]))
-    p.setColor(QPalette.ColorRole.ToolTipBase,  _qcolor(LIGHT_THEME_COLORS["tooltip_base"]))
-    p.setColor(QPalette.ColorRole.ToolTipText,  _qcolor(LIGHT_THEME_COLORS["tooltip_text"]))
-    p.setColor(QPalette.ColorRole.Text,         _qcolor(LIGHT_THEME_COLORS["text"]))
-    p.setColor(QPalette.ColorRole.Button,       _qcolor(LIGHT_THEME_COLORS["button"]))
-    p.setColor(QPalette.ColorRole.ButtonText,   _qcolor(LIGHT_THEME_COLORS["button_text"]))
-    p.setColor(QPalette.ColorRole.Link,         _qcolor(LIGHT_THEME_COLORS["link"]))
-    p.setColor(QPalette.ColorRole.Highlight,    _qcolor(LIGHT_THEME_COLORS["highlight"]))
-    p.setColor(QPalette.ColorRole.HighlightedText, _qcolor(LIGHT_THEME_COLORS["highlighted_text"]))
-    p.setColor(QPalette.ColorRole.PlaceholderText, _qcolor(LIGHT_THEME_COLORS["placeholder_text"]))
-    return p
+    """Backward-compatible helper."""
+    setTheme(Theme.LIGHT)
+    setThemeColor(ACCENT_COLOR)
+    return QPalette()
+
 
 def markdown_css(is_dark: bool) -> str:
-    """Return QSS for Markdown preview and themed menus/menubar."""
-    if is_dark:
-        bg = DARK_THEME_COLORS["background"]
-        text = DARK_THEME_COLORS["text"]
-        link = DARK_THEME_COLORS["link"]
-        base = DARK_THEME_COLORS["base"]
-        highlight = DARK_THEME_COLORS["highlight"]
-        highlighted_text = DARK_THEME_COLORS["highlighted_text"]
-    else:
-        bg = LIGHT_THEME_COLORS["background"]
-        text = LIGHT_THEME_COLORS["text"]
-        link = LIGHT_THEME_COLORS["link"]
-        base = LIGHT_THEME_COLORS["base"]
-        highlight = LIGHT_THEME_COLORS["highlight"]
-        highlighted_text = LIGHT_THEME_COLORS["highlighted_text"]
+    """Backward-compatible alias for markdown style retrieval."""
+    return markdown_html_css(is_dark)
 
-    # QTextBrowser markdown area
-    qss = (
-        f"QTextBrowser {{ background:{bg}; color:{text}; }}"
-        f"a {{ color:{link}; }}"
-        f"h1,h2,h3 {{ color:{text}; }}"
-        f"code, pre {{ background:{base}; color:{text}; border-radius:4px; padding:2px 4px; }}"
-    )
 
-    # Ensure QMenuBar and QMenu follow theme (addresses dark submenu on light theme)
-    qss += (
-        f" QMenuBar {{ background:{bg}; color:{text}; }}"
-        f" QMenuBar::item {{ background:transparent; color:{text}; padding:4px 8px; }}"
-        f" QMenuBar::item:selected {{ background:{highlight}; color:{highlighted_text}; }}"
-        f" QMenu {{ background:{base}; color:{text}; border:1px solid {highlight}; }}"
-        f" QMenu::item {{ padding:4px 18px; background:transparent; color:{text}; }}"
-        f" QMenu::item:selected {{ background:{highlight}; color:{highlighted_text}; }}"
-        f" QMenu::separator {{ height:1px; background:{highlight}; margin:4px 6px; }}"
-        f" QToolTip {{ color:{text}; background:{base}; border:1px solid {highlight}; }}"
-        # Splitter handle styling for clearer affordance
-        f" QSplitter::handle {{ background:{highlight}; width:6px; margin:0px; }}"
-        f" QSplitter::handle:hover {{ background:{highlight}; }}"
-    )
-    return qss
+def qcolor(hex_color: str) -> QColor:
+    return QColor(hex_color)
+

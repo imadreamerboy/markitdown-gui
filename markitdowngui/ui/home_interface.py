@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QKeySequence, QShortcut
+from PySide6.QtGui import QKeySequence, QShortcut, QTextDocument
 from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
@@ -11,24 +11,33 @@ from PySide6.QtWidgets import (
     QListWidget,
     QMessageBox,
     QSplitter,
-    QTextEdit,
+    QStackedWidget,
     QTextBrowser,
+    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
-from qfluentwidgets import BodyLabel, CaptionLabel, CardWidget, PrimaryPushButton, ProgressBar, PushButton
+from qfluentwidgets import (
+    BodyLabel,
+    CaptionLabel,
+    CardWidget,
+    PrimaryPushButton,
+    ProgressBar,
+    PushButton,
+)
 
 from markitdowngui.core.conversion import ConversionWorker
 from markitdowngui.core.file_utils import FileManager
 from markitdowngui.core.settings import SettingsManager
 from markitdowngui.ui.components.file_panel import FilePanel
 from markitdowngui.ui.dialogs.shortcuts import ShortcutDialog
+from markitdowngui.ui.themes import markdown_html_css
 from markitdowngui.utils.logger import AppLogger
 from markitdowngui.utils.translations import DEFAULT_LANG
 
 
 class HomeInterface(QWidget):
-    """Home page with queue and conversion result states."""
+    """Home page with empty, queue, and results states."""
 
     def __init__(self, settings_manager: SettingsManager, parent=None):
         super().__init__(parent=parent)
@@ -37,6 +46,9 @@ class HomeInterface(QWidget):
         self.file_manager = FileManager()
         self.worker: ConversionWorker | None = None
         self.conversionResults: dict[str, str] = {}
+        self.sourcePreviewCache: dict[str, str] = {}
+        self._is_dark_theme = False
+        self._current_markdown = ""
         self.setAcceptDrops(True)
 
         self._build_ui()
@@ -59,34 +71,56 @@ class HomeInterface(QWidget):
 
         self.empty_card = CardWidget(self)
         empty_layout = QVBoxLayout(self.empty_card)
-        empty_layout.setContentsMargins(24, 24, 24, 24)
+        empty_layout.setContentsMargins(30, 28, 30, 28)
         empty_layout.setSpacing(10)
         empty_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.empty_title = BodyLabel(self.translate("home_empty_title"))
-        self.empty_subtitle = CaptionLabel(self.translate("home_empty_subtitle"))
-        self.empty_supported = CaptionLabel(self.translate("home_supported_formats"))
-        self.empty_select_btn = PrimaryPushButton(self.translate("browse_files_button"))
+        empty_layout.addWidget(
+            BodyLabel(self.translate("home_empty_state_title")),
+            0,
+            Qt.AlignmentFlag.AlignHCenter,
+        )
+        empty_layout.addWidget(
+            CaptionLabel(self.translate("home_empty_subtitle")),
+            0,
+            Qt.AlignmentFlag.AlignHCenter,
+        )
+        self.empty_select_btn = PrimaryPushButton(self.translate("home_add_files_button"))
         self.empty_select_btn.clicked.connect(self.browse_files)
-        empty_layout.addWidget(self.empty_title, 0, Qt.AlignmentFlag.AlignHCenter)
-        empty_layout.addWidget(self.empty_subtitle, 0, Qt.AlignmentFlag.AlignHCenter)
         empty_layout.addWidget(self.empty_select_btn, 0, Qt.AlignmentFlag.AlignHCenter)
-        empty_layout.addWidget(self.empty_supported, 0, Qt.AlignmentFlag.AlignHCenter)
+        empty_layout.addWidget(
+            CaptionLabel(self.translate("home_supported_formats")),
+            0,
+            Qt.AlignmentFlag.AlignHCenter,
+        )
 
         self.queue_card = CardWidget(self)
         queue_layout = QVBoxLayout(self.queue_card)
         queue_layout.setContentsMargins(12, 12, 12, 12)
-        queue_layout.setSpacing(8)
-        queue_layout.addWidget(BodyLabel(self.translate("home_queue_title")))
+        queue_layout.setSpacing(10)
+
+        queue_header = QHBoxLayout()
+        queue_header.setSpacing(8)
+        self.queue_title = BodyLabel(self.translate("home_queue_title"))
+        self.add_files_btn = PushButton(self.translate("home_add_files_button"))
+        self.add_files_btn.clicked.connect(self.browse_files)
+        queue_header.addWidget(self.queue_title)
+        queue_header.addStretch(1)
+        queue_header.addWidget(self.add_files_btn)
+        queue_layout.addLayout(queue_header)
 
         self.filePanel = FilePanel(self.translate)
         self.filePanel.files_added.connect(self.handle_files_added)
+        model = self.filePanel.drop.listWidget.model()
+        model.rowsInserted.connect(lambda *_args: self._update_queue_title())
+        model.rowsRemoved.connect(lambda *_args: self._on_queue_rows_removed())
+        model.modelReset.connect(lambda: self._on_queue_rows_removed())
         queue_layout.addWidget(self.filePanel, 1)
 
         queue_actions = QHBoxLayout()
         queue_actions.setSpacing(8)
-        self.remove_selected_btn = PushButton(self.translate("remove_selected_action"))
+        self.remove_selected_btn = PushButton(self.translate("home_remove_selected_button"))
         self.remove_selected_btn.clicked.connect(self.remove_selected_files)
-        self.clear_list_btn = PushButton(self.translate("clear_list_action"))
+        self.clear_list_btn = PushButton(self.translate("home_clear_queue_button"))
         self.clear_list_btn.clicked.connect(self.clear_file_list)
         queue_actions.addWidget(self.remove_selected_btn)
         queue_actions.addWidget(self.clear_list_btn)
@@ -94,7 +128,9 @@ class HomeInterface(QWidget):
         queue_layout.addLayout(queue_actions)
 
         self.progress = ProgressBar()
+        self.progress_status = CaptionLabel("")
         queue_layout.addWidget(self.progress)
+        queue_layout.addWidget(self.progress_status)
 
         controls = QHBoxLayout()
         controls.setSpacing(8)
@@ -116,12 +152,26 @@ class HomeInterface(QWidget):
         self.results_card = CardWidget(self)
         results_layout = QVBoxLayout(self.results_card)
         results_layout.setContentsMargins(12, 12, 12, 12)
-        results_layout.setSpacing(8)
-        results_layout.addWidget(BodyLabel(self.translate("home_results_title")))
+        results_layout.setSpacing(10)
+
+        results_header = QHBoxLayout()
+        results_header.setSpacing(8)
+        results_header.addWidget(BodyLabel(self.translate("home_results_title")))
+        results_header.addStretch(1)
+        self.back_to_queue_btn = PushButton(self.translate("home_back_to_queue_button"))
+        self.back_to_queue_btn.setObjectName("resultsBackButton")
+        self.back_to_queue_btn.clicked.connect(self.go_back_to_queue)
+        self.start_over_btn = PushButton(self.translate("home_start_over_button"))
+        self.start_over_btn.setObjectName("resultsResetButton")
+        self.start_over_btn.clicked.connect(self.start_new_conversion)
+        results_header.addWidget(self.back_to_queue_btn)
+        results_header.addWidget(self.start_over_btn)
+        results_layout.addLayout(results_header)
 
         splitter = QSplitter(Qt.Orientation.Horizontal, self.results_card)
         self.result_file_list = QListWidget(splitter)
         self.result_file_list.currentItemChanged.connect(self._on_result_file_changed)
+        self.result_file_list.setMinimumWidth(200)
 
         left_panel = QWidget(splitter)
         left_layout = QVBoxLayout(left_panel)
@@ -130,6 +180,7 @@ class HomeInterface(QWidget):
         left_layout.addWidget(BodyLabel(self.translate("home_source_label")))
         self.source_text = QTextEdit(left_panel)
         self.source_text.setReadOnly(True)
+        self.source_text.setPlaceholderText(self.translate("home_source_placeholder"))
         left_layout.addWidget(self.source_text, 1)
 
         right_panel = QWidget(splitter)
@@ -137,9 +188,33 @@ class HomeInterface(QWidget):
         right_layout.setContentsMargins(0, 0, 0, 0)
         right_layout.setSpacing(6)
         right_layout.addWidget(BodyLabel(self.translate("home_markdown_preview_label")))
-        self.markdown_preview = QTextBrowser(right_panel)
-        self.markdown_preview.setOpenExternalLinks(True)
-        right_layout.addWidget(self.markdown_preview, 1)
+
+        markdown_mode_row = QHBoxLayout()
+        markdown_mode_row.setSpacing(6)
+        self.rendered_toggle = PushButton(self.translate("home_rendered_view_button"))
+        self.raw_toggle = PushButton(self.translate("home_raw_view_button"))
+        self.rendered_toggle.setCheckable(True)
+        self.raw_toggle.setCheckable(True)
+        self.rendered_toggle.setChecked(True)
+        self.rendered_toggle.clicked.connect(self._show_rendered_markdown)
+        self.raw_toggle.clicked.connect(self._show_raw_markdown)
+        markdown_mode_row.addWidget(self.rendered_toggle)
+        markdown_mode_row.addWidget(self.raw_toggle)
+        markdown_mode_row.addStretch(1)
+        right_layout.addLayout(markdown_mode_row)
+
+        self.markdown_stack = QStackedWidget(right_panel)
+        self.markdown_rendered = QTextBrowser(self.markdown_stack)
+        self.markdown_rendered.setOpenExternalLinks(True)
+        self.markdown_rendered.setPlaceholderText(
+            self.translate("home_markdown_placeholder")
+        )
+        self.markdown_raw = QTextEdit(self.markdown_stack)
+        self.markdown_raw.setReadOnly(True)
+        self.markdown_raw.setPlaceholderText(self.translate("home_markdown_placeholder"))
+        self.markdown_stack.addWidget(self.markdown_rendered)
+        self.markdown_stack.addWidget(self.markdown_raw)
+        right_layout.addWidget(self.markdown_stack, 1)
 
         splitter.addWidget(self.result_file_list)
         splitter.addWidget(left_panel)
@@ -152,9 +227,9 @@ class HomeInterface(QWidget):
         result_actions = QHBoxLayout()
         result_actions.setSpacing(8)
         result_actions.addStretch(1)
-        self.copy_btn = PushButton(self.translate("copy_output_button"))
+        self.copy_btn = PushButton(self.translate("home_copy_markdown_button"))
         self.copy_btn.clicked.connect(self.copy_output)
-        self.save_btn = PushButton(self.translate("save_output_button"))
+        self.save_btn = PrimaryPushButton(self.translate("home_save_markdown_button"))
         self.save_btn.clicked.connect(self.save_output)
         result_actions.addWidget(self.copy_btn)
         result_actions.addWidget(self.save_btn)
@@ -163,6 +238,11 @@ class HomeInterface(QWidget):
         self.main_layout.addWidget(self.empty_card)
         self.main_layout.addWidget(self.queue_card)
         self.main_layout.addWidget(self.results_card, 1)
+
+    def apply_theme_styles(self, is_dark: bool) -> None:
+        self._is_dark_theme = bool(is_dark)
+        if self._current_markdown:
+            self._set_markdown_preview(self._current_markdown)
 
     def setup_shortcuts(self) -> None:
         QShortcut(QKeySequence("Ctrl+O"), self, self.browse_files)
@@ -275,6 +355,7 @@ class HomeInterface(QWidget):
         if added:
             self._set_state_queue()
             self._clear_result_views()
+            self._update_queue_title()
 
     def handleNewFile(self, filepath: str) -> None:
         try:
@@ -300,14 +381,13 @@ class HomeInterface(QWidget):
         )
         for item in selected:
             widget.takeItem(widget.row(item))
-        if widget.count() == 0:
-            self._set_state_empty()
-        self._clear_result_views()
+        self._on_queue_rows_removed()
 
     def clear_file_list(self) -> None:
         self.filePanel.clear()
         self._clear_result_views()
         self._set_state_empty()
+        self._update_queue_title()
         AppLogger.info(self.translate("file_list_cleared_log"))
 
     def toggle_pause(self, paused: bool) -> None:
@@ -354,7 +434,7 @@ class HomeInterface(QWidget):
             return
 
         try:
-            # Delay importing MarkItDown until conversion actually starts.
+            # Delay importing MarkItDown until conversion starts.
             from markitdown import MarkItDown
 
             md = MarkItDown()
@@ -370,6 +450,7 @@ class HomeInterface(QWidget):
             self.cancel_button.setEnabled(True)
             self.convert_button.setEnabled(False)
             self.progress.setValue(0)
+            self.progress_status.setText(self.translate("conversion_starting_message"))
             self.progress.setFormat(self.translate("conversion_starting_message"))
             self.worker.start()
             self._set_state_queue()
@@ -383,17 +464,18 @@ class HomeInterface(QWidget):
             self._reset_controls()
 
     def update_progress(self, progress: int, current_file: str) -> None:
-        self.progress.setValue(progress)
-        self.progress.setFormat(
-            self.translate("conversion_progress_format").format(
-                progress=progress, file=os.path.basename(current_file)
-            )
+        text = self.translate("conversion_progress_format").format(
+            progress=progress, file=os.path.basename(current_file)
         )
+        self.progress.setValue(progress)
+        self.progress.setFormat(text)
+        self.progress_status.setText(text)
 
     def handle_conversion_finished(self, results: dict[str, str]) -> None:
         self.conversionResults = results
         self.progress.setValue(100)
         self.progress.setFormat(self.translate("conversion_complete_message"))
+        self.progress_status.setText(self.translate("conversion_complete_message"))
         self._reset_controls()
         self._populate_result_view()
         self._set_state_results()
@@ -413,6 +495,7 @@ class HomeInterface(QWidget):
 
     def _populate_result_view(self) -> None:
         self.result_file_list.clear()
+        self.sourcePreviewCache.clear()
         for file in self.conversionResults.keys():
             item_text = os.path.basename(file)
             self.result_file_list.addItem(item_text)
@@ -425,15 +508,77 @@ class HomeInterface(QWidget):
     def _on_result_file_changed(self, current, _previous) -> None:
         if not current:
             self.source_text.clear()
-            self.markdown_preview.clear()
+            self._set_markdown_preview("")
             return
+
         file_path = current.data(Qt.ItemDataRole.UserRole)
+        if file_path not in self.sourcePreviewCache:
+            self.sourcePreviewCache[file_path] = self._read_source_preview(file_path)
+        self.source_text.setPlainText(self.sourcePreviewCache[file_path])
+
         markdown = self.conversionResults.get(file_path, "")
-        self.source_text.setPlainText(markdown)
-        self.markdown_preview.setMarkdown(markdown)
+        self._set_markdown_preview(markdown)
+
+    def _set_markdown_preview(self, markdown_text: str) -> None:
+        self._current_markdown = markdown_text
+        self.markdown_raw.setPlainText(markdown_text)
+
+        if not markdown_text:
+            self.markdown_rendered.clear()
+            return
+
+        doc = QTextDocument()
+        doc.setMarkdown(markdown_text)
+        rendered_html = doc.toHtml()
+        css = markdown_html_css(self._is_dark_theme)
+        self.markdown_rendered.setHtml(f"<style>{css}</style>{rendered_html}")
+
+    def _show_rendered_markdown(self) -> None:
+        self.rendered_toggle.setChecked(True)
+        self.raw_toggle.setChecked(False)
+        self.markdown_stack.setCurrentWidget(self.markdown_rendered)
+
+    def _show_raw_markdown(self) -> None:
+        self.raw_toggle.setChecked(True)
+        self.rendered_toggle.setChecked(False)
+        self.markdown_stack.setCurrentWidget(self.markdown_raw)
+
+    def _read_source_preview(self, file_path: str) -> str:
+        extension = os.path.splitext(file_path)[1].lower()
+        text_like_exts = {
+            ".md",
+            ".markdown",
+            ".txt",
+            ".csv",
+            ".json",
+            ".xml",
+            ".html",
+            ".htm",
+            ".py",
+            ".yaml",
+            ".yml",
+            ".log",
+        }
+        if extension not in text_like_exts:
+            return self.translate("home_source_binary_placeholder").format(
+                file=os.path.basename(file_path)
+            )
+
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                text = f.read(24000)
+        except UnicodeDecodeError:
+            with open(file_path, "r", encoding="latin-1", errors="replace") as f:
+                text = f.read(24000)
+        except Exception as e:
+            return self.translate("home_source_error").format(error=str(e))
+
+        if len(text) >= 23999:
+            text += "\n\n... (truncated)"
+        return text
 
     def copy_output(self) -> None:
-        text = self.markdown_preview.toPlainText()
+        text = self.markdown_raw.toPlainText().strip()
         if text:
             QApplication.clipboard().setText(text)
 
@@ -517,9 +662,19 @@ class HomeInterface(QWidget):
 
     def _clear_result_views(self) -> None:
         self.conversionResults = {}
+        self.sourcePreviewCache.clear()
         self.result_file_list.clear()
         self.source_text.clear()
-        self.markdown_preview.clear()
+        self._set_markdown_preview("")
+
+    def go_back_to_queue(self) -> None:
+        if not self.filePanel.get_all_files():
+            self._set_state_empty()
+            return
+        self._set_state_queue()
+
+    def start_new_conversion(self) -> None:
+        self.clear_file_list()
 
     def _set_state_empty(self) -> None:
         self.empty_card.setVisible(True)
@@ -527,8 +682,9 @@ class HomeInterface(QWidget):
         self.results_card.setVisible(False)
 
     def _set_state_queue(self) -> None:
-        self.empty_card.setVisible(False)
-        self.queue_card.setVisible(True)
+        has_files = bool(self.filePanel.get_all_files())
+        self.empty_card.setVisible(not has_files)
+        self.queue_card.setVisible(has_files)
         self.results_card.setVisible(False)
 
     def _set_state_results(self) -> None:
@@ -536,6 +692,18 @@ class HomeInterface(QWidget):
         self.queue_card.setVisible(False)
         self.results_card.setVisible(True)
 
+    def _on_queue_rows_removed(self) -> None:
+        self._update_queue_title()
+        if not self.filePanel.get_all_files() and not self.results_card.isVisible():
+            self._set_state_empty()
+
+    def _update_queue_title(self) -> None:
+        count = len(self.filePanel.get_all_files())
+        self.queue_title.setText(
+            self.translate("home_queue_title_with_count").format(count=count)
+        )
+
     def show_shortcuts(self) -> None:
         dialog = ShortcutDialog(self.translate, self)
         dialog.exec()
+
