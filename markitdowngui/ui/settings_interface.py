@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
 from qfluentwidgets import (
     BodyLabel,
     ComboBox,
+    FluentIcon as FIF,
     LineEdit,
     PushButton,
     RadioButton,
@@ -62,6 +63,7 @@ class SettingsInterface(QWidget):
         )
         self.output_folder_edit.editingFinished.connect(self._save_output_folder)
         self.output_folder_button = PushButton(self.translate("browse_button_compact"))
+        self.output_folder_button.setIcon(FIF.FOLDER)
         self.output_folder_button.clicked.connect(self._browse_output_folder)
         folder_row.addWidget(self.output_folder_edit, 1)
         folder_row.addWidget(self.output_folder_button)

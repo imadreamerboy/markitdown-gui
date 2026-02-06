@@ -23,45 +23,55 @@ def apply_app_theme(theme_mode: str) -> bool:
 def build_app_stylesheet(is_dark: bool) -> str:
     """Return global app QSS for cleaner card and section visuals."""
     if is_dark:
-        panel_bg = "#1f252d"
-        card_bg = "#262d36"
-        border = "#3a4654"
+        panel_bg_a = "#1b2129"
+        panel_bg_b = "#202834"
+        card_bg = "#262f3a"
+        card_bg_alt = "#222a35"
+        border = "#3a4656"
         text = "#eaf0f7"
         subtext = "#bdc9d8"
         input_bg = "#1d232b"
         hover = "#334456"
+        title = "#d9e7f8"
     else:
-        panel_bg = "#f3f7fb"
+        panel_bg_a = "#f7f9fd"
+        panel_bg_b = "#eef3f9"
         card_bg = "#ffffff"
-        border = "#d7e0ea"
-        text = "#17212e"
-        subtext = "#52657c"
-        input_bg = "#ffffff"
-        hover = "#eef4fb"
+        card_bg_alt = "#fbfdff"
+        border = "#dfe6f0"
+        text = "#1f2937"
+        subtext = "#5d6c83"
+        input_bg = "#fcfdff"
+        hover = "#e9f2ff"
+        title = "#2f3d55"
 
     return f"""
 QWidget#SettingsInterface, QWidget#HelpInterface, QWidget#HomeInterface {{
-    background: {panel_bg};
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 {panel_bg_a}, stop:1 {panel_bg_b});
 }}
-CardWidget {{
+CardWidget, ElevatedCardWidget, SimpleCardWidget {{
     background: {card_bg};
     border: 1px solid {border};
-    border-radius: 12px;
+    border-radius: 14px;
 }}
 QGroupBox {{
     border: 1px solid {border};
-    border-radius: 10px;
-    margin-top: 14px;
-    padding: 12px 10px 10px 10px;
+    border-radius: 12px;
+    margin-top: 16px;
+    padding: 12px 12px 12px 12px;
     font-weight: 600;
-    color: {text};
-    background: {card_bg};
+    color: {title};
+    background: {card_bg_alt};
 }}
 QGroupBox::title {{
     subcontrol-origin: margin;
-    left: 10px;
+    left: 12px;
     padding: 0 6px;
     color: {subtext};
+    background: transparent;
+}}
+BodyLabel, CaptionLabel, TitleLabel, SubtitleLabel {{
+    color: {text};
 }}
 QTextEdit, QTextBrowser, QListWidget, QLineEdit {{
     background: {input_bg};
@@ -77,6 +87,14 @@ QListWidget::item {{
 }}
 QListWidget::item:selected {{
     background: {hover};
+}}
+QSplitter::handle {{
+    background: {border};
+    margin: 2px;
+    border-radius: 2px;
+}}
+QSplitter::handle:hover {{
+    background: {subtext};
 }}
 """
 
@@ -135,4 +153,3 @@ def markdown_css(is_dark: bool) -> str:
 
 def qcolor(hex_color: str) -> QColor:
     return QColor(hex_color)
-

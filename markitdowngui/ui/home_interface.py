@@ -21,6 +21,7 @@ from qfluentwidgets import (
     BodyLabel,
     CaptionLabel,
     ElevatedCardWidget,
+    FluentIcon as FIF,
     InfoBar,
     InfoBarPosition,
     PillPushButton,
@@ -88,6 +89,7 @@ class HomeInterface(QWidget):
             Qt.AlignmentFlag.AlignHCenter,
         )
         self.empty_select_btn = PrimaryPushButton(self.translate("home_add_files_button"))
+        self.empty_select_btn.setIcon(FIF.FOLDER_ADD)
         self.empty_select_btn.clicked.connect(self.browse_files)
         empty_layout.addWidget(self.empty_select_btn, 0, Qt.AlignmentFlag.AlignHCenter)
         empty_layout.addWidget(
@@ -105,6 +107,7 @@ class HomeInterface(QWidget):
         queue_header.setSpacing(8)
         self.queue_title = BodyLabel(self.translate("home_queue_title"))
         self.add_files_btn = PillPushButton(self.translate("home_add_files_button"))
+        self.add_files_btn.setIcon(FIF.ADD)
         self.add_files_btn.clicked.connect(self.browse_files)
         queue_header.addWidget(self.queue_title)
         queue_header.addStretch(1)
@@ -122,8 +125,10 @@ class HomeInterface(QWidget):
         queue_actions = QHBoxLayout()
         queue_actions.setSpacing(8)
         self.remove_selected_btn = PushButton(self.translate("home_remove_selected_button"))
+        self.remove_selected_btn.setIcon(FIF.REMOVE)
         self.remove_selected_btn.clicked.connect(self.remove_selected_files)
         self.clear_list_btn = PushButton(self.translate("home_clear_queue_button"))
+        self.clear_list_btn.setIcon(FIF.DELETE)
         self.clear_list_btn.clicked.connect(self.clear_file_list)
         queue_actions.addWidget(self.remove_selected_btn)
         queue_actions.addWidget(self.clear_list_btn)
@@ -138,8 +143,11 @@ class HomeInterface(QWidget):
         controls = QHBoxLayout()
         controls.setSpacing(8)
         self.convert_button = PrimaryPushButton(self.translate("convert_files_button"))
+        self.convert_button.setIcon(FIF.PLAY)
         self.pause_button = PushButton(self.translate("pause_button"))
+        self.pause_button.setIcon(FIF.PAUSE)
         self.cancel_button = PushButton(self.translate("cancel_button"))
+        self.cancel_button.setIcon(FIF.CANCEL)
         self.pause_button.setCheckable(True)
         self.pause_button.setEnabled(False)
         self.cancel_button.setEnabled(False)
@@ -162,8 +170,10 @@ class HomeInterface(QWidget):
         results_header.addWidget(BodyLabel(self.translate("home_results_title")))
         results_header.addStretch(1)
         self.back_to_queue_btn = PushButton(self.translate("home_back_to_queue_button"))
+        self.back_to_queue_btn.setIcon(FIF.RETURN)
         self.back_to_queue_btn.clicked.connect(self.go_back_to_queue)
         self.start_over_btn = PushButton(self.translate("home_start_over_button"))
+        self.start_over_btn.setIcon(FIF.CLEAR_SELECTION)
         self.start_over_btn.clicked.connect(self.start_new_conversion)
         results_header.addWidget(self.back_to_queue_btn)
         results_header.addWidget(self.start_over_btn)
@@ -191,10 +201,16 @@ class HomeInterface(QWidget):
 
         self.preview_mode_segment = SegmentedWidget(right_panel)
         self.preview_mode_segment.addItem(
-            "rendered", self.translate("home_rendered_view_button"), self._show_rendered_markdown
+            "rendered",
+            self.translate("home_rendered_view_button"),
+            self._show_rendered_markdown,
+            FIF.VIEW,
         )
         self.preview_mode_segment.addItem(
-            "raw", self.translate("home_raw_view_button"), self._show_raw_markdown
+            "raw",
+            self.translate("home_raw_view_button"),
+            self._show_raw_markdown,
+            FIF.CODE,
         )
         self.preview_mode_segment.setCurrentItem("rendered")
         right_layout.addWidget(self.preview_mode_segment, 0, Qt.AlignmentFlag.AlignLeft)
@@ -227,11 +243,13 @@ class HomeInterface(QWidget):
             "combined",
             self.translate("home_save_mode_combined"),
             lambda: self._set_save_mode(True),
+            FIF.DOCUMENT,
         )
         self.save_mode_segment.addItem(
             "separate",
             self.translate("home_save_mode_separate"),
             lambda: self._set_save_mode(False),
+            FIF.FOLDER,
         )
         self.save_mode_segment.setCurrentItem(
             "combined" if self.settings_manager.get_save_mode() else "separate"
@@ -240,8 +258,10 @@ class HomeInterface(QWidget):
         result_actions.addWidget(self.save_mode_segment)
         result_actions.addStretch(1)
         self.copy_btn = PushButton(self.translate("home_copy_markdown_button"))
+        self.copy_btn.setIcon(FIF.COPY)
         self.copy_btn.clicked.connect(self.copy_output)
         self.save_btn = PrimaryPushButton(self.translate("home_save_markdown_button"))
+        self.save_btn.setIcon(FIF.SAVE_AS)
         self.save_btn.clicked.connect(self.save_output)
         result_actions.addWidget(self.copy_btn)
         result_actions.addWidget(self.save_btn)
