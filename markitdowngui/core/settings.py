@@ -7,21 +7,35 @@ class SettingsManager:
     def __init__(self):
         self.settings = QSettings('MarkItDown', 'GUI')
         
+    def get_theme_mode(self) -> str:
+        """Get theme mode preference: 'light', 'dark', or 'system'."""
+        theme_mode = str(self.settings.value('themeMode', '', type=str)).strip().lower()
+        if theme_mode in {'light', 'dark', 'system'}:
+            return theme_mode
+        # Backward compatibility for older boolean darkMode settings
+        legacy_dark_mode = bool(self.settings.value('darkMode', False, type=bool))
+        return 'dark' if legacy_dark_mode else 'light'
+
+    def set_theme_mode(self, mode: str) -> None:
+        """Set theme mode preference."""
+        normalized = (mode or '').strip().lower()
+        if normalized not in {'light', 'dark', 'system'}:
+            normalized = 'light'
+        self.settings.setValue('themeMode', normalized)
+
     def get_dark_mode(self) -> bool:
-        """Get dark mode preference."""
-        return bool(self.settings.value('darkMode', False, type=bool))
-        
+        """Backward compatible dark mode getter."""
+        return self.get_theme_mode() == 'dark'
+
     def set_dark_mode(self, enabled: bool) -> None:
-        """Set dark mode preference."""
-        self.settings.setValue('darkMode', enabled)
-        
+        """Backward compatible dark mode setter."""
+        self.set_theme_mode('dark' if enabled else 'light')
+
     def get_format_settings(self) -> dict:
         """Get markdown format settings."""
         return {
             'headerStyle': self.settings.value('headerStyle', "ATX (#)"),
             'tableStyle': self.settings.value('tableStyle', "Simple"),
-            'autoSave': self.settings.value('autoSave', False, type=bool),
-            'autoSaveInterval': self.settings.value('autoSaveInterval', 5, type=int)
         }
         
     def save_format_settings(self, settings: dict) -> None:
@@ -60,6 +74,35 @@ class SettingsManager:
     def set_save_mode(self, combined: bool) -> None:
         """Set save mode preference."""
         self.settings.setValue('combinedSaveMode', combined)
+
+    def get_default_output_format(self) -> str:
+        """Get default output format extension."""
+        fmt = str(self.settings.value('defaultOutputFormat', '.md', type=str))
+        return fmt if fmt.startswith('.') else f'.{fmt}'
+
+    def set_default_output_format(self, output_format: str) -> None:
+        """Set default output format extension."""
+        fmt = (output_format or '.md').strip()
+        if not fmt.startswith('.'):
+            fmt = f'.{fmt}'
+        self.settings.setValue('defaultOutputFormat', fmt)
+
+    def get_default_output_folder(self) -> str:
+        """Get default output folder path."""
+        return str(self.settings.value('defaultOutputFolder', '', type=str))
+
+    def set_default_output_folder(self, folder_path: str) -> None:
+        """Set default output folder path."""
+        self.settings.setValue('defaultOutputFolder', folder_path or '')
+
+    def get_batch_size(self) -> int:
+        """Get default conversion batch size."""
+        return int(self.settings.value('batchSize', 3, type=int))
+
+    def set_batch_size(self, batch_size: int) -> None:
+        """Set default conversion batch size."""
+        size = max(1, min(10, int(batch_size)))
+        self.settings.setValue('batchSize', size)
         
     def get_update_notifications_enabled(self) -> bool:
         """Get whether update notifications are enabled."""
