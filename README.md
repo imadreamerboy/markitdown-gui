@@ -7,12 +7,6 @@ It focuses on fast multi-file conversion to Markdown with a modern Fluent-style 
 
 ![Current UI screenshot](image.png)
 
-## Current Status
-
-- Main conversion workflow is stable and production-usable.
-- The UI refactor to `QFluentWidgets` is active and already shipped for the main screens (`Home`, `Settings`, `Help`).
-- Current polish work is focused on visual consistency (Solarized light + Nord dark themes), typography, and startup-time improvements for packaged builds.
-
 ## Features
 
 - Queue-based file workflow with drag and drop.
