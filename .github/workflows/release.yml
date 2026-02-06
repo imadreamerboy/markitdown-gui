@@ -7,7 +7,6 @@ on:
 
 permissions:
   contents: write
-  packages: write
 
 jobs:
   build:
@@ -29,41 +28,43 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt pyinstaller
+          pip install ".[dev]"
 
       - name: Update version in __init__.py
         run: |
-          TAG_NAME="${GITHUB_REF#refs/tags/}"
-          VERSION="${TAG_NAME#v}"
-          echo "Updating __version__ to $VERSION in markitdowngui/__init__.py"
-          # Using a temporary file for sed on macOS compatibility
-          sed -i.bak "s/__version__ = .*/__version__ = \"$VERSION\"/g" markitdowngui/__init__.py
-          rm markitdowngui/__init__.py.bak
-          echo "Contents of __init__.py after update:"
-          cat markitdowngui/__init__.py
+          python - <<'PY'
+          import os
+          import pathlib
+          import re
+
+          tag_name = os.environ["GITHUB_REF"].split("/")[-1]
+          version = tag_name[1:] if tag_name.startswith("v") else tag_name
+          init_path = pathlib.Path("markitdowngui/__init__.py")
+          content = init_path.read_text(encoding="utf-8")
+          updated = re.sub(r'__version__\s*=\s*".*?"', f'__version__ = "{version}"', content)
+          init_path.write_text(updated, encoding="utf-8")
+          print(init_path.read_text(encoding="utf-8"))
+          PY
         shell: bash
 
       - name: Build executable
-        run: pyinstaller MarkItDown.spec --clean
+        run: pyinstaller MarkItDown.spec --clean --noconfirm
         shell: bash
 
-      - name: Rename artifact
+      - name: Package artifact
         run: |
+          TAG_NAME="${GITHUB_REF#refs/tags/}"
+          VERSION="${TAG_NAME#v}"
+          ARTIFACT_NAME="MarkItDown-${{ runner.os }}-${VERSION}.zip"
           mkdir dist_output
-          if [[ "$RUNNER_OS" == "Windows" ]]; then
-            mv dist/MarkItDown.exe dist_output/MarkItDown-${{ runner.os }}.exe
-          elif [[ "$RUNNER_OS" == "Linux" ]]; then
-            mv dist/MarkItDown dist_output/MarkItDown-${{ runner.os }}
-          elif [[ "$RUNNER_OS" == "macOS" ]]; then
-            mv dist/MarkItDown dist_output/MarkItDown-${{ runner.os }}
-          fi
+          python -m zipfile -c "dist_output/${ARTIFACT_NAME}" dist/MarkItDown
         shell: bash
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: MarkItDown-${{ runner.os }}
-          path: dist_output/
+          path: dist_output/*.zip
 
   release:
     name: Create GitHub Release
@@ -81,5 +82,5 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: artifacts/**/*  # Upload all artifacts
+          files: artifacts/**/*.zip
           token: ${{ secrets.GITHUB_TOKEN }}
