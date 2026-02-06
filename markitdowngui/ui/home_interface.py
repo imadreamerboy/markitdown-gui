@@ -21,6 +21,7 @@ from qfluentwidgets import (
     BodyLabel,
     CaptionLabel,
     CardWidget,
+    ComboBox,
     PrimaryPushButton,
     ProgressBar,
     PushButton,
@@ -226,6 +227,23 @@ class HomeInterface(QWidget):
 
         result_actions = QHBoxLayout()
         result_actions.setSpacing(8)
+        self.save_mode_label = CaptionLabel(self.translate("home_save_mode_label"))
+        self.save_mode_combo = ComboBox(self.results_card)
+        self.save_mode_combo.addItems(
+            [
+                self.translate("home_save_mode_combined"),
+                self.translate("home_save_mode_separate"),
+            ]
+        )
+        self.save_mode_combo.setToolTip(
+            self.translate("output_save_all_in_one_tooltip")
+        )
+        self.save_mode_combo.currentIndexChanged.connect(self._on_save_mode_changed)
+        self.save_mode_combo.setCurrentIndex(
+            0 if self.settings_manager.get_save_mode() else 1
+        )
+        result_actions.addWidget(self.save_mode_label)
+        result_actions.addWidget(self.save_mode_combo)
         result_actions.addStretch(1)
         self.copy_btn = PushButton(self.translate("home_copy_markdown_button"))
         self.copy_btn.clicked.connect(self.copy_output)
@@ -543,6 +561,9 @@ class HomeInterface(QWidget):
         self.rendered_toggle.setChecked(False)
         self.markdown_stack.setCurrentWidget(self.markdown_raw)
 
+    def _on_save_mode_changed(self, index: int) -> None:
+        self.settings_manager.set_save_mode(index == 0)
+
     def _read_source_preview(self, file_path: str) -> str:
         extension = os.path.splitext(file_path)[1].lower()
         text_like_exts = {
@@ -706,4 +727,3 @@ class HomeInterface(QWidget):
     def show_shortcuts(self) -> None:
         dialog = ShortcutDialog(self.translate, self)
         dialog.exec()
-
