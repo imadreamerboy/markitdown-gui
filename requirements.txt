@@ -21,7 +21,7 @@ colorama==0.4.6
     # via click
 coloredlogs==15.0.1
     # via onnxruntime
-cryptography==45.0.4
+cryptography==46.0.5
     # via pdfminer-six
 darkdetect==0.8.0
     # via pyside6-fluent-widgets
@@ -64,7 +64,7 @@ pandas==2.3.0
     # via markitdown
 pdfminer-six==20250506
     # via markitdown
-pillow==11.3.0
+pillow==12.1.1
     # via python-pptx
 protobuf==6.33.5
     # via onnxruntime
