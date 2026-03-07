@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
 )
 from qfluentwidgets import (
     BodyLabel,
+    CheckBox,
     ComboBox,
     FluentIcon as FIF,
     LineEdit,
@@ -104,6 +105,60 @@ class SettingsInterface(QWidget):
         conversion_layout.addWidget(self.table_style_combo)
         layout.addWidget(self.conversion_group)
 
+        self.ocr_group = QGroupBox(self.translate("settings_ocr_group"))
+        ocr_layout = QVBoxLayout(self.ocr_group)
+        ocr_layout.setSpacing(10)
+
+        self.ocr_enabled_check = CheckBox(self.translate("settings_ocr_enable_label"))
+        self.ocr_enabled_check.setToolTip(self.translate("settings_ocr_enable_tooltip"))
+        self.ocr_enabled_check.toggled.connect(self._save_ocr_enabled)
+        ocr_layout.addWidget(self.ocr_enabled_check)
+
+        ocr_layout.addWidget(BodyLabel(self.translate("settings_docintel_label")))
+        self.docintel_endpoint_edit = LineEdit()
+        self.docintel_endpoint_edit.setPlaceholderText(
+            self.translate("settings_docintel_placeholder")
+        )
+        self.docintel_endpoint_edit.setToolTip(
+            self.translate("settings_docintel_tooltip")
+        )
+        self.docintel_endpoint_edit.editingFinished.connect(
+            self._save_docintel_endpoint
+        )
+        ocr_layout.addWidget(self.docintel_endpoint_edit)
+
+        ocr_layout.addWidget(BodyLabel(self.translate("settings_ocr_language_label")))
+        self.ocr_languages_edit = LineEdit()
+        self.ocr_languages_edit.setPlaceholderText(
+            self.translate("settings_ocr_language_placeholder")
+        )
+        self.ocr_languages_edit.setToolTip(
+            self.translate("settings_ocr_language_tooltip")
+        )
+        self.ocr_languages_edit.editingFinished.connect(self._save_ocr_languages)
+        ocr_layout.addWidget(self.ocr_languages_edit)
+
+        ocr_layout.addWidget(BodyLabel(self.translate("settings_tesseract_path_label")))
+        tesseract_row = QHBoxLayout()
+        tesseract_row.setSpacing(8)
+        self.tesseract_path_edit = LineEdit()
+        self.tesseract_path_edit.setPlaceholderText(
+            self.translate("settings_tesseract_path_placeholder")
+        )
+        self.tesseract_path_edit.setToolTip(
+            self.translate("settings_tesseract_path_tooltip")
+        )
+        self.tesseract_path_edit.editingFinished.connect(self._save_tesseract_path)
+        self.tesseract_path_button = PushButton(
+            self.translate("browse_button_compact")
+        )
+        self.tesseract_path_button.setIcon(FIF.FOLDER)
+        self.tesseract_path_button.clicked.connect(self._browse_tesseract_path)
+        tesseract_row.addWidget(self.tesseract_path_edit, 1)
+        tesseract_row.addWidget(self.tesseract_path_button)
+        ocr_layout.addLayout(tesseract_row)
+        layout.addWidget(self.ocr_group)
+
         self.appearance_group = QGroupBox(self.translate("settings_appearance_group"))
         appearance_layout = QVBoxLayout(self.appearance_group)
         appearance_layout.setSpacing(8)
@@ -132,6 +187,12 @@ class SettingsInterface(QWidget):
         format_settings = self.settings_manager.get_format_settings()
         self.header_style_combo.setCurrentText(str(format_settings.get("headerStyle", "")))
         self.table_style_combo.setCurrentText(str(format_settings.get("tableStyle", "")))
+        self.ocr_enabled_check.setChecked(self.settings_manager.get_ocr_enabled())
+        self.docintel_endpoint_edit.setText(
+            self.settings_manager.get_docintel_endpoint()
+        )
+        self.ocr_languages_edit.setText(self.settings_manager.get_ocr_languages())
+        self.tesseract_path_edit.setText(self.settings_manager.get_tesseract_path())
 
         theme_mode = self.settings_manager.get_theme_mode()
         self.theme_light.setChecked(theme_mode == "light")
@@ -154,6 +215,34 @@ class SettingsInterface(QWidget):
 
     def _save_batch_size(self, value: int) -> None:
         self.settings_manager.set_batch_size(value)
+
+    def _save_ocr_enabled(self, checked: bool) -> None:
+        self.settings_manager.set_ocr_enabled(checked)
+
+    def _save_docintel_endpoint(self) -> None:
+        self.settings_manager.set_docintel_endpoint(
+            self.docintel_endpoint_edit.text()
+        )
+
+    def _save_ocr_languages(self) -> None:
+        self.settings_manager.set_ocr_languages(self.ocr_languages_edit.text())
+
+    def _save_tesseract_path(self) -> None:
+        self.settings_manager.set_tesseract_path(self.tesseract_path_edit.text())
+
+    def _browse_tesseract_path(self) -> None:
+        start_path = self.settings_manager.get_tesseract_path()
+        if start_path and not os.path.exists(start_path):
+            start_path = ""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            self.translate("settings_tesseract_dialog"),
+            start_path,
+            self.translate("all_files_filter"),
+        )
+        if file_path:
+            self.tesseract_path_edit.setText(file_path)
+            self.settings_manager.set_tesseract_path(file_path)
 
     def _save_theme(self, mode: str, checked: bool) -> None:
         if not checked:

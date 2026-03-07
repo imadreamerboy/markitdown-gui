@@ -31,7 +31,7 @@ from qfluentwidgets import (
     SegmentedWidget,
 )
 
-from markitdowngui.core.conversion import ConversionWorker
+from markitdowngui.core.conversion import ConversionOptions, ConversionWorker
 from markitdowngui.core.file_utils import FileManager
 from markitdowngui.core.settings import SettingsManager
 from markitdowngui.ui.components.file_panel import FilePanel
@@ -455,13 +455,9 @@ class HomeInterface(QWidget):
             return
 
         try:
-            # Delay heavy import until conversion starts for faster app startup.
-            from markitdown import MarkItDown
-
-            md = MarkItDown()
             batch_size = self.settings_manager.get_batch_size()
-
-            self.worker = ConversionWorker([md, valid_files], batch_size)
+            options = self._build_conversion_options()
+            self.worker = ConversionWorker(valid_files, batch_size, options)
             self.worker.progress.connect(self.update_progress)
             self.worker.finished.connect(self.handle_conversion_finished)
             self.worker.error.connect(self.handle_conversion_error)
@@ -482,6 +478,14 @@ class HomeInterface(QWidget):
                 self.translate("conversion_start_error_message").format(error=str(e)),
             )
             self._reset_controls()
+
+    def _build_conversion_options(self) -> ConversionOptions:
+        return ConversionOptions(
+            ocr_enabled=self.settings_manager.get_ocr_enabled(),
+            docintel_endpoint=self.settings_manager.get_docintel_endpoint(),
+            ocr_languages=self.settings_manager.get_ocr_languages(),
+            tesseract_path=self.settings_manager.get_tesseract_path(),
+        )
 
     def update_progress(self, progress: int, current_file: str) -> None:
         text = self.translate("conversion_progress_format").format(

@@ -49,6 +49,12 @@ def test_home_translation_keys_exist():
         "home_save_mode_separate",
         "remove_selected_action",
         "clear_list_action",
+        "settings_ocr_group",
+        "settings_ocr_enable_label",
+        "settings_docintel_label",
+        "settings_ocr_language_label",
+        "settings_tesseract_path_label",
+        "settings_tesseract_dialog",
     ]
 
     for lang in ["en", "zh_CN"]:

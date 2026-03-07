@@ -99,3 +99,21 @@ def test_batch_size(settings_manager):
     assert settings_manager.get_batch_size() == 1
     settings_manager.set_batch_size(99)
     assert settings_manager.get_batch_size() == 10
+
+def test_ocr_settings(settings_manager):
+    """Test OCR-related settings and persistence."""
+    assert not settings_manager.get_ocr_enabled()
+    settings_manager.set_ocr_enabled(True)
+    assert settings_manager.get_ocr_enabled()
+
+    assert settings_manager.get_docintel_endpoint() == ""
+    settings_manager.set_docintel_endpoint(" https://example.cognitiveservices.azure.com/ ")
+    assert settings_manager.get_docintel_endpoint() == "https://example.cognitiveservices.azure.com/"
+
+    assert settings_manager.get_ocr_languages() == ""
+    settings_manager.set_ocr_languages(" eng+deu ")
+    assert settings_manager.get_ocr_languages() == "eng+deu"
+
+    assert settings_manager.get_tesseract_path() == ""
+    settings_manager.set_tesseract_path(" /usr/bin/tesseract ")
+    assert settings_manager.get_tesseract_path() == "/usr/bin/tesseract"
