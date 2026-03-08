@@ -85,10 +85,8 @@ pandas==2.3.0
 pdfminer-six==20250506
     # via markitdown
 pillow==11.3.0
-    # via
-    #   pytesseract
-    #   python-pptx
-protobuf==6.31.1
+    # via python-pptx
+protobuf==6.33.5
     # via onnxruntime
 pycparser==2.22
     # via cffi
@@ -147,7 +145,7 @@ typing-extensions==4.14.0
     #   python-pptx
 tzdata==2025.2
     # via pandas
-urllib3==2.5.0
+urllib3==2.6.3
     # via requests
 xlrd==2.0.2
     # via markitdown
