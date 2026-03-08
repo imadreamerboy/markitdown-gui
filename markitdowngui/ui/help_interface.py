@@ -4,10 +4,10 @@ from PySide6.QtCore import Qt, QUrl, Signal
 from PySide6.QtWidgets import QWidget, QVBoxLayout
 from qfluentwidgets import (
     BodyLabel,
+    ExpandSettingCard,
     FluentIcon as FIF,
     HyperlinkButton,
     PushButton,
-    SimpleExpandGroupSettingCard,
     TitleLabel,
 )
 
@@ -78,56 +78,56 @@ class HelpInterface(QWidget):
 
         layout.addWidget(TitleLabel(self.translate("help_faq_title")))
 
-        faq_card = SimpleExpandGroupSettingCard(
-            FIF.HELP,
-            self.translate("help_faq_title"),
-            self.translate("help_description"),
-            self,
+        layout.addWidget(
+            self._build_faq_card(
+                FIF.FOLDER,
+                "help_faq_tesseract_windows_question",
+                "help_faq_tesseract_windows_answer",
+            )
         )
-        self._add_faq_entry(
-            faq_card,
-            FIF.FOLDER,
-            "help_faq_tesseract_windows_question",
-            "help_faq_tesseract_windows_answer",
+        layout.addWidget(
+            self._build_faq_card(
+                FIF.FOLDER,
+                "help_faq_tesseract_macos_question",
+                "help_faq_tesseract_macos_answer",
+            )
         )
-        self._add_faq_entry(
-            faq_card,
-            FIF.FOLDER,
-            "help_faq_tesseract_macos_question",
-            "help_faq_tesseract_macos_answer",
+        layout.addWidget(
+            self._build_faq_card(
+                FIF.FOLDER,
+                "help_faq_tesseract_linux_question",
+                "help_faq_tesseract_linux_answer",
+            )
         )
-        self._add_faq_entry(
-            faq_card,
-            FIF.FOLDER,
-            "help_faq_tesseract_linux_question",
-            "help_faq_tesseract_linux_answer",
+        layout.addWidget(
+            self._build_faq_card(
+                FIF.SYNC,
+                "help_faq_azure_question",
+                "help_faq_azure_answer",
+            )
         )
-        self._add_faq_entry(
-            faq_card,
-            FIF.SYNC,
-            "help_faq_azure_question",
-            "help_faq_azure_answer",
+        layout.addWidget(
+            self._build_faq_card(
+                FIF.INFO,
+                "help_faq_local_fallback_question",
+                "help_faq_local_fallback_answer",
+            )
         )
-        self._add_faq_entry(
-            faq_card,
-            FIF.INFO,
-            "help_faq_local_fallback_question",
-            "help_faq_local_fallback_answer",
-        )
-        layout.addWidget(faq_card)
 
         layout.addStretch(1)
 
-    def _add_faq_entry(
+    def _build_faq_card(
         self,
-        card: SimpleExpandGroupSettingCard,
         icon,
         question_key: str,
         answer_key: str,
-    ) -> None:
-        card.addGroup(
-            icon,
-            self.translate(question_key),
-            self.translate(answer_key),
-            QWidget(card),
-        )
+    ) -> ExpandSettingCard:
+        card = ExpandSettingCard(icon, self.translate(question_key), parent=self)
+        answer = BodyLabel(self.translate(answer_key), card.view)
+        answer.setWordWrap(True)
+        answer.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        answer.setStyleSheet("font-size: 14px; padding: 6px 0 10px 0;")
+        card.viewLayout.setContentsMargins(20, 12, 20, 18)
+        card.viewLayout.addWidget(answer)
+        card._adjustViewSize()
+        return card
