@@ -156,6 +156,33 @@ def test_convert_pdf_falls_back_to_docintel(monkeypatch, conversion):
     assert calls == [False, True]
 
 
+def test_convert_file_with_details_reports_azure_backend(monkeypatch, conversion):
+    def fake_convert(_file_path, _options, use_docintel=False):
+        if use_docintel:
+            return "azure pdf text"
+        return ""
+
+    monkeypatch.setattr(conversion, "_convert_with_markitdown", fake_convert)
+    monkeypatch.setattr(
+        conversion,
+        "_convert_pdf_with_local_ocr",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("local OCR should not run")
+        ),
+    )
+
+    outcome = conversion.convert_file_with_details(
+        "scan.pdf",
+        conversion.ConversionOptions(
+            ocr_enabled=True,
+            docintel_endpoint="https://example.cognitiveservices.azure.com/",
+        ),
+    )
+
+    assert outcome.markdown == "azure pdf text"
+    assert outcome.backend == conversion.BACKEND_AZURE
+
+
 def test_convert_pdf_falls_back_to_local_ocr_after_native_markitdown_failure(
     monkeypatch,
     conversion,
@@ -212,6 +239,40 @@ def test_convert_pdf_falls_back_to_local_ocr_after_docintel_failure(monkeypatch,
     assert calls == [False, True]
 
 
+def test_convert_pdf_surfaces_azure_failure_when_local_ocr_is_unavailable(
+    monkeypatch,
+    conversion,
+):
+    def fake_convert(_file_path, _options, use_docintel=False):
+        if use_docintel:
+            raise RuntimeError("azure auth failed")
+        return ""
+
+    monkeypatch.setattr(conversion, "_convert_with_markitdown", fake_convert)
+    monkeypatch.setattr(
+        conversion,
+        "_convert_pdf_with_local_ocr",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            RuntimeError("Local OCR failed. Install Tesseract or set its path in Settings.")
+        ),
+    )
+
+    with pytest.raises(RuntimeError) as exc_info:
+        conversion.convert_file(
+            "scan.pdf",
+            conversion.ConversionOptions(
+                ocr_enabled=True,
+                docintel_endpoint="https://example.cognitiveservices.azure.com/",
+            ),
+        )
+
+    assert "Azure OCR failed for the PDF" in str(exc_info.value)
+    assert "azure auth failed" in str(exc_info.value)
+    assert "Local OCR failed" in str(exc_info.value)
+    assert isinstance(exc_info.value.__cause__, RuntimeError)
+    assert str(exc_info.value.__cause__) == "azure auth failed"
+
+
 def test_convert_with_markitdown_passes_docintel_api_key(monkeypatch, conversion):
     captured = {}
 
@@ -260,7 +321,7 @@ def test_convert_with_markitdown_passes_docintel_api_key(monkeypatch, conversion
     assert captured["docintel_credential"].key == "secret-key"
 
 
-def test_convert_with_markitdown_leaves_docintel_credential_unset_without_api_key(
+def test_convert_with_markitdown_uses_default_azure_credential_without_api_key(
     monkeypatch,
     conversion,
 ):
@@ -276,12 +337,22 @@ def test_convert_with_markitdown_leaves_docintel_credential_unset_without_api_ke
         def convert(self, _file_path):
             return FakeResult()
 
+    azure_module = types.ModuleType("azure")
+    azure_identity_module = types.ModuleType("azure.identity")
+
+    class FakeDefaultAzureCredential:
+        pass
+
     monkeypatch.setitem(
         sys.modules,
         "markitdown",
         types.SimpleNamespace(MarkItDown=FakeMarkItDown),
     )
+    monkeypatch.setitem(sys.modules, "azure", azure_module)
+    monkeypatch.setitem(sys.modules, "azure.identity", azure_identity_module)
+    azure_identity_module.DefaultAzureCredential = FakeDefaultAzureCredential
     monkeypatch.delenv("AZURE_OCR_API_KEY", raising=False)
+    monkeypatch.setenv("AZURE_API_KEY", "should-not-be-used")
 
     result = conversion._convert_with_markitdown(
         "scan.png",
@@ -293,21 +364,73 @@ def test_convert_with_markitdown_leaves_docintel_credential_unset_without_api_ke
     )
 
     assert result == "azure text"
-    assert captured == {
-        "docintel_endpoint": "https://example.cognitiveservices.azure.com/"
-    }
+    assert captured["docintel_endpoint"] == "https://example.cognitiveservices.azure.com/"
+    assert isinstance(captured["docintel_credential"], FakeDefaultAzureCredential)
+
+
+def test_test_azure_ocr_connection_uses_api_key_credential(monkeypatch, conversion):
+    captured = {}
+
+    class FakeAzureKeyCredential:
+        def __init__(self, key):
+            self.key = key
+
+    class FakeClient:
+        def __init__(self, *, endpoint, credential):
+            captured["endpoint"] = endpoint
+            captured["credential"] = credential
+            captured["closed"] = False
+
+        def get_resource_details(self):
+            captured["tested"] = True
+            return object()
+
+        def close(self):
+            captured["closed"] = True
+
+    azure_module = types.ModuleType("azure")
+    azure_core_module = types.ModuleType("azure.core")
+    azure_credentials_module = types.ModuleType("azure.core.credentials")
+    azure_ai_module = types.ModuleType("azure.ai")
+    azure_docintel_module = types.ModuleType("azure.ai.documentintelligence")
+
+    azure_credentials_module.AzureKeyCredential = FakeAzureKeyCredential
+    azure_docintel_module.DocumentIntelligenceAdministrationClient = FakeClient
+
+    monkeypatch.setitem(sys.modules, "azure", azure_module)
+    monkeypatch.setitem(sys.modules, "azure.core", azure_core_module)
+    monkeypatch.setitem(sys.modules, "azure.core.credentials", azure_credentials_module)
+    monkeypatch.setitem(sys.modules, "azure.ai", azure_ai_module)
+    monkeypatch.setitem(sys.modules, "azure.ai.documentintelligence", azure_docintel_module)
+    monkeypatch.setenv("AZURE_OCR_API_KEY", " secret-key ")
+
+    auth_method = conversion.test_azure_ocr_connection(
+        conversion.ConversionOptions(
+            docintel_endpoint="https://example.cognitiveservices.azure.com/",
+        )
+    )
+
+    assert auth_method == "api_key"
+    assert captured["endpoint"] == "https://example.cognitiveservices.azure.com/"
+    assert isinstance(captured["credential"], FakeAzureKeyCredential)
+    assert captured["credential"].key == "secret-key"
+    assert captured["tested"] is True
+    assert captured["closed"] is True
 
 
 def test_conversion_worker_tracks_failed_files_separately_from_result_text(
     monkeypatch,
     conversion,
 ):
-    def fake_convert(file_path, _options):
+    def fake_convert_with_details(file_path, _options):
         if file_path == "failure.pdf":
             raise RuntimeError("azure unavailable")
-        return "Error converting is part of this document"
+        return conversion.ConversionOutcome(
+            markdown="Error converting is part of this document",
+            backend=conversion.BACKEND_NATIVE,
+        )
 
-    monkeypatch.setattr(conversion, "convert_file", fake_convert)
+    monkeypatch.setattr(conversion, "convert_file_with_details", fake_convert_with_details)
 
     worker = conversion.ConversionWorker(
         ["success.md", "failure.pdf"],
@@ -316,6 +439,29 @@ def test_conversion_worker_tracks_failed_files_separately_from_result_text(
     worker.run()
 
     assert worker.failed_files == {"failure.pdf"}
+
+
+def test_conversion_worker_tracks_processing_backends(monkeypatch, conversion):
+    def fake_convert_with_details(file_path, _options):
+        backend = (
+            conversion.BACKEND_AZURE
+            if file_path.endswith(".pdf")
+            else conversion.BACKEND_NATIVE
+        )
+        return conversion.ConversionOutcome(markdown="converted", backend=backend)
+
+    monkeypatch.setattr(conversion, "convert_file_with_details", fake_convert_with_details)
+
+    worker = conversion.ConversionWorker(
+        ["scan.pdf", "notes.txt"],
+        batch_size=2,
+    )
+    worker.run()
+
+    assert worker.processing_backends == {
+        "scan.pdf": conversion.BACKEND_AZURE,
+        "notes.txt": conversion.BACKEND_NATIVE,
+    }
 
 
 def test_run_tesseract_ocr_resets_executable_path_when_custom_path_is_cleared(

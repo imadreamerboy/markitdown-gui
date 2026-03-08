@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, QUrl, Signal
-from PySide6.QtWidgets import QWidget, QVBoxLayout
+from PySide6.QtWidgets import QToolBox, QWidget, QVBoxLayout
 from qfluentwidgets import BodyLabel, FluentIcon as FIF, HyperlinkButton, PushButton, TitleLabel
 
 
@@ -69,4 +69,42 @@ class HelpInterface(QWidget):
         tesseract_btn.setUrl(QUrl("https://github.com/tesseract-ocr/tesseract"))
         layout.addWidget(tesseract_btn, 0, Qt.AlignmentFlag.AlignLeft)
 
+        layout.addWidget(TitleLabel(self.translate("help_faq_title")))
+
+        faq_box = QToolBox()
+        faq_box.addItem(
+            self._build_faq_page(self.translate("help_faq_tesseract_windows_answer")),
+            self.translate("help_faq_tesseract_windows_question"),
+        )
+        faq_box.addItem(
+            self._build_faq_page(self.translate("help_faq_tesseract_macos_answer")),
+            self.translate("help_faq_tesseract_macos_question"),
+        )
+        faq_box.addItem(
+            self._build_faq_page(self.translate("help_faq_tesseract_linux_answer")),
+            self.translate("help_faq_tesseract_linux_question"),
+        )
+        faq_box.addItem(
+            self._build_faq_page(self.translate("help_faq_azure_answer")),
+            self.translate("help_faq_azure_question"),
+        )
+        faq_box.addItem(
+            self._build_faq_page(self.translate("help_faq_local_fallback_answer")),
+            self.translate("help_faq_local_fallback_question"),
+        )
+        layout.addWidget(faq_box)
+
         layout.addStretch(1)
+
+    def _build_faq_page(self, text: str) -> QWidget:
+        page = QWidget()
+        page_layout = QVBoxLayout(page)
+        page_layout.setContentsMargins(12, 8, 12, 12)
+        page_layout.setSpacing(0)
+
+        label = BodyLabel(text)
+        label.setWordWrap(True)
+        label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        page_layout.addWidget(label)
+
+        return page

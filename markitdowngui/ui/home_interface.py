@@ -32,6 +32,9 @@ from qfluentwidgets import (
 )
 
 from markitdowngui.core.conversion import (
+    BACKEND_AZURE,
+    BACKEND_LOCAL,
+    BACKEND_NATIVE,
     ConversionOptions,
     ConversionWorker,
 )
@@ -56,6 +59,7 @@ class HomeInterface(QWidget):
         self.worker: ConversionWorker | None = None
         self.conversionResults: dict[str, str] = {}
         self.failedConversionFiles: set[str] = set()
+        self.processingBackends: dict[str, str] = {}
         self._is_dark_theme = False
         self._current_markdown = ""
         self.setAcceptDrops(True)
@@ -506,6 +510,9 @@ class HomeInterface(QWidget):
     def handle_conversion_finished(self, results: dict[str, str]) -> None:
         self.conversionResults = results
         self.failedConversionFiles = set(self.worker.failed_files) if self.worker else set()
+        self.processingBackends = (
+            dict(self.worker.processing_backends) if self.worker else {}
+        )
         self.progress.setValue(100)
         failed_count = len(self.failedConversionFiles)
         done_text = self.translate("conversion_complete_message")
@@ -514,15 +521,19 @@ class HomeInterface(QWidget):
                 failed=failed_count,
                 total=len(results),
             )
-        self.progress.setFormat(done_text)
-        self.progress_status.setText(done_text)
+        backend_summary = self._format_processing_backend_summary()
+        status_text = done_text
+        if backend_summary:
+            status_text = f"{done_text} {backend_summary}"
+        self.progress.setFormat(status_text)
+        self.progress_status.setText(status_text)
         self._reset_controls()
         self._populate_result_view()
         self._set_state_results()
         if failed_count:
             InfoBar.warning(
                 self.translate("conversion_partial_failure_title"),
-                done_text,
+                status_text,
                 duration=3000,
                 position=InfoBarPosition.TOP_RIGHT,
                 parent=self,
@@ -530,11 +541,46 @@ class HomeInterface(QWidget):
         else:
             InfoBar.success(
                 self.translate("home_results_title"),
-                done_text,
+                status_text,
                 duration=2000,
                 position=InfoBarPosition.TOP_RIGHT,
                 parent=self,
             )
+
+    def _format_processing_backend_summary(self) -> str:
+        counts = {
+            BACKEND_AZURE: 0,
+            BACKEND_LOCAL: 0,
+            BACKEND_NATIVE: 0,
+        }
+
+        for file_path, backend in self.processingBackends.items():
+            if file_path in self.failedConversionFiles:
+                continue
+            if backend in counts:
+                counts[backend] += 1
+
+        parts: list[str] = []
+        for backend, label_key in (
+            (BACKEND_AZURE, "conversion_backend_azure"),
+            (BACKEND_LOCAL, "conversion_backend_local"),
+            (BACKEND_NATIVE, "conversion_backend_native"),
+        ):
+            count = counts[backend]
+            if count:
+                parts.append(
+                    self.translate("conversion_backend_summary_item").format(
+                        label=self.translate(label_key),
+                        count=count,
+                    )
+                )
+
+        if not parts:
+            return ""
+
+        return self.translate("conversion_backend_summary").format(
+            details=", ".join(parts)
+        )
 
     def handle_conversion_error(self, error_msg: str) -> None:
         AppLogger.error(error_msg)

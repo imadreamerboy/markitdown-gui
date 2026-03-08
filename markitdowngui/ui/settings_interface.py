@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import QThread, Signal
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -15,6 +15,8 @@ from qfluentwidgets import (
     CheckBox,
     ComboBox,
     FluentIcon as FIF,
+    InfoBar,
+    InfoBarPosition,
     LineEdit,
     PushButton,
     RadioButton,
@@ -22,7 +24,25 @@ from qfluentwidgets import (
     TitleLabel,
 )
 
+from markitdowngui.core.conversion import ConversionOptions, test_azure_ocr_connection
 from markitdowngui.core.settings import SettingsManager
+
+
+class AzureConnectionTestWorker(QThread):
+    succeeded = Signal(str)
+    failed = Signal(str)
+
+    def __init__(self, options: ConversionOptions):
+        super().__init__()
+        self.options = options
+
+    def run(self) -> None:
+        try:
+            auth_method = test_azure_ocr_connection(self.options)
+        except Exception as exc:
+            self.failed.emit(str(exc))
+        else:
+            self.succeeded.emit(auth_method)
 
 
 class SettingsInterface(QWidget):
@@ -35,6 +55,7 @@ class SettingsInterface(QWidget):
         self.setObjectName("SettingsInterface")
         self.settings_manager = settings_manager
         self.translate = translate
+        self._azure_test_worker: AzureConnectionTestWorker | None = None
         self._build_ui()
         self._load_settings()
 
@@ -125,7 +146,24 @@ class SettingsInterface(QWidget):
         self.docintel_endpoint_edit.editingFinished.connect(
             self._save_docintel_endpoint
         )
+        self.docintel_endpoint_edit.textChanged.connect(
+            lambda *_args: self._update_azure_test_button_state()
+        )
         ocr_layout.addWidget(self.docintel_endpoint_edit)
+
+        azure_test_row = QHBoxLayout()
+        azure_test_row.setSpacing(8)
+        self.test_azure_button = PushButton(
+            self.translate("settings_test_azure_button")
+        )
+        self.test_azure_button.setIcon(FIF.SYNC)
+        self.test_azure_button.setToolTip(
+            self.translate("settings_test_azure_tooltip")
+        )
+        self.test_azure_button.clicked.connect(self._test_azure_connection)
+        azure_test_row.addWidget(self.test_azure_button)
+        azure_test_row.addStretch(1)
+        ocr_layout.addLayout(azure_test_row)
 
         ocr_layout.addWidget(BodyLabel(self.translate("settings_ocr_language_label")))
         self.ocr_languages_edit = LineEdit()
@@ -191,6 +229,7 @@ class SettingsInterface(QWidget):
         self.docintel_endpoint_edit.setText(
             self.settings_manager.get_docintel_endpoint()
         )
+        self._update_azure_test_button_state()
         self.ocr_languages_edit.setText(self.settings_manager.get_ocr_languages())
         self.tesseract_path_edit.setText(self.settings_manager.get_tesseract_path())
 
@@ -223,6 +262,7 @@ class SettingsInterface(QWidget):
         self.settings_manager.set_docintel_endpoint(
             self.docintel_endpoint_edit.text()
         )
+        self._update_azure_test_button_state()
 
     def _save_ocr_languages(self) -> None:
         self.settings_manager.set_ocr_languages(self.ocr_languages_edit.text())
@@ -255,3 +295,61 @@ class SettingsInterface(QWidget):
         current["headerStyle"] = self.header_style_combo.currentText()
         current["tableStyle"] = self.table_style_combo.currentText()
         self.settings_manager.save_format_settings(current)
+
+    def _update_azure_test_button_state(self) -> None:
+        if self._azure_test_worker is not None:
+            return
+        self.test_azure_button.setEnabled(
+            bool(self.docintel_endpoint_edit.text().strip())
+        )
+
+    def _test_azure_connection(self) -> None:
+        self._save_docintel_endpoint()
+        self.test_azure_button.setEnabled(False)
+        self.test_azure_button.setText(
+            self.translate("settings_test_azure_in_progress")
+        )
+
+        options = ConversionOptions(
+            ocr_enabled=self.ocr_enabled_check.isChecked(),
+            docintel_endpoint=self.docintel_endpoint_edit.text(),
+            ocr_languages=self.ocr_languages_edit.text(),
+            tesseract_path=self.tesseract_path_edit.text(),
+        )
+        worker = AzureConnectionTestWorker(options)
+        self._azure_test_worker = worker
+        worker.succeeded.connect(self._handle_azure_test_success)
+        worker.failed.connect(self._handle_azure_test_failure)
+        worker.finished.connect(self._finish_azure_test)
+        worker.start()
+
+    def _handle_azure_test_success(self, auth_method: str) -> None:
+        auth_label_key = "settings_test_azure_auth_identity"
+        if auth_method == "api_key":
+            auth_label_key = "settings_test_azure_auth_api_key"
+
+        InfoBar.success(
+            self.translate("settings_test_azure_success_title"),
+            self.translate("settings_test_azure_success_message").format(
+                auth_method=self.translate(auth_label_key)
+            ),
+            duration=4000,
+            position=InfoBarPosition.TOP_RIGHT,
+            parent=self,
+        )
+
+    def _handle_azure_test_failure(self, error: str) -> None:
+        InfoBar.error(
+            self.translate("settings_test_azure_failure_title"),
+            self.translate("settings_test_azure_failure_message").format(error=error),
+            duration=5000,
+            position=InfoBarPosition.TOP_RIGHT,
+            parent=self,
+        )
+
+    def _finish_azure_test(self) -> None:
+        if self._azure_test_worker is not None:
+            self._azure_test_worker.deleteLater()
+            self._azure_test_worker = None
+        self.test_azure_button.setText(self.translate("settings_test_azure_button"))
+        self._update_azure_test_button_state()
