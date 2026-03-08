@@ -103,6 +103,38 @@ class SettingsManager:
         """Set default conversion batch size."""
         size = max(1, min(10, int(batch_size)))
         self.settings.setValue('batchSize', size)
+
+    def get_ocr_enabled(self) -> bool:
+        """Get whether OCR fallback is enabled."""
+        return bool(self.settings.value('ocrEnabled', False, type=bool))
+
+    def set_ocr_enabled(self, enabled: bool) -> None:
+        """Set whether OCR fallback is enabled."""
+        self.settings.setValue('ocrEnabled', enabled)
+
+    def get_docintel_endpoint(self) -> str:
+        """Get the configured Azure Document Intelligence endpoint."""
+        return str(self.settings.value('docintelEndpoint', '', type=str)).strip()
+
+    def set_docintel_endpoint(self, endpoint: str) -> None:
+        """Set the Azure Document Intelligence endpoint."""
+        self.settings.setValue('docintelEndpoint', (endpoint or '').strip())
+
+    def get_ocr_languages(self) -> str:
+        """Get configured Tesseract language codes."""
+        return str(self.settings.value('ocrLanguages', '', type=str)).strip()
+
+    def set_ocr_languages(self, languages: str) -> None:
+        """Set Tesseract language codes such as 'eng' or 'eng+deu'."""
+        self.settings.setValue('ocrLanguages', (languages or '').strip())
+
+    def get_tesseract_path(self) -> str:
+        """Get the optional Tesseract executable path."""
+        return str(self.settings.value('tesseractPath', '', type=str)).strip()
+
+    def set_tesseract_path(self, path: str) -> None:
+        """Set the optional Tesseract executable path."""
+        self.settings.setValue('tesseractPath', (path or '').strip())
         
     def get_update_notifications_enabled(self) -> bool:
         """Get whether update notifications are enabled."""

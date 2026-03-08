@@ -31,11 +31,18 @@ from qfluentwidgets import (
     SegmentedWidget,
 )
 
-from markitdowngui.core.conversion import ConversionWorker
+from markitdowngui.core.conversion import (
+    BACKEND_AZURE,
+    BACKEND_LOCAL,
+    BACKEND_NATIVE,
+    ConversionOptions,
+    ConversionWorker,
+)
 from markitdowngui.core.file_utils import FileManager
 from markitdowngui.core.settings import SettingsManager
 from markitdowngui.ui.components.file_panel import FilePanel
 from markitdowngui.ui.dialogs.shortcuts import ShortcutDialog
+from markitdowngui.ui.home_state import next_state_after_queue_change
 from markitdowngui.ui.themes import markdown_html_css
 from markitdowngui.utils.logger import AppLogger
 from markitdowngui.utils.translations import DEFAULT_LANG
@@ -51,6 +58,8 @@ class HomeInterface(QWidget):
         self.file_manager = FileManager()
         self.worker: ConversionWorker | None = None
         self.conversionResults: dict[str, str] = {}
+        self.failedConversionFiles: set[str] = set()
+        self.processingBackends: dict[str, str] = {}
         self._is_dark_theme = False
         self._current_markdown = ""
         self.setAcceptDrops(True)
@@ -380,8 +389,9 @@ class HomeInterface(QWidget):
             self.handleNewFile(file)
 
         if added:
+            had_results = bool(self.conversionResults)
             self._set_state_queue()
-            self._clear_result_views()
+            self._clear_result_views(reset_progress=had_results)
             self._update_queue_title()
 
     def handleNewFile(self, filepath: str) -> None:
@@ -402,13 +412,15 @@ class HomeInterface(QWidget):
     def remove_selected_files(self) -> None:
         widget = self.filePanel.drop.listWidget
         selected = sorted(widget.selectedItems(), key=lambda item: widget.row(item), reverse=True)
+        if not selected:
+            return
         for item in selected:
             widget.takeItem(widget.row(item))
-        self._on_queue_rows_removed()
 
     def clear_file_list(self) -> None:
+        had_results = bool(self.conversionResults)
         self.filePanel.clear()
-        self._clear_result_views()
+        self._clear_result_views(reset_progress=had_results)
         self._set_state_empty()
         self._update_queue_title()
         AppLogger.info(self.translate("file_list_cleared_log"))
@@ -455,13 +467,9 @@ class HomeInterface(QWidget):
             return
 
         try:
-            # Delay heavy import until conversion starts for faster app startup.
-            from markitdown import MarkItDown
-
-            md = MarkItDown()
             batch_size = self.settings_manager.get_batch_size()
-
-            self.worker = ConversionWorker([md, valid_files], batch_size)
+            options = self._build_conversion_options()
+            self.worker = ConversionWorker(valid_files, batch_size, options)
             self.worker.progress.connect(self.update_progress)
             self.worker.finished.connect(self.handle_conversion_finished)
             self.worker.error.connect(self.handle_conversion_error)
@@ -483,6 +491,14 @@ class HomeInterface(QWidget):
             )
             self._reset_controls()
 
+    def _build_conversion_options(self) -> ConversionOptions:
+        return ConversionOptions(
+            ocr_enabled=self.settings_manager.get_ocr_enabled(),
+            docintel_endpoint=self.settings_manager.get_docintel_endpoint(),
+            ocr_languages=self.settings_manager.get_ocr_languages(),
+            tesseract_path=self.settings_manager.get_tesseract_path(),
+        )
+
     def update_progress(self, progress: int, current_file: str) -> None:
         text = self.translate("conversion_progress_format").format(
             progress=progress, file=os.path.basename(current_file)
@@ -493,19 +509,77 @@ class HomeInterface(QWidget):
 
     def handle_conversion_finished(self, results: dict[str, str]) -> None:
         self.conversionResults = results
+        self.failedConversionFiles = set(self.worker.failed_files) if self.worker else set()
+        self.processingBackends = (
+            dict(self.worker.processing_backends) if self.worker else {}
+        )
         self.progress.setValue(100)
+        failed_count = len(self.failedConversionFiles)
         done_text = self.translate("conversion_complete_message")
-        self.progress.setFormat(done_text)
-        self.progress_status.setText(done_text)
+        if failed_count:
+            done_text = self.translate("conversion_partial_failure_message").format(
+                failed=failed_count,
+                total=len(results),
+            )
+        backend_summary = self._format_processing_backend_summary()
+        status_text = done_text
+        if backend_summary:
+            status_text = f"{done_text} {backend_summary}"
+        self.progress.setFormat(status_text)
+        self.progress_status.setText(status_text)
         self._reset_controls()
         self._populate_result_view()
         self._set_state_results()
-        InfoBar.success(
-            self.translate("home_results_title"),
-            self.translate("conversion_complete_message"),
-            duration=2000,
-            position=InfoBarPosition.TOP_RIGHT,
-            parent=self,
+        if failed_count:
+            InfoBar.warning(
+                self.translate("conversion_partial_failure_title"),
+                status_text,
+                duration=3000,
+                position=InfoBarPosition.TOP_RIGHT,
+                parent=self,
+            )
+        else:
+            InfoBar.success(
+                self.translate("home_results_title"),
+                status_text,
+                duration=2000,
+                position=InfoBarPosition.TOP_RIGHT,
+                parent=self,
+            )
+
+    def _format_processing_backend_summary(self) -> str:
+        counts = {
+            BACKEND_AZURE: 0,
+            BACKEND_LOCAL: 0,
+            BACKEND_NATIVE: 0,
+        }
+
+        for file_path, backend in self.processingBackends.items():
+            if file_path in self.failedConversionFiles:
+                continue
+            if backend in counts:
+                counts[backend] += 1
+
+        parts: list[str] = []
+        for backend, label_key in (
+            (BACKEND_AZURE, "conversion_backend_azure"),
+            (BACKEND_LOCAL, "conversion_backend_local"),
+            (BACKEND_NATIVE, "conversion_backend_native"),
+        ):
+            count = counts[backend]
+            if count:
+                parts.append(
+                    self.translate("conversion_backend_summary_item").format(
+                        label=self.translate(label_key),
+                        count=count,
+                    )
+                )
+
+        if not parts:
+            return ""
+
+        return self.translate("conversion_backend_summary").format(
+            details=", ".join(parts)
         )
 
     def handle_conversion_error(self, error_msg: str) -> None:
@@ -649,11 +723,19 @@ class HomeInterface(QWidget):
         output_dir = self.settings_manager.get_default_output_folder()
         return output_dir if output_dir and os.path.isdir(output_dir) else ""
 
-    def _clear_result_views(self) -> None:
+    def _reset_progress_display(self) -> None:
+        self.progress.setValue(0)
+        self.progress.setFormat("")
+        self.progress_status.setText("")
+
+    def _clear_result_views(self, *, reset_progress: bool = False) -> None:
         self.conversionResults = {}
+        self.failedConversionFiles = set()
         self.result_file_list.clear()
         self.preview_file_caption.setText(self.translate("home_preview_file_default"))
         self._set_markdown_preview("")
+        if reset_progress:
+            self._reset_progress_display()
 
     def go_back_to_queue(self) -> None:
         if not self.filePanel.get_all_files():
@@ -681,9 +763,18 @@ class HomeInterface(QWidget):
         self.results_card.setVisible(True)
 
     def _on_queue_rows_removed(self) -> None:
+        had_results = bool(self.conversionResults)
+        if had_results:
+            self._clear_result_views(reset_progress=True)
         self._update_queue_title()
-        if not self.filePanel.get_all_files() and not self.results_card.isVisible():
+        next_state = next_state_after_queue_change(
+            has_results=had_results,
+            has_files=bool(self.filePanel.get_all_files()),
+        )
+        if next_state == "empty":
             self._set_state_empty()
+        elif next_state == "queue":
+            self._set_state_queue()
 
     def _update_queue_title(self) -> None:
         count = len(self.filePanel.get_all_files())

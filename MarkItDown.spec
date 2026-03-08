@@ -8,6 +8,17 @@ hiddenimports = [
     "requests",
 ]
 hiddenimports += collect_submodules("markitdown")
+for package in (
+    "azure.ai.documentintelligence",
+    "azure.identity",
+    "pypdfium2",
+    "pypdfium2_raw",
+    "pytesseract",
+):
+    try:
+        hiddenimports += collect_submodules(package)
+    except Exception as e:
+        print(f"Warning: Could not collect hidden imports for {package}: {e}")
 
 datas = [
     ("markitdowngui/resources/markitdown-gui.ico", "markitdowngui/resources"),
@@ -21,6 +32,12 @@ try:
 except Exception as e:
     print(f"Warning: Could not collect magika data files: {e}")
 
+for package in ("pypdfium2", "pypdfium2_raw"):
+    try:
+        datas += collect_data_files(package)
+    except Exception as e:
+        print(f"Warning: Could not collect data files for {package}: {e}")
+
 a = Analysis(
     ["markitdowngui/main.py"],
     pathex=[],
@@ -30,7 +47,10 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=[
+        "tkinter", "_tkinter",
+        "pytest", "_pytest", "pygments",
+    ],
     noarchive=False,
     optimize=1,
 )
@@ -67,4 +87,3 @@ coll = COLLECT(
     upx_exclude=[],
     name="MarkItDown",
 )
-
