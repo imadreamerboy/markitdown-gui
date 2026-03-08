@@ -44,7 +44,9 @@ pip install -e .[dev]
 
 - OCR is optional and disabled by default.
 - Local OCR requires a system `tesseract` binary. If it is not on your `PATH`, set the executable path in Settings.
-- Azure OCR requires an Azure Document Intelligence endpoint in Settings and an `AZURE_API_KEY` environment variable.
+- Azure OCR requires an Azure Document Intelligence endpoint in Settings.
+- For API-key auth, set `AZURE_API_KEY`.
+- If `AZURE_API_KEY` is not set, Azure OCR falls back to Azure identity credentials supported by `DefaultAzureCredential`.
 
 ## Run the App
 

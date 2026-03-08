@@ -42,7 +42,9 @@ pip install -e .[dev]
 
 - OCR 为可选功能，默认关闭。
 - 本地 OCR 需要系统已安装 `tesseract`。如果它不在 `PATH` 中，可以在设置页里指定可执行文件路径。
-- Azure OCR 需要在设置页里填写 Azure Document Intelligence 终结点，并设置 `AZURE_API_KEY` 环境变量。
+- Azure OCR 需要在设置页里填写 Azure Document Intelligence 终结点。
+- 若使用 API Key 认证，请设置 `AZURE_API_KEY` 环境变量。
+- 如果未设置 `AZURE_API_KEY`，Azure OCR 会回退到 `DefaultAzureCredential` 支持的 Azure 身份凭据。
 
 ## 运行应用
 

@@ -31,11 +31,15 @@ from qfluentwidgets import (
     SegmentedWidget,
 )
 
-from markitdowngui.core.conversion import ConversionOptions, ConversionWorker
+from markitdowngui.core.conversion import (
+    ConversionOptions,
+    ConversionWorker,
+)
 from markitdowngui.core.file_utils import FileManager
 from markitdowngui.core.settings import SettingsManager
 from markitdowngui.ui.components.file_panel import FilePanel
 from markitdowngui.ui.dialogs.shortcuts import ShortcutDialog
+from markitdowngui.ui.home_state import next_state_after_queue_change
 from markitdowngui.ui.themes import markdown_html_css
 from markitdowngui.utils.logger import AppLogger
 from markitdowngui.utils.translations import DEFAULT_LANG
@@ -51,6 +55,7 @@ class HomeInterface(QWidget):
         self.file_manager = FileManager()
         self.worker: ConversionWorker | None = None
         self.conversionResults: dict[str, str] = {}
+        self.failedConversionFiles: set[str] = set()
         self._is_dark_theme = False
         self._current_markdown = ""
         self.setAcceptDrops(True)
@@ -380,8 +385,9 @@ class HomeInterface(QWidget):
             self.handleNewFile(file)
 
         if added:
+            had_results = bool(self.conversionResults)
             self._set_state_queue()
-            self._clear_result_views()
+            self._clear_result_views(reset_progress=had_results)
             self._update_queue_title()
 
     def handleNewFile(self, filepath: str) -> None:
@@ -402,13 +408,15 @@ class HomeInterface(QWidget):
     def remove_selected_files(self) -> None:
         widget = self.filePanel.drop.listWidget
         selected = sorted(widget.selectedItems(), key=lambda item: widget.row(item), reverse=True)
+        if not selected:
+            return
         for item in selected:
             widget.takeItem(widget.row(item))
-        self._on_queue_rows_removed()
 
     def clear_file_list(self) -> None:
+        had_results = bool(self.conversionResults)
         self.filePanel.clear()
-        self._clear_result_views()
+        self._clear_result_views(reset_progress=had_results)
         self._set_state_empty()
         self._update_queue_title()
         AppLogger.info(self.translate("file_list_cleared_log"))
@@ -497,20 +505,36 @@ class HomeInterface(QWidget):
 
     def handle_conversion_finished(self, results: dict[str, str]) -> None:
         self.conversionResults = results
+        self.failedConversionFiles = set(self.worker.failed_files) if self.worker else set()
         self.progress.setValue(100)
+        failed_count = len(self.failedConversionFiles)
         done_text = self.translate("conversion_complete_message")
+        if failed_count:
+            done_text = self.translate("conversion_partial_failure_message").format(
+                failed=failed_count,
+                total=len(results),
+            )
         self.progress.setFormat(done_text)
         self.progress_status.setText(done_text)
         self._reset_controls()
         self._populate_result_view()
         self._set_state_results()
-        InfoBar.success(
-            self.translate("home_results_title"),
-            self.translate("conversion_complete_message"),
-            duration=2000,
-            position=InfoBarPosition.TOP_RIGHT,
-            parent=self,
-        )
+        if failed_count:
+            InfoBar.warning(
+                self.translate("conversion_partial_failure_title"),
+                done_text,
+                duration=3000,
+                position=InfoBarPosition.TOP_RIGHT,
+                parent=self,
+            )
+        else:
+            InfoBar.success(
+                self.translate("home_results_title"),
+                done_text,
+                duration=2000,
+                position=InfoBarPosition.TOP_RIGHT,
+                parent=self,
+            )
 
     def handle_conversion_error(self, error_msg: str) -> None:
         AppLogger.error(error_msg)
@@ -653,11 +677,19 @@ class HomeInterface(QWidget):
         output_dir = self.settings_manager.get_default_output_folder()
         return output_dir if output_dir and os.path.isdir(output_dir) else ""
 
-    def _clear_result_views(self) -> None:
+    def _reset_progress_display(self) -> None:
+        self.progress.setValue(0)
+        self.progress.setFormat("")
+        self.progress_status.setText("")
+
+    def _clear_result_views(self, *, reset_progress: bool = False) -> None:
         self.conversionResults = {}
+        self.failedConversionFiles = set()
         self.result_file_list.clear()
         self.preview_file_caption.setText(self.translate("home_preview_file_default"))
         self._set_markdown_preview("")
+        if reset_progress:
+            self._reset_progress_display()
 
     def go_back_to_queue(self) -> None:
         if not self.filePanel.get_all_files():
@@ -685,9 +717,18 @@ class HomeInterface(QWidget):
         self.results_card.setVisible(True)
 
     def _on_queue_rows_removed(self) -> None:
+        had_results = bool(self.conversionResults)
+        if had_results:
+            self._clear_result_views(reset_progress=True)
         self._update_queue_title()
-        if not self.filePanel.get_all_files() and not self.results_card.isVisible():
+        next_state = next_state_after_queue_change(
+            has_results=had_results,
+            has_files=bool(self.filePanel.get_all_files()),
+        )
+        if next_state == "empty":
             self._set_state_empty()
+        elif next_state == "queue":
+            self._set_state_queue()
 
     def _update_queue_title(self) -> None:
         count = len(self.filePanel.get_all_files())

@@ -1,7 +1,43 @@
-from markitdowngui.core import conversion
+import importlib
+import sys
+import types
+
+import pytest
 
 
-def test_convert_file_uses_markitdown_when_ocr_disabled(monkeypatch):
+class _FakeSignal:
+    def __init__(self, *_args, **_kwargs):
+        pass
+
+    def connect(self, _callback):
+        pass
+
+    def emit(self, *_args, **_kwargs):
+        pass
+
+
+class _FakeQThread:
+    def __init__(self, *_args, **_kwargs):
+        pass
+
+    def msleep(self, _milliseconds):
+        pass
+
+
+@pytest.fixture
+def conversion(monkeypatch):
+    qtcore = types.ModuleType("PySide6.QtCore")
+    qtcore.QThread = _FakeQThread
+    qtcore.Signal = _FakeSignal
+
+    monkeypatch.setitem(sys.modules, "PySide6", types.ModuleType("PySide6"))
+    monkeypatch.setitem(sys.modules, "PySide6.QtCore", qtcore)
+
+    module = importlib.import_module("markitdowngui.core.conversion")
+    return importlib.reload(module)
+
+
+def test_convert_file_uses_markitdown_when_ocr_disabled(monkeypatch, conversion):
     calls = []
 
     def fake_convert(file_path, options, use_docintel=False):
@@ -19,7 +55,7 @@ def test_convert_file_uses_markitdown_when_ocr_disabled(monkeypatch):
     assert calls == [("scan.png", False)]
 
 
-def test_convert_image_prefers_docintel_when_configured(monkeypatch):
+def test_convert_image_prefers_docintel_when_configured(monkeypatch, conversion):
     calls = []
 
     def fake_convert(file_path, options, use_docintel=False):
@@ -45,7 +81,7 @@ def test_convert_image_prefers_docintel_when_configured(monkeypatch):
     assert calls == [True]
 
 
-def test_convert_image_falls_back_to_local_ocr(monkeypatch):
+def test_convert_image_falls_back_to_local_ocr(monkeypatch, conversion):
     def fake_convert(_file_path, _options, use_docintel=False):
         if use_docintel:
             raise RuntimeError("azure unavailable")
@@ -69,7 +105,7 @@ def test_convert_image_falls_back_to_local_ocr(monkeypatch):
     assert result == "local image text"
 
 
-def test_convert_pdf_keeps_native_text_when_available(monkeypatch):
+def test_convert_pdf_keeps_native_text_when_available(monkeypatch, conversion):
     calls = []
 
     def fake_convert(_file_path, _options, use_docintel=False):
@@ -92,7 +128,7 @@ def test_convert_pdf_keeps_native_text_when_available(monkeypatch):
     assert calls == [False]
 
 
-def test_convert_pdf_falls_back_to_docintel(monkeypatch):
+def test_convert_pdf_falls_back_to_docintel(monkeypatch, conversion):
     calls = []
 
     def fake_convert(_file_path, _options, use_docintel=False):
@@ -120,7 +156,7 @@ def test_convert_pdf_falls_back_to_docintel(monkeypatch):
     assert calls == [False, True]
 
 
-def test_convert_pdf_falls_back_to_local_ocr_after_docintel_failure(monkeypatch):
+def test_convert_pdf_falls_back_to_local_ocr_after_docintel_failure(monkeypatch, conversion):
     calls = []
 
     def fake_convert(_file_path, _options, use_docintel=False):
@@ -146,3 +182,109 @@ def test_convert_pdf_falls_back_to_local_ocr_after_docintel_failure(monkeypatch)
 
     assert result == "local pdf text"
     assert calls == [False, True]
+
+
+def test_convert_with_markitdown_passes_docintel_api_key(monkeypatch, conversion):
+    captured = {}
+
+    class FakeResult:
+        text_content = "azure text"
+
+    class FakeMarkItDown:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+        def convert(self, _file_path):
+            return FakeResult()
+
+    azure_module = types.ModuleType("azure")
+    azure_core_module = types.ModuleType("azure.core")
+    azure_credentials_module = types.ModuleType("azure.core.credentials")
+
+    class FakeAzureKeyCredential:
+        def __init__(self, key):
+            self.key = key
+
+    azure_credentials_module.AzureKeyCredential = FakeAzureKeyCredential
+
+    monkeypatch.setitem(
+        sys.modules,
+        "markitdown",
+        types.SimpleNamespace(MarkItDown=FakeMarkItDown),
+    )
+    monkeypatch.setitem(sys.modules, "azure", azure_module)
+    monkeypatch.setitem(sys.modules, "azure.core", azure_core_module)
+    monkeypatch.setitem(sys.modules, "azure.core.credentials", azure_credentials_module)
+    monkeypatch.setenv("AZURE_API_KEY", " secret-key ")
+
+    result = conversion._convert_with_markitdown(
+        "scan.png",
+        conversion.ConversionOptions(
+            ocr_enabled=True,
+            docintel_endpoint="https://example.cognitiveservices.azure.com/",
+        ),
+        use_docintel=True,
+    )
+
+    assert result == "azure text"
+    assert captured["docintel_endpoint"] == "https://example.cognitiveservices.azure.com/"
+    assert isinstance(captured["docintel_credential"], FakeAzureKeyCredential)
+    assert captured["docintel_credential"].key == "secret-key"
+
+
+def test_convert_with_markitdown_leaves_docintel_credential_unset_without_api_key(
+    monkeypatch,
+    conversion,
+):
+    captured = {}
+
+    class FakeResult:
+        text_content = "azure text"
+
+    class FakeMarkItDown:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+        def convert(self, _file_path):
+            return FakeResult()
+
+    monkeypatch.setitem(
+        sys.modules,
+        "markitdown",
+        types.SimpleNamespace(MarkItDown=FakeMarkItDown),
+    )
+    monkeypatch.delenv("AZURE_API_KEY", raising=False)
+
+    result = conversion._convert_with_markitdown(
+        "scan.png",
+        conversion.ConversionOptions(
+            ocr_enabled=True,
+            docintel_endpoint="https://example.cognitiveservices.azure.com/",
+        ),
+        use_docintel=True,
+    )
+
+    assert result == "azure text"
+    assert captured == {
+        "docintel_endpoint": "https://example.cognitiveservices.azure.com/"
+    }
+
+
+def test_conversion_worker_tracks_failed_files_separately_from_result_text(
+    monkeypatch,
+    conversion,
+):
+    def fake_convert(file_path, _options):
+        if file_path == "failure.pdf":
+            raise RuntimeError("azure unavailable")
+        return "Error converting is part of this document"
+
+    monkeypatch.setattr(conversion, "convert_file", fake_convert)
+
+    worker = conversion.ConversionWorker(
+        ["success.md", "failure.pdf"],
+        batch_size=2,
+    )
+    worker.run()
+
+    assert worker.failed_files == {"failure.pdf"}

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 from pathlib import Path
 
 from PySide6.QtCore import QThread, Signal
@@ -10,6 +11,8 @@ DOCINTEL_IMAGE_EXTENSIONS = {".bmp", ".jpeg", ".jpg", ".png", ".tiff"}
 PDF_EXTENSION = ".pdf"
 PDF_RENDER_SCALE = 3.0
 LOCAL_OCR_TIMEOUT_SECONDS = 60
+AZURE_API_KEY_ENV_VAR = "AZURE_API_KEY"
+CONVERSION_ERROR_PREFIX = "Error converting "
 
 
 @dataclass(frozen=True)
@@ -32,6 +35,10 @@ class ConversionOptions:
     @property
     def normalized_tesseract_path(self) -> str:
         return self.tesseract_path.strip()
+
+
+def format_conversion_error(file_path: str, error: Exception) -> str:
+    return f"{CONVERSION_ERROR_PREFIX}{file_path}: {error}"
 
 
 def convert_file(file_path: str, options: ConversionOptions | None = None) -> str:
@@ -124,9 +131,15 @@ def _convert_with_markitdown(
     # Delay heavy imports until conversion is requested.
     from markitdown import MarkItDown
 
-    kwargs: dict[str, str] = {}
+    kwargs: dict[str, object] = {}
     if use_docintel and options.normalized_docintel_endpoint:
         kwargs["docintel_endpoint"] = options.normalized_docintel_endpoint
+
+        api_key = os.getenv(AZURE_API_KEY_ENV_VAR, "").strip()
+        if api_key:
+            from azure.core.credentials import AzureKeyCredential
+
+            kwargs["docintel_credential"] = AzureKeyCredential(api_key)
 
     md = MarkItDown(**kwargs)
     result = md.convert(file_path)
@@ -211,11 +224,13 @@ class ConversionWorker(QThread):
         self.files = files
         self.batch_size = batch_size
         self.options = options or ConversionOptions()
+        self.failed_files: set[str] = set()
         self.is_paused = False
         self.is_cancelled = False
 
     def run(self) -> None:
         results: dict[str, str] = {}
+        self.failed_files = set()
 
         for i in range(0, len(self.files), self.batch_size):
             if self.is_cancelled:
@@ -231,7 +246,8 @@ class ConversionWorker(QThread):
                 try:
                     results[file_path] = convert_file(file_path, self.options)
                 except Exception as exc:
-                    results[file_path] = f"Error converting {file_path}: {exc}"
+                    self.failed_files.add(file_path)
+                    results[file_path] = format_conversion_error(file_path, exc)
 
                 progress = int((i + j + 1) / len(self.files) * 100)
                 self.progress.emit(progress, file_path)
