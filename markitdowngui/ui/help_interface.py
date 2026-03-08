@@ -1,8 +1,15 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, QUrl, Signal
-from PySide6.QtWidgets import QToolBox, QWidget, QVBoxLayout
-from qfluentwidgets import BodyLabel, FluentIcon as FIF, HyperlinkButton, PushButton, TitleLabel
+from PySide6.QtWidgets import QWidget, QVBoxLayout
+from qfluentwidgets import (
+    BodyLabel,
+    FluentIcon as FIF,
+    HyperlinkButton,
+    PushButton,
+    SimpleExpandGroupSettingCard,
+    TitleLabel,
+)
 
 
 class HelpInterface(QWidget):
@@ -71,40 +78,56 @@ class HelpInterface(QWidget):
 
         layout.addWidget(TitleLabel(self.translate("help_faq_title")))
 
-        faq_box = QToolBox()
-        faq_box.addItem(
-            self._build_faq_page(self.translate("help_faq_tesseract_windows_answer")),
-            self.translate("help_faq_tesseract_windows_question"),
+        faq_card = SimpleExpandGroupSettingCard(
+            FIF.HELP,
+            self.translate("help_faq_title"),
+            self.translate("help_description"),
+            self,
         )
-        faq_box.addItem(
-            self._build_faq_page(self.translate("help_faq_tesseract_macos_answer")),
-            self.translate("help_faq_tesseract_macos_question"),
+        self._add_faq_entry(
+            faq_card,
+            FIF.FOLDER,
+            "help_faq_tesseract_windows_question",
+            "help_faq_tesseract_windows_answer",
         )
-        faq_box.addItem(
-            self._build_faq_page(self.translate("help_faq_tesseract_linux_answer")),
-            self.translate("help_faq_tesseract_linux_question"),
+        self._add_faq_entry(
+            faq_card,
+            FIF.FOLDER,
+            "help_faq_tesseract_macos_question",
+            "help_faq_tesseract_macos_answer",
         )
-        faq_box.addItem(
-            self._build_faq_page(self.translate("help_faq_azure_answer")),
-            self.translate("help_faq_azure_question"),
+        self._add_faq_entry(
+            faq_card,
+            FIF.FOLDER,
+            "help_faq_tesseract_linux_question",
+            "help_faq_tesseract_linux_answer",
         )
-        faq_box.addItem(
-            self._build_faq_page(self.translate("help_faq_local_fallback_answer")),
-            self.translate("help_faq_local_fallback_question"),
+        self._add_faq_entry(
+            faq_card,
+            FIF.SYNC,
+            "help_faq_azure_question",
+            "help_faq_azure_answer",
         )
-        layout.addWidget(faq_box)
+        self._add_faq_entry(
+            faq_card,
+            FIF.INFO,
+            "help_faq_local_fallback_question",
+            "help_faq_local_fallback_answer",
+        )
+        layout.addWidget(faq_card)
 
         layout.addStretch(1)
 
-    def _build_faq_page(self, text: str) -> QWidget:
-        page = QWidget()
-        page_layout = QVBoxLayout(page)
-        page_layout.setContentsMargins(12, 8, 12, 12)
-        page_layout.setSpacing(0)
-
-        label = BodyLabel(text)
-        label.setWordWrap(True)
-        label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        page_layout.addWidget(label)
-
-        return page
+    def _add_faq_entry(
+        self,
+        card: SimpleExpandGroupSettingCard,
+        icon,
+        question_key: str,
+        answer_key: str,
+    ) -> None:
+        card.addGroup(
+            icon,
+            self.translate(question_key),
+            self.translate(answer_key),
+            QWidget(card),
+        )
