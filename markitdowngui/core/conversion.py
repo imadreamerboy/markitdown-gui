@@ -93,9 +93,13 @@ def _convert_image_with_ocr(
 
 
 def _convert_pdf_with_ocr_fallback(file_path: str, options: ConversionOptions) -> str:
-    markdown = _convert_with_markitdown(file_path, options)
-    if markdown.strip():
-        return markdown
+    native_error: Exception | None = None
+    try:
+        markdown = _convert_with_markitdown(file_path, options)
+        if markdown.strip():
+            return markdown
+    except Exception as exc:
+        native_error = exc
 
     docintel_error: Exception | None = None
     if options.normalized_docintel_endpoint:
@@ -118,6 +122,11 @@ def _convert_pdf_with_ocr_fallback(file_path: str, options: ConversionOptions) -
         raise RuntimeError(
             "OCR did not extract text from the PDF after Azure and local fallback."
         ) from docintel_error
+
+    if native_error is not None:
+        raise RuntimeError(
+            "OCR did not extract text from the PDF after native extraction and local fallback."
+        ) from native_error
 
     raise RuntimeError("OCR did not extract any text from the PDF.")
 
@@ -196,6 +205,8 @@ def _run_tesseract_ocr(image, options: ConversionOptions) -> str:
 
     if options.normalized_tesseract_path:
         pytesseract.pytesseract.tesseract_cmd = options.normalized_tesseract_path
+    else:
+        pytesseract.pytesseract.tesseract_cmd = "tesseract"
 
     kwargs: dict[str, object] = {"timeout": LOCAL_OCR_TIMEOUT_SECONDS}
     if options.normalized_ocr_languages:

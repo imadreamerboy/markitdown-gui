@@ -156,6 +156,34 @@ def test_convert_pdf_falls_back_to_docintel(monkeypatch, conversion):
     assert calls == [False, True]
 
 
+def test_convert_pdf_falls_back_to_local_ocr_after_native_markitdown_failure(
+    monkeypatch,
+    conversion,
+):
+    calls = []
+
+    def fake_convert(_file_path, _options, use_docintel=False):
+        calls.append(use_docintel)
+        if not use_docintel:
+            raise RuntimeError("native parser failed")
+        return ""
+
+    monkeypatch.setattr(conversion, "_convert_with_markitdown", fake_convert)
+    monkeypatch.setattr(
+        conversion,
+        "_convert_pdf_with_local_ocr",
+        lambda *_args, **_kwargs: "local pdf text",
+    )
+
+    result = conversion.convert_file(
+        "scan.pdf",
+        conversion.ConversionOptions(ocr_enabled=True),
+    )
+
+    assert result == "local pdf text"
+    assert calls == [False]
+
+
 def test_convert_pdf_falls_back_to_local_ocr_after_docintel_failure(monkeypatch, conversion):
     calls = []
 
@@ -288,3 +316,29 @@ def test_conversion_worker_tracks_failed_files_separately_from_result_text(
     worker.run()
 
     assert worker.failed_files == {"failure.pdf"}
+
+
+def test_run_tesseract_ocr_resets_executable_path_when_custom_path_is_cleared(
+    monkeypatch,
+    conversion,
+):
+    pytesseract_impl = types.SimpleNamespace(tesseract_cmd="tesseract")
+    fake_pytesseract = types.SimpleNamespace(
+        pytesseract=pytesseract_impl,
+        image_to_string=lambda *_args, **_kwargs: "ocr text",
+    )
+
+    monkeypatch.setitem(sys.modules, "pytesseract", fake_pytesseract)
+
+    first_result = conversion._run_tesseract_ocr(
+        object(),
+        conversion.ConversionOptions(tesseract_path=" /custom/tesseract "),
+    )
+    second_result = conversion._run_tesseract_ocr(
+        object(),
+        conversion.ConversionOptions(),
+    )
+
+    assert first_result == "ocr text"
+    assert second_result == "ocr text"
+    assert pytesseract_impl.tesseract_cmd == "tesseract"
