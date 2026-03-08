@@ -53,4 +53,20 @@ class HelpInterface(QWidget):
         repo_btn.setUrl(QUrl("https://github.com/imadreamerboy/markitdown-gui"))
         layout.addWidget(repo_btn, 0, Qt.AlignmentFlag.AlignLeft)
 
+        azure_pricing_btn = HyperlinkButton()
+        azure_pricing_btn.setText(self.translate("help_open_azure_ocr_pricing"))
+        azure_pricing_btn.setIcon(FIF.LINK)
+        azure_pricing_btn.setUrl(
+            QUrl(
+                "https://azure.microsoft.com/en-us/products/ai-foundry/tools/document-intelligence#Pricing"
+            )
+        )
+        layout.addWidget(azure_pricing_btn, 0, Qt.AlignmentFlag.AlignLeft)
+
+        tesseract_btn = HyperlinkButton()
+        tesseract_btn.setText(self.translate("help_open_tesseract"))
+        tesseract_btn.setIcon(FIF.LINK)
+        tesseract_btn.setUrl(QUrl("https://github.com/tesseract-ocr/tesseract"))
+        layout.addWidget(tesseract_btn, 0, Qt.AlignmentFlag.AlignLeft)
+
         layout.addStretch(1)

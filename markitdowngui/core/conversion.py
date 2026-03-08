@@ -11,7 +11,7 @@ DOCINTEL_IMAGE_EXTENSIONS = {".bmp", ".jpeg", ".jpg", ".png", ".tiff"}
 PDF_EXTENSION = ".pdf"
 PDF_RENDER_SCALE = 3.0
 LOCAL_OCR_TIMEOUT_SECONDS = 60
-AZURE_API_KEY_ENV_VAR = "AZURE_API_KEY"
+AZURE_OCR_API_KEY_ENV_VAR = "AZURE_OCR_API_KEY"
 CONVERSION_ERROR_PREFIX = "Error converting "
 
 
@@ -144,7 +144,7 @@ def _convert_with_markitdown(
     if use_docintel and options.normalized_docintel_endpoint:
         kwargs["docintel_endpoint"] = options.normalized_docintel_endpoint
 
-        api_key = os.getenv(AZURE_API_KEY_ENV_VAR, "").strip()
+        api_key = os.getenv(AZURE_OCR_API_KEY_ENV_VAR, "").strip()
         if api_key:
             from azure.core.credentials import AzureKeyCredential
 

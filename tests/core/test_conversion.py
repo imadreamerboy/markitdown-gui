@@ -243,7 +243,7 @@ def test_convert_with_markitdown_passes_docintel_api_key(monkeypatch, conversion
     monkeypatch.setitem(sys.modules, "azure", azure_module)
     monkeypatch.setitem(sys.modules, "azure.core", azure_core_module)
     monkeypatch.setitem(sys.modules, "azure.core.credentials", azure_credentials_module)
-    monkeypatch.setenv("AZURE_API_KEY", " secret-key ")
+    monkeypatch.setenv("AZURE_OCR_API_KEY", " secret-key ")
 
     result = conversion._convert_with_markitdown(
         "scan.png",
@@ -281,7 +281,7 @@ def test_convert_with_markitdown_leaves_docintel_credential_unset_without_api_ke
         "markitdown",
         types.SimpleNamespace(MarkItDown=FakeMarkItDown),
     )
-    monkeypatch.delenv("AZURE_API_KEY", raising=False)
+    monkeypatch.delenv("AZURE_OCR_API_KEY", raising=False)
 
     result = conversion._convert_with_markitdown(
         "scan.png",

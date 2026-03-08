@@ -57,6 +57,8 @@ def test_home_translation_keys_exist():
         "settings_tesseract_dialog",
         "conversion_partial_failure_title",
         "conversion_partial_failure_message",
+        "help_open_azure_ocr_pricing",
+        "help_open_tesseract",
     ]
 
     for lang in ["en", "zh_CN"]:
