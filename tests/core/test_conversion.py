@@ -368,40 +368,24 @@ def test_convert_with_markitdown_uses_default_azure_credential_without_api_key(
     assert isinstance(captured["docintel_credential"], FakeDefaultAzureCredential)
 
 
-def test_test_azure_ocr_connection_uses_api_key_credential(monkeypatch, conversion):
+def test_test_azure_ocr_connection_uses_simple_http_request(monkeypatch, conversion):
     captured = {}
 
-    class FakeAzureKeyCredential:
-        def __init__(self, key):
-            self.key = key
+    class FakeResponse:
+        status = 200
 
-    class FakeClient:
-        def __init__(self, *, endpoint, credential):
-            captured["endpoint"] = endpoint
-            captured["credential"] = credential
-            captured["closed"] = False
+        def __enter__(self):
+            return self
 
-        def get_resource_details(self):
-            captured["tested"] = True
-            return object()
+        def __exit__(self, exc_type, exc, tb):
+            return False
 
-        def close(self):
-            captured["closed"] = True
+    def fake_urlopen(request, timeout):
+        captured["request"] = request
+        captured["timeout"] = timeout
+        return FakeResponse()
 
-    azure_module = types.ModuleType("azure")
-    azure_core_module = types.ModuleType("azure.core")
-    azure_credentials_module = types.ModuleType("azure.core.credentials")
-    azure_ai_module = types.ModuleType("azure.ai")
-    azure_docintel_module = types.ModuleType("azure.ai.documentintelligence")
-
-    azure_credentials_module.AzureKeyCredential = FakeAzureKeyCredential
-    azure_docintel_module.DocumentIntelligenceAdministrationClient = FakeClient
-
-    monkeypatch.setitem(sys.modules, "azure", azure_module)
-    monkeypatch.setitem(sys.modules, "azure.core", azure_core_module)
-    monkeypatch.setitem(sys.modules, "azure.core.credentials", azure_credentials_module)
-    monkeypatch.setitem(sys.modules, "azure.ai", azure_ai_module)
-    monkeypatch.setitem(sys.modules, "azure.ai.documentintelligence", azure_docintel_module)
+    monkeypatch.setattr(conversion, "urlopen", fake_urlopen)
     monkeypatch.setenv("AZURE_OCR_API_KEY", " secret-key ")
 
     auth_method = conversion.test_azure_ocr_connection(
@@ -411,11 +395,27 @@ def test_test_azure_ocr_connection_uses_api_key_credential(monkeypatch, conversi
     )
 
     assert auth_method == "api_key"
-    assert captured["endpoint"] == "https://example.cognitiveservices.azure.com/"
-    assert isinstance(captured["credential"], FakeAzureKeyCredential)
-    assert captured["credential"].key == "secret-key"
-    assert captured["tested"] is True
-    assert captured["closed"] is True
+    assert captured["timeout"] == 15
+    assert (
+        captured["request"].full_url
+        == "https://example.cognitiveservices.azure.com/info?api-version=2024-11-30"
+    )
+    headers = {key.lower(): value for key, value in captured["request"].header_items()}
+    assert headers["ocp-apim-subscription-key"] == "secret-key"
+    assert headers["accept"] == "application/json"
+
+
+def test_test_azure_ocr_connection_requires_api_key(monkeypatch, conversion):
+    monkeypatch.delenv("AZURE_OCR_API_KEY", raising=False)
+
+    with pytest.raises(RuntimeError) as exc_info:
+        conversion.test_azure_ocr_connection(
+            conversion.ConversionOptions(
+                docintel_endpoint="https://example.cognitiveservices.azure.com/",
+            )
+        )
+
+    assert "Set AZURE_OCR_API_KEY" in str(exc_info.value)
 
 
 def test_conversion_worker_tracks_failed_files_separately_from_result_text(

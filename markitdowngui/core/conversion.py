@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 import os
 from pathlib import Path
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode, urlsplit, urlunsplit
+from urllib.request import Request, urlopen
 
 from PySide6.QtCore import QThread, Signal
 
@@ -12,6 +16,7 @@ PDF_EXTENSION = ".pdf"
 PDF_RENDER_SCALE = 3.0
 LOCAL_OCR_TIMEOUT_SECONDS = 60
 AZURE_OCR_API_KEY_ENV_VAR = "AZURE_OCR_API_KEY"
+AZURE_DOCINTEL_INFO_API_VERSION = "2024-11-30"
 CONVERSION_ERROR_PREFIX = "Error converting "
 BACKEND_AZURE = "azure"
 BACKEND_LOCAL = "local"
@@ -111,30 +116,71 @@ def _build_docintel_credential() -> tuple[object, str]:
     return DefaultAzureCredential(), "azure_identity"
 
 
+def _build_docintel_info_url(endpoint: str) -> str:
+    parts = urlsplit(endpoint.strip())
+    if not parts.scheme or not parts.netloc:
+        raise RuntimeError("Enter a valid Azure Document Intelligence endpoint.")
+
+    base_path = parts.path.rstrip("/")
+    info_path = f"{base_path}/info" if base_path else "/info"
+    query = urlencode({"api-version": AZURE_DOCINTEL_INFO_API_VERSION})
+    return urlunsplit((parts.scheme, parts.netloc, info_path, query, ""))
+
+
+def _extract_docintel_http_error_message(error: HTTPError) -> str:
+    try:
+        payload = error.read().decode("utf-8", errors="replace")
+    except Exception:
+        payload = ""
+
+    if payload:
+        try:
+            data = json.loads(payload)
+        except json.JSONDecodeError:
+            return payload.strip()
+
+        inner = data.get("error") if isinstance(data, dict) else None
+        if isinstance(inner, dict):
+            for key in ("message", "code"):
+                value = inner.get(key)
+                if isinstance(value, str) and value.strip():
+                    return value.strip()
+
+    return f"HTTP {error.code}"
+
+
 def test_azure_ocr_connection(options: ConversionOptions) -> str:
     endpoint = options.normalized_docintel_endpoint
     if not endpoint:
         raise RuntimeError("Set an Azure Document Intelligence endpoint first.")
 
-    try:
-        from azure.ai.documentintelligence import DocumentIntelligenceAdministrationClient
-    except ImportError as exc:
+    api_key = os.getenv(AZURE_OCR_API_KEY_ENV_VAR, "").strip()
+    if not api_key:
         raise RuntimeError(
-            "Azure OCR testing requires azure-ai-documentintelligence to be installed."
-        ) from exc
+            "Set AZURE_OCR_API_KEY before using Test Azure OCR. This check validates API-key authentication only."
+        )
 
-    credential, auth_method = _build_docintel_credential()
-    client = DocumentIntelligenceAdministrationClient(
-        endpoint=endpoint,
-        credential=credential,
+    request = Request(
+        _build_docintel_info_url(endpoint),
+        headers={
+            "Accept": "application/json",
+            "Ocp-Apim-Subscription-Key": api_key,
+        },
+        method="GET",
     )
     try:
-        client.get_resource_details()
-    finally:
-        if hasattr(client, "close"):
-            client.close()
+        with urlopen(request, timeout=15) as response:
+            if getattr(response, "status", 200) != 200:
+                raise RuntimeError(f"Azure OCR test failed with HTTP {response.status}.")
+    except HTTPError as exc:
+        raise RuntimeError(
+            f"Azure OCR test failed: {_extract_docintel_http_error_message(exc)}"
+        ) from exc
+    except URLError as exc:
+        reason = getattr(exc, "reason", exc)
+        raise RuntimeError(f"Azure OCR test failed: {reason}") from exc
 
-    return auth_method
+    return "api_key"
 
 
 def convert_file_with_details(
