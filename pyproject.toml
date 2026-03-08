@@ -11,7 +11,7 @@ license = { file = "LICENSE" }
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "markitdown[az-doc-intel,docx,pdf,pptx,xls,xlsx]",
+    "markitdown[az-doc-intel,docx,pdf,pptx,xls,xlsx]==0.1.5",
     "pypdfium2",
     "pytesseract",
     "pyside6>=6.8.2.1",
