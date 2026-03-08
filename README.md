@@ -15,7 +15,8 @@ It focuses on fast multi-file conversion to Markdown with a modern Fluent-style 
 - Preview modes: rendered Markdown view and raw Markdown view.
 - Save modes: export as one combined file or separate files.
 - Quick actions: copy Markdown, save output, back to queue, start over.
-- Settings for output folder, batch size, header style, table style, and theme mode (light/dark/system).
+- Optional OCR for scanned PDFs and image files, with Azure Document Intelligence first and local Tesseract fallback.
+- Settings for output folder, batch size, header style, table style, OCR, and theme mode (light/dark/system).
 - Built-in shortcuts dialog, update check action, and about dialog.
 
 ## Installation
@@ -38,6 +39,15 @@ Alternative:
 ```sh
 pip install -e .[dev]
 ```
+
+### OCR Notes
+
+- OCR is optional and disabled by default.
+- Local OCR requires a system `tesseract` binary. Install it from the [official Tesseract project](https://github.com/tesseract-ocr/tesseract). If it is not on your `PATH`, set the executable path in Settings.
+- Azure OCR requires an Azure Document Intelligence endpoint in Settings.
+- Azure Document Intelligence pricing includes [500 free pages per month](https://azure.microsoft.com/en-us/products/ai-foundry/tools/document-intelligence#Pricing) at the time of writing.
+- For API-key auth, set `AZURE_OCR_API_KEY`.
+- If `AZURE_OCR_API_KEY` is not set, Azure OCR falls back to Azure identity credentials supported by `DefaultAzureCredential`.
 
 ## Run the App
 
@@ -96,5 +106,4 @@ uv run pytest -q
 - MarkItDown ([MIT License](https://opensource.org/licenses/MIT))
 - PySide6 ([LGPLv3 License](https://www.gnu.org/licenses/lgpl-3.0.html))
 - PySide6-Fluent-Widgets / QFluentWidgets ([Project site](https://qfluentwidgets.com))
-
 

@@ -2,7 +2,14 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt, QUrl, Signal
 from PySide6.QtWidgets import QWidget, QVBoxLayout
-from qfluentwidgets import BodyLabel, FluentIcon as FIF, HyperlinkButton, PushButton, TitleLabel
+from qfluentwidgets import (
+    BodyLabel,
+    ExpandSettingCard,
+    FluentIcon as FIF,
+    HyperlinkButton,
+    PushButton,
+    TitleLabel,
+)
 
 
 class HelpInterface(QWidget):
@@ -53,4 +60,74 @@ class HelpInterface(QWidget):
         repo_btn.setUrl(QUrl("https://github.com/imadreamerboy/markitdown-gui"))
         layout.addWidget(repo_btn, 0, Qt.AlignmentFlag.AlignLeft)
 
+        azure_pricing_btn = HyperlinkButton()
+        azure_pricing_btn.setText(self.translate("help_open_azure_ocr_pricing"))
+        azure_pricing_btn.setIcon(FIF.LINK)
+        azure_pricing_btn.setUrl(
+            QUrl(
+                "https://azure.microsoft.com/en-us/products/ai-foundry/tools/document-intelligence#Pricing"
+            )
+        )
+        layout.addWidget(azure_pricing_btn, 0, Qt.AlignmentFlag.AlignLeft)
+
+        tesseract_btn = HyperlinkButton()
+        tesseract_btn.setText(self.translate("help_open_tesseract"))
+        tesseract_btn.setIcon(FIF.LINK)
+        tesseract_btn.setUrl(QUrl("https://github.com/tesseract-ocr/tesseract"))
+        layout.addWidget(tesseract_btn, 0, Qt.AlignmentFlag.AlignLeft)
+
+        layout.addWidget(TitleLabel(self.translate("help_faq_title")))
+
+        layout.addWidget(
+            self._build_faq_card(
+                FIF.FOLDER,
+                "help_faq_tesseract_windows_question",
+                "help_faq_tesseract_windows_answer",
+            )
+        )
+        layout.addWidget(
+            self._build_faq_card(
+                FIF.FOLDER,
+                "help_faq_tesseract_macos_question",
+                "help_faq_tesseract_macos_answer",
+            )
+        )
+        layout.addWidget(
+            self._build_faq_card(
+                FIF.FOLDER,
+                "help_faq_tesseract_linux_question",
+                "help_faq_tesseract_linux_answer",
+            )
+        )
+        layout.addWidget(
+            self._build_faq_card(
+                FIF.SYNC,
+                "help_faq_azure_question",
+                "help_faq_azure_answer",
+            )
+        )
+        layout.addWidget(
+            self._build_faq_card(
+                FIF.INFO,
+                "help_faq_local_fallback_question",
+                "help_faq_local_fallback_answer",
+            )
+        )
+
         layout.addStretch(1)
+
+    def _build_faq_card(
+        self,
+        icon,
+        question_key: str,
+        answer_key: str,
+    ) -> ExpandSettingCard:
+        card = ExpandSettingCard(icon, self.translate(question_key), parent=self)
+        answer = BodyLabel(self.translate(answer_key), card.view)
+        answer.setWordWrap(True)
+        answer.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        answer.setStyleSheet("font-size: 14px; padding: 6px 0 10px 0;")
+        card.viewLayout.setContentsMargins(20, 12, 20, 18)
+        card.viewLayout.addWidget(answer)
+        card._adjustViewSize()
+        return card

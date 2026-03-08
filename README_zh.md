@@ -13,7 +13,8 @@
 - 预览模式支持渲染视图和原始 Markdown 视图。
 - 保存模式支持合并为单文件或分别保存多个文件。
 - 常用操作：复制 Markdown、保存输出、返回队列、重新开始。
-- 设置项包括输出目录、批处理大小、标题样式、表格样式、主题模式（浅色/深色/跟随系统）。
+- 可选 OCR，支持扫描版 PDF 和图片文件，优先使用 Azure Document Intelligence，不可用时回退到本地 Tesseract。
+- 设置项包括输出目录、批处理大小、标题样式、表格样式、OCR 和主题模式（浅色/深色/跟随系统）。
 - 内置快捷键面板、检查更新入口和关于对话框。
 
 ## 安装
@@ -36,6 +37,15 @@ uv sync
 ```sh
 pip install -e .[dev]
 ```
+
+### OCR 说明
+
+- OCR 为可选功能，默认关闭。
+- 本地 OCR 需要系统已安装 `tesseract`。可从 [Tesseract 官方项目](https://github.com/tesseract-ocr/tesseract) 安装。如果它不在 `PATH` 中，可以在设置页里指定可执行文件路径。
+- Azure OCR 需要在设置页里填写 Azure Document Intelligence 终结点。
+- Azure Document Intelligence 定价页面目前标注有 [每月 500 页免费额度](https://azure.microsoft.com/en-us/products/ai-foundry/tools/document-intelligence#Pricing)。
+- 若使用 API Key 认证，请设置 `AZURE_OCR_API_KEY` 环境变量。
+- 如果未设置 `AZURE_OCR_API_KEY`，Azure OCR 会回退到 `DefaultAzureCredential` 支持的 Azure 身份凭据。
 
 ## 运行应用
 
