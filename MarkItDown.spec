@@ -1,42 +1,10 @@
 # -*- mode: python ; coding: utf-8 -*-
 import os
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
+from markitdowngui.build_config import build_datas, build_hiddenimports
 
-# Keep hidden imports minimal and focused on runtime-dynamic conversion modules.
-hiddenimports = [
-    "packaging.version",
-    "requests",
-]
-hiddenimports += collect_submodules("markitdown")
-for package in (
-    "azure.ai.documentintelligence",
-    "azure.identity",
-    "pypdfium2",
-    "pypdfium2_raw",
-    "pytesseract",
-):
-    try:
-        hiddenimports += collect_submodules(package)
-    except Exception as e:
-        print(f"Warning: Could not collect hidden imports for {package}: {e}")
-
-datas = [
-    ("markitdowngui/resources/markitdown-gui.ico", "markitdowngui/resources"),
-    ("markitdowngui/resources/moon.svg", "markitdowngui/resources"),
-    ("markitdowngui/resources/sun.svg", "markitdowngui/resources"),
-    ("LICENSE", "."),
-]
-
-try:
-    datas += collect_data_files("magika")
-except Exception as e:
-    print(f"Warning: Could not collect magika data files: {e}")
-
-for package in ("pypdfium2", "pypdfium2_raw"):
-    try:
-        datas += collect_data_files(package)
-    except Exception as e:
-        print(f"Warning: Could not collect data files for {package}: {e}")
+hiddenimports = build_hiddenimports(collect_submodules, warn=print)
+datas = build_datas(collect_data_files, warn=print)
 
 a = Analysis(
     ["markitdowngui/main.py"],
