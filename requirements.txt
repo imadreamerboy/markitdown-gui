@@ -27,7 +27,7 @@ cobble==0.1.4
     # via mammoth
 coloredlogs==15.0.1
     # via onnxruntime
-cryptography==45.0.4
+cryptography==46.0.5
     # via
     #   azure-identity
     #   msal
@@ -88,7 +88,7 @@ pdfminer-six==20251230
     #   pdfplumber
 pdfplumber==0.11.9
     # via markitdown
-pillow==11.3.0
+pillow==12.1.1
 pypdfium2==5.6.0
     # via pdfplumber
 pyreadline3==3.5.4
