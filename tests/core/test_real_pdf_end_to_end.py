@@ -10,6 +10,7 @@ from markitdowngui.core.conversion import (
 )
 from markitdowngui.core.markdown_assets import (
     ASSET_LAYOUT_SEPARATE,
+    ASSET_LAYOUT_SINGLE,
     build_asset_placeholder,
     materialize_assets_and_rewrite_markdown,
 )
@@ -142,5 +143,72 @@ def test_markitdown_pipeline_real_pdf_appends_extracted_images_section(
         assert (legacy_assets_dir / "page_001_img_001.png").exists()
         assert (legacy_assets_dir / "page_001_img_002.png").exists()
         assert (legacy_assets_dir / "page_002_img_001.png").exists()
+    finally:
+        _cleanup_asset_temp_dirs(temp_paths)
+
+
+def test_pymupdf_pipeline_real_pdf_combined_single_layout_materializes_unique_assets(
+    tmp_path,
+    sample_pdf_factory,
+):
+    first_pdf = sample_pdf_factory(tmp_path / "doc-one.pdf")
+    second_pdf = sample_pdf_factory(tmp_path / "doc-two.pdf")
+
+    first_outcome = convert_file_with_details(
+        str(first_pdf),
+        ConversionOptions(
+            pdf_pipeline="pymupdf",
+            preserve_pdf_images=True,
+        ),
+    )
+    second_outcome = convert_file_with_details(
+        str(second_pdf),
+        ConversionOptions(
+            pdf_pipeline="pymupdf",
+            preserve_pdf_images=True,
+        ),
+    )
+
+    temp_paths = [
+        *(asset.temp_path for asset in first_outcome.assets),
+        *(asset.temp_path for asset in second_outcome.assets),
+    ]
+    try:
+        output_path = tmp_path / "combined.md"
+        used_relative_paths: set[str] = set()
+
+        first_markdown = materialize_assets_and_rewrite_markdown(
+            str(first_pdf),
+            first_outcome.markdown,
+            first_outcome.assets,
+            output_path,
+            ASSET_LAYOUT_SINGLE,
+            combined=True,
+            used_relative_paths=used_relative_paths,
+        )
+        second_markdown = materialize_assets_and_rewrite_markdown(
+            str(second_pdf),
+            second_outcome.markdown,
+            second_outcome.assets,
+            output_path,
+            ASSET_LAYOUT_SINGLE,
+            combined=True,
+            used_relative_paths=used_relative_paths,
+        )
+
+        assert "__PDF_ASSET_" not in first_markdown
+        assert "__PDF_ASSET_" not in second_markdown
+        assert "## Extracted Images" not in first_markdown
+        assert "## Extracted Images" not in second_markdown
+        assert "combined_assets/doc-one_page_001_img_001.png" in first_markdown
+        assert "combined_assets/doc-two_page_001_img_001.png" in second_markdown
+        assert first_markdown.index("Alpha paragraph") < first_markdown.index(
+            "combined_assets/doc-one_page_001_img_001.png"
+        ) < first_markdown.index("Beta paragraph")
+
+        combined_assets = sorted((tmp_path / "combined_assets").glob("*.png"))
+        assert len(combined_assets) == 6
+        assert (tmp_path / "combined_assets" / "doc-one_page_001_img_001.png").exists()
+        assert (tmp_path / "combined_assets" / "doc-two_page_001_img_001.png").exists()
     finally:
         _cleanup_asset_temp_dirs(temp_paths)
