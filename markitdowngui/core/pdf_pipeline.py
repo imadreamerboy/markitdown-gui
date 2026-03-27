@@ -8,18 +8,38 @@ from pathlib import Path
 import tempfile
 from typing import Any, Callable, Sequence
 
-from markitdowngui.core.markdown_assets import GeneratedAsset
+from markitdowngui.core.markdown_assets import (
+    GeneratedAsset,
+    build_asset_placeholder,
+    build_inline_image_markdown,
+)
 
 PDF_PIPELINE_MARKITDOWN = "markitdown"
 PDF_PIPELINE_PYMUPDF = "pymupdf"
 
 
 @dataclass(frozen=True)
-class _PageBlock:
+class PdfTextBlock:
     markdown: str
-    top: float
-    left: float
-    bbox: tuple[float, float, float, float] | None = None
+    bbox: tuple[float, float, float, float]
+    page_number: int
+    order_key: tuple[float, float]
+
+
+@dataclass(frozen=True)
+class PdfImageBlock:
+    asset: GeneratedAsset
+    bbox: tuple[float, float, float, float] | None
+    page_number: int
+    order_key: tuple[float, float]
+
+
+@dataclass(frozen=True)
+class PdfPageLayout:
+    page_number: int
+    blocks: tuple[PdfTextBlock, ...]
+    inline_images_by_block: tuple[tuple[int, tuple[PdfImageBlock, ...]], ...]
+    trailing_images: tuple[PdfImageBlock, ...]
 
 
 def normalize_pdf_pipeline(pipeline: str) -> str:
@@ -30,21 +50,34 @@ def normalize_pdf_pipeline(pipeline: str) -> str:
 
 
 def extract_pdf_markdown(file_path: str) -> str:
-    pymupdf = _import_pymupdf()
-    page_markdowns: list[str] = []
-    document = pymupdf.open(file_path)
-    try:
-        for page in document:
-            blocks = _extract_page_blocks(page, pymupdf)
-            page_markdown = "\n\n".join(
-                block.markdown.strip() for block in blocks if block.markdown.strip()
-            ).strip()
-            if page_markdown:
-                page_markdowns.append(page_markdown)
-    finally:
-        document.close()
+    page_layouts, _assets = _extract_pdf_page_layouts(
+        file_path,
+        include_images=False,
+        min_width=0,
+        min_height=0,
+        min_bytes=0,
+        logger=None,
+    )
+    return _render_pdf_page_layouts(page_layouts)
 
-    return "\n\n".join(page_markdowns).strip()
+
+def extract_pdf_markdown_with_inline_assets(
+    file_path: str,
+    *,
+    min_width: int,
+    min_height: int,
+    min_bytes: int,
+    logger,
+) -> tuple[str, tuple[GeneratedAsset, ...]]:
+    page_layouts, assets = _extract_pdf_page_layouts(
+        file_path,
+        include_images=True,
+        min_width=min_width,
+        min_height=min_height,
+        min_bytes=min_bytes,
+        logger=logger,
+    )
+    return _render_pdf_page_layouts(page_layouts), assets
 
 
 def convert_pdf_with_local_ocr(
@@ -86,118 +119,95 @@ def extract_pdf_image_assets(
     min_bytes: int,
     logger,
 ) -> tuple[GeneratedAsset, ...]:
-    pymupdf = _import_pymupdf()
+    _page_layouts, assets = _extract_pdf_page_layouts(
+        file_path,
+        include_images=True,
+        min_width=min_width,
+        min_height=min_height,
+        min_bytes=min_bytes,
+        logger=logger,
+    )
+    return assets
 
-    assets: list[GeneratedAsset] = []
+
+def _extract_pdf_page_layouts(
+    file_path: str,
+    *,
+    include_images: bool,
+    min_width: int,
+    min_height: int,
+    min_bytes: int,
+    logger,
+) -> tuple[tuple[PdfPageLayout, ...], tuple[GeneratedAsset, ...]]:
+    pymupdf = _import_pymupdf()
     document = pymupdf.open(file_path)
-    temp_dir: str | None = None
+    assets: list[GeneratedAsset] = []
     seen_hashes: dict[str, str] = {}
-    stem = Path(file_path).stem
+    temp_dir: str | None = None
+    page_layouts: list[PdfPageLayout] = []
 
     try:
         for page_index, page in enumerate(document, start=1):
-            page_images = list(page.get_images(full=True))
-            logger.info(
-                f"PDF image extraction: detected {len(page_images)} image object(s) on page {page_index} for {file_path}"
-            )
-
-            for image_number, image_info in enumerate(page_images, start=1):
-                xref = int(image_info[0]) if image_info else 0
-                try:
-                    image_bytes, width, height, extension = _extract_image_bytes(
-                        document,
-                        page,
-                        xref,
-                        pymupdf,
-                    )
-                except Exception as exc:
-                    logger.warning(
-                        f"Skipping PDF image on page {page_index} for {file_path}: {_summarize_error(exc)}"
-                    )
-                    continue
-
-                if width < min_width:
-                    logger.info(
-                        f"Filtered PDF image on page {page_index} for {file_path}: width {width}px < {min_width}px"
-                    )
-                    continue
-                if height < min_height:
-                    logger.info(
-                        f"Filtered PDF image on page {page_index} for {file_path}: height {height}px < {min_height}px"
-                    )
-                    continue
-                if len(image_bytes) < min_bytes:
-                    logger.info(
-                        f"Filtered PDF image on page {page_index} for {file_path}: size {len(image_bytes)} bytes < {min_bytes} bytes"
-                    )
-                    continue
-
-                sha256 = hashlib.sha256(image_bytes).hexdigest()
-                if sha256 in seen_hashes:
-                    temp_path = seen_hashes[sha256]
-                    logger.info(
-                        f"Deduplicated PDF image on page {page_index} for {file_path}: {sha256}"
-                    )
-                    assets.append(
-                        GeneratedAsset(
-                            filename=Path(temp_path).name,
-                            temp_path=temp_path,
-                            page_number=page_index,
-                            image_number=image_number,
-                            sha256=sha256,
-                            width=width,
-                            height=height,
-                            size_bytes=len(image_bytes),
-                        )
-                    )
-                    continue
-
-                if temp_dir is None:
-                    temp_dir = tempfile.mkdtemp(
-                        prefix=f"markitdowngui_pdf_{Path(stem).stem}_"
-                    )
-                    logger.info(
-                        f"Created temporary PDF assets directory for {file_path}: {temp_dir}"
-                    )
-
-                filename = f"page_{page_index:03d}_img_{image_number:03d}{extension}"
-                temp_path = os.path.join(temp_dir, filename)
-                with open(temp_path, "wb") as temp_file:
-                    temp_file.write(image_bytes)
-                seen_hashes[sha256] = temp_path
-                assets.append(
-                    GeneratedAsset(
-                        filename=filename,
-                        temp_path=temp_path,
-                        page_number=page_index,
-                        image_number=image_number,
-                        sha256=sha256,
-                        width=width,
-                        height=height,
-                        size_bytes=len(image_bytes),
-                    )
+            text_blocks = _extract_page_text_blocks(page, page_index, pymupdf)
+            image_blocks: list[PdfImageBlock] = []
+            if include_images:
+                page_image_blocks, temp_dir = _extract_page_image_blocks(
+                    file_path,
+                    document,
+                    page,
+                    page_index,
+                    min_width=min_width,
+                    min_height=min_height,
+                    min_bytes=min_bytes,
+                    logger=logger,
+                    seen_hashes=seen_hashes,
+                    temp_dir=temp_dir,
+                    pymupdf=pymupdf,
                 )
+                image_blocks.extend(page_image_blocks)
+                assets.extend(block.asset for block in page_image_blocks)
+
+            inline_map: dict[int, list[PdfImageBlock]] = {}
+            trailing_images: list[PdfImageBlock] = []
+            for image_block in image_blocks:
+                anchor_index = _find_nearest_preceding_text_block_index(
+                    text_blocks,
+                    image_block,
+                )
+                if anchor_index is None:
+                    trailing_images.append(image_block)
+                else:
+                    inline_map.setdefault(anchor_index, []).append(image_block)
+
+            inline_images = tuple(
+                (index, tuple(blocks))
+                for index, blocks in sorted(inline_map.items())
+            )
+            page_layouts.append(
+                PdfPageLayout(
+                    page_number=page_index,
+                    blocks=tuple(text_blocks),
+                    inline_images_by_block=inline_images,
+                    trailing_images=tuple(trailing_images),
+                )
+            )
     finally:
         document.close()
 
-    return tuple(assets)
+    return tuple(page_layouts), tuple(assets)
 
 
-def _extract_page_blocks(page, pymupdf) -> list[_PageBlock]:
-    table_blocks = _extract_table_blocks(page, pymupdf)
-    table_rects = [
-        pymupdf.Rect(block.bbox)
-        for block in table_blocks
-        if block.bbox is not None
-    ]
-    text_blocks = _extract_text_blocks(page, table_rects, pymupdf)
+def _extract_page_text_blocks(page, page_number: int, pymupdf) -> list[PdfTextBlock]:
+    table_blocks = _extract_table_blocks(page, page_number, pymupdf)
+    table_rects = [pymupdf.Rect(block.bbox) for block in table_blocks]
+    text_blocks = _extract_text_blocks(page, page_number, table_rects, pymupdf)
     return sorted(
         [*table_blocks, *text_blocks],
-        key=lambda block: (block.top, block.left),
+        key=lambda block: block.order_key,
     )
 
 
-def _extract_table_blocks(page, pymupdf) -> list[_PageBlock]:
+def _extract_table_blocks(page, page_number: int, pymupdf) -> list[PdfTextBlock]:
     if not hasattr(page, "find_tables"):
         return []
 
@@ -210,7 +220,7 @@ def _extract_table_blocks(page, pymupdf) -> list[_PageBlock]:
     if not isinstance(raw_tables, Sequence):
         return []
 
-    blocks: list[_PageBlock] = []
+    blocks: list[PdfTextBlock] = []
     for table in raw_tables:
         rows = _extract_table_rows(table)
         markdown = _to_markdown_table(rows)
@@ -220,19 +230,24 @@ def _extract_table_blocks(page, pymupdf) -> list[_PageBlock]:
         bbox = _get_bbox(table)
         rect = pymupdf.Rect(bbox) if bbox else pymupdf.Rect(0, 0, 0, 0)
         blocks.append(
-            _PageBlock(
+            PdfTextBlock(
                 markdown=markdown,
-                top=float(rect.y0),
-                left=float(rect.x0),
-                bbox=(float(rect.x0), float(rect.y0), float(rect.x1), float(rect.y1)),
+                bbox=_rect_to_bbox(rect),
+                page_number=page_number,
+                order_key=(float(rect.y0), float(rect.x0)),
             )
         )
     return blocks
 
 
-def _extract_text_blocks(page, table_rects, pymupdf) -> list[_PageBlock]:
+def _extract_text_blocks(
+    page,
+    page_number: int,
+    table_rects,
+    pymupdf,
+) -> list[PdfTextBlock]:
     page_dict = page.get_text("dict", sort=True)
-    blocks: list[_PageBlock] = []
+    blocks: list[PdfTextBlock] = []
     for block in page_dict.get("blocks", []):
         bbox = block.get("bbox")
         rect = pymupdf.Rect(bbox) if bbox else pymupdf.Rect(0, 0, 0, 0)
@@ -244,14 +259,197 @@ def _extract_text_blocks(page, table_rects, pymupdf) -> list[_PageBlock]:
             continue
 
         blocks.append(
-            _PageBlock(
+            PdfTextBlock(
                 markdown=text,
-                top=float(rect.y0),
-                left=float(rect.x0),
-                bbox=(float(rect.x0), float(rect.y0), float(rect.x1), float(rect.y1)),
+                bbox=_rect_to_bbox(rect),
+                page_number=page_number,
+                order_key=(float(rect.y0), float(rect.x0)),
             )
         )
     return blocks
+
+
+def _extract_page_image_blocks(
+    file_path: str,
+    document,
+    page,
+    page_index: int,
+    *,
+    min_width: int,
+    min_height: int,
+    min_bytes: int,
+    logger,
+    seen_hashes: dict[str, str],
+    temp_dir: str | None,
+    pymupdf,
+) -> tuple[list[PdfImageBlock], str | None]:
+    page_images = list(page.get_images(full=True))
+    if logger is not None:
+        logger.info(
+            f"PDF image extraction: detected {len(page_images)} image object(s) on page {page_index} for {file_path}"
+        )
+
+    image_blocks: list[PdfImageBlock] = []
+    for image_number, image_info in enumerate(page_images, start=1):
+        xref = int(image_info[0]) if image_info else 0
+        rects = _get_image_rects(page, xref)
+        primary_rect = rects[0] if rects else None
+        try:
+            image_bytes, width, height, extension = _extract_image_bytes(
+                document,
+                page,
+                xref,
+                primary_rect,
+                pymupdf,
+            )
+        except Exception as exc:
+            if logger is not None:
+                logger.warning(
+                    f"Skipping PDF image on page {page_index} for {file_path}: {_summarize_error(exc)}"
+                )
+            continue
+
+        if width < min_width:
+            if logger is not None:
+                logger.info(
+                    f"Filtered PDF image on page {page_index} for {file_path}: width {width}px < {min_width}px"
+                )
+            continue
+        if height < min_height:
+            if logger is not None:
+                logger.info(
+                    f"Filtered PDF image on page {page_index} for {file_path}: height {height}px < {min_height}px"
+                )
+            continue
+        if len(image_bytes) < min_bytes:
+            if logger is not None:
+                logger.info(
+                    f"Filtered PDF image on page {page_index} for {file_path}: size {len(image_bytes)} bytes < {min_bytes} bytes"
+                )
+            continue
+
+        sha256 = hashlib.sha256(image_bytes).hexdigest()
+        if sha256 in seen_hashes:
+            temp_path = seen_hashes[sha256]
+            if logger is not None:
+                logger.info(
+                    f"Deduplicated PDF image on page {page_index} for {file_path}: {sha256}"
+                )
+        else:
+            if temp_dir is None:
+                temp_dir = tempfile.mkdtemp(
+                    prefix=f"markitdowngui_pdf_{Path(file_path).stem}_"
+                )
+                if logger is not None:
+                    logger.info(
+                        f"Created temporary PDF assets directory for {file_path}: {temp_dir}"
+                    )
+            filename = f"page_{page_index:03d}_img_{image_number:03d}{extension}"
+            temp_path = os.path.join(temp_dir, filename)
+            with open(temp_path, "wb") as temp_file:
+                temp_file.write(image_bytes)
+            seen_hashes[sha256] = temp_path
+
+        asset = GeneratedAsset(
+            filename=Path(temp_path).name,
+            temp_path=temp_path,
+            page_number=page_index,
+            image_number=image_number,
+            sha256=sha256,
+            width=width,
+            height=height,
+            size_bytes=len(image_bytes),
+            bbox=_rect_to_bbox(primary_rect) if primary_rect is not None else None,
+        )
+        bbox = asset.bbox
+        order_key = (
+            float(bbox[1]) if bbox is not None else float("inf"),
+            float(bbox[0]) if bbox is not None else float("inf"),
+        )
+        image_blocks.append(
+            PdfImageBlock(
+                asset=asset,
+                bbox=bbox,
+                page_number=page_index,
+                order_key=order_key,
+            )
+        )
+
+    return image_blocks, temp_dir
+
+
+def _find_nearest_preceding_text_block_index(
+    text_blocks: Sequence[PdfTextBlock],
+    image_block: PdfImageBlock,
+) -> int | None:
+    if image_block.bbox is None:
+        return None
+
+    image_left, image_top, image_right, _image_bottom = image_block.bbox
+    image_center_x = (image_left + image_right) / 2.0
+    best_index: int | None = None
+    best_distance: float | None = None
+    best_horizontal_distance: float | None = None
+
+    for index, block in enumerate(text_blocks):
+        _left, _top, right, bottom = block.bbox
+        if bottom > image_top:
+            continue
+
+        vertical_distance = image_top - bottom
+        horizontal_distance = abs(((block.bbox[0] + right) / 2.0) - image_center_x)
+
+        if best_index is None:
+            best_index = index
+            best_distance = vertical_distance
+            best_horizontal_distance = horizontal_distance
+            continue
+
+        if vertical_distance < best_distance:
+            best_index = index
+            best_distance = vertical_distance
+            best_horizontal_distance = horizontal_distance
+            continue
+
+        if (
+            vertical_distance == best_distance
+            and horizontal_distance < best_horizontal_distance
+        ):
+            best_index = index
+            best_horizontal_distance = horizontal_distance
+
+    return best_index
+
+
+def _render_pdf_page_layouts(page_layouts: Sequence[PdfPageLayout]) -> str:
+    rendered_pages: list[str] = []
+    for page_layout in page_layouts:
+        parts: list[str] = []
+        inline_map = {
+            index: list(blocks)
+            for index, blocks in page_layout.inline_images_by_block
+        }
+        for index, block in enumerate(page_layout.blocks):
+            block_markdown = block.markdown.strip()
+            if block_markdown:
+                parts.append(block_markdown)
+            for image_block in inline_map.get(index, []):
+                parts.append(_render_image_block(image_block))
+        for image_block in page_layout.trailing_images:
+            parts.append(_render_image_block(image_block))
+
+        page_markdown = "\n\n".join(part for part in parts if part.strip()).strip()
+        if page_markdown:
+            rendered_pages.append(page_markdown)
+
+    return "\n\n".join(rendered_pages).strip()
+
+
+def _render_image_block(image_block: PdfImageBlock) -> str:
+    asset = image_block.asset
+    placeholder = build_asset_placeholder(asset.sha256) or asset.filename
+    alt_text = f"Page {asset.page_number or '?'} image {asset.image_number or '?'}"
+    return build_inline_image_markdown(placeholder, alt_text)
 
 
 def _extract_table_rows(table) -> list[list[str]]:
@@ -264,14 +462,6 @@ def _extract_table_rows(table) -> list[list[str]]:
                 if isinstance(row, list)
             ]
     return []
-
-def _get_bbox(item) -> tuple[float, float, float, float] | None:
-    bbox = getattr(item, "bbox", None)
-    if bbox is None:
-        bbox = getattr(item, "rect", None)
-    if bbox is None:
-        return None
-    return tuple(float(value) for value in bbox)
 
 
 def _block_to_text(block: dict[str, Any]) -> str:
@@ -317,7 +507,13 @@ def _to_markdown_table(table: list[list[str]]) -> str:
     return "\n".join(lines)
 
 
-def _extract_image_bytes(document, page, xref: int, pymupdf) -> tuple[bytes, int, int, str]:
+def _extract_image_bytes(
+    document,
+    page,
+    xref: int,
+    primary_rect,
+    pymupdf,
+) -> tuple[bytes, int, int, str]:
     image_data = document.extract_image(xref)
     if image_data:
         image_bytes = bytes(image_data.get("image", b""))
@@ -327,17 +523,37 @@ def _extract_image_bytes(document, page, xref: int, pymupdf) -> tuple[bytes, int
         if image_bytes and width > 0 and height > 0:
             return image_bytes, width, height, extension
 
-    if hasattr(page, "get_image_rects"):
-        rects = page.get_image_rects(xref)
-        if rects:
-            pixmap = page.get_pixmap(
-                matrix=pymupdf.Matrix(1, 1),
-                clip=rects[0],
-                alpha=False,
-            )
-            return pixmap.tobytes("png"), pixmap.width, pixmap.height, ".png"
+    if primary_rect is not None:
+        pixmap = page.get_pixmap(
+            matrix=pymupdf.Matrix(1, 1),
+            clip=primary_rect,
+            alpha=False,
+        )
+        return pixmap.tobytes("png"), pixmap.width, pixmap.height, ".png"
 
     raise RuntimeError(f"Could not extract image xref {xref}")
+
+
+def _get_bbox(item) -> tuple[float, float, float, float] | None:
+    bbox = getattr(item, "bbox", None)
+    if bbox is None:
+        bbox = getattr(item, "rect", None)
+    if bbox is None:
+        return None
+    return tuple(float(value) for value in bbox)
+
+
+def _get_image_rects(page, xref: int) -> list[Any]:
+    if not hasattr(page, "get_image_rects"):
+        return []
+    try:
+        return list(page.get_image_rects(xref))
+    except Exception:
+        return []
+
+
+def _rect_to_bbox(rect) -> tuple[float, float, float, float]:
+    return (float(rect.x0), float(rect.y0), float(rect.x1), float(rect.y1))
 
 
 def _normalize_extension(ext: str) -> str:

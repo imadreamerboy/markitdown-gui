@@ -9,6 +9,7 @@ from typing import Sequence
 
 ASSET_LAYOUT_SEPARATE = "separate"
 ASSET_LAYOUT_SINGLE = "single"
+PDF_ASSET_PLACEHOLDER_PREFIX = "__PDF_ASSET_"
 
 
 @dataclass(frozen=True)
@@ -23,6 +24,7 @@ class GeneratedAsset:
     width: int | None = None
     height: int | None = None
     size_bytes: int = 0
+    bbox: tuple[float, float, float, float] | None = None
 
 
 @dataclass(frozen=True)
@@ -40,6 +42,7 @@ class MarkdownAssetReference:
     relative_path: str
     page_number: int | None = None
     alt_text: str = ""
+    placeholder: str | None = None
 
 
 def normalize_assets_layout(layout: str) -> str:
@@ -52,6 +55,18 @@ def normalize_assets_layout(layout: str) -> str:
 def sanitize_stem(value: str) -> str:
     sanitized = re.sub(r"[^A-Za-z0-9._-]+", "_", value or "").strip("._-")
     return sanitized or "document"
+
+
+def build_asset_placeholder(sha256: str) -> str | None:
+    normalized = (sha256 or "").strip().lower()
+    if not normalized:
+        return None
+    return f"{PDF_ASSET_PLACEHOLDER_PREFIX}{normalized}__"
+
+
+def build_inline_image_markdown(relative_path: str, alt_text: str) -> str:
+    safe_alt_text = alt_text.strip() or "Extracted image"
+    return f"![{safe_alt_text}]({PurePosixPath(relative_path).as_posix()})"
 
 
 def build_markdown_with_asset_references(
@@ -117,7 +132,19 @@ def materialize_assets_and_rewrite_markdown(
         used_relative_paths=used_relative_paths,
     )
     _copy_saved_assets(Path(output_md_path).parent, saved_assets)
-    return build_markdown_with_asset_references(markdown, references)
+    rewritten_markdown, used_placeholders = rewrite_markdown_asset_placeholders(
+        markdown,
+        references,
+    )
+    remaining_references = [
+        reference
+        for reference in references
+        if not reference.placeholder or reference.placeholder not in used_placeholders
+    ]
+    return build_markdown_with_asset_references(
+        rewritten_markdown,
+        remaining_references,
+    )
 
 
 def resolve_asset_references(
@@ -163,6 +190,7 @@ def resolve_asset_references(
                 relative_path=relative_path,
                 page_number=asset.page_number,
                 alt_text=_build_alt_text(asset),
+                placeholder=build_asset_placeholder(asset.sha256),
             )
         )
 
@@ -226,3 +254,21 @@ def _build_alt_text(asset: GeneratedAsset) -> str:
     page = asset.page_number or "?"
     image_number = asset.image_number or "?"
     return f"Page {page} image {image_number}"
+
+
+def rewrite_markdown_asset_placeholders(
+    markdown: str,
+    references: Sequence[MarkdownAssetReference],
+) -> tuple[str, set[str]]:
+    rewritten = markdown
+    used_placeholders: set[str] = set()
+    for reference in references:
+        placeholder = reference.placeholder
+        if not placeholder or placeholder not in rewritten:
+            continue
+        rewritten = rewritten.replace(
+            placeholder,
+            PurePosixPath(reference.relative_path).as_posix(),
+        )
+        used_placeholders.add(placeholder)
+    return rewritten, used_placeholders

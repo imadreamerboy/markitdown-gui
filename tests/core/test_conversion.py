@@ -110,6 +110,34 @@ def test_convert_pdf_without_ocr_extracts_image_assets_when_preserve_is_enabled(
     assert outcome.assets == ("image-asset",)
 
 
+def test_convert_pdf_with_markitdown_pipeline_and_preserve_images_keeps_legacy_asset_flow(
+    monkeypatch,
+    conversion,
+):
+    monkeypatch.setattr(
+        conversion,
+        "_convert_with_markitdown",
+        lambda *_args, **_kwargs: "native pdf text",
+    )
+    monkeypatch.setattr(
+        conversion,
+        "_safe_extract_pdf_image_assets",
+        lambda *_args, **_kwargs: ("legacy-asset",),
+    )
+
+    outcome = conversion.convert_file_with_details(
+        "document.pdf",
+        conversion.ConversionOptions(
+            pdf_pipeline="markitdown",
+            preserve_pdf_images=True,
+        ),
+    )
+
+    assert outcome.markdown == "native pdf text"
+    assert outcome.backend == conversion.BACKEND_NATIVE
+    assert outcome.assets == ("legacy-asset",)
+
+
 def test_convert_image_prefers_docintel_when_configured(monkeypatch, conversion):
     calls = []
 
@@ -598,6 +626,144 @@ def test_convert_pdf_with_pymupdf_pipeline_uses_native_extraction(monkeypatch, c
 
     assert outcome.markdown == "native pymupdf text"
     assert outcome.backend == conversion.BACKEND_NATIVE
+
+
+def test_convert_pdf_with_pymupdf_pipeline_without_preserve_uses_plain_markdown_path(
+    monkeypatch,
+    conversion,
+):
+    monkeypatch.setattr(
+        conversion,
+        "extract_pdf_markdown",
+        lambda *_args, **_kwargs: "plain pymupdf text",
+    )
+    monkeypatch.setattr(
+        conversion,
+        "extract_pdf_markdown_with_inline_assets",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("inline asset extraction should not run")
+        ),
+    )
+
+    outcome = conversion.convert_file_with_details(
+        "document.pdf",
+        conversion.ConversionOptions(pdf_pipeline="pymupdf"),
+    )
+
+    assert outcome.markdown == "plain pymupdf text"
+    assert outcome.backend == conversion.BACKEND_NATIVE
+    assert outcome.assets == ()
+
+
+def test_convert_pdf_with_pymupdf_pipeline_uses_inline_assets_when_preserve_is_enabled(
+    monkeypatch,
+    conversion,
+):
+    monkeypatch.setattr(
+        conversion,
+        "extract_pdf_markdown_with_inline_assets",
+        lambda *_args, **_kwargs: ("native inline text", ("asset",)),
+    )
+    monkeypatch.setattr(
+        conversion,
+        "extract_pdf_markdown",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("plain pymupdf markdown path should not run")
+        ),
+    )
+
+    outcome = conversion.convert_file_with_details(
+        "document.pdf",
+        conversion.ConversionOptions(
+            pdf_pipeline="pymupdf",
+            preserve_pdf_images=True,
+        ),
+    )
+
+    assert outcome.markdown == "native inline text"
+    assert outcome.backend == conversion.BACKEND_NATIVE
+    assert outcome.assets == ("asset",)
+
+
+def test_convert_pdf_with_pymupdf_pipeline_azure_fallback_keeps_asset_save_flow(
+    monkeypatch,
+    conversion,
+):
+    monkeypatch.setattr(
+        conversion,
+        "extract_pdf_markdown_with_inline_assets",
+        lambda *_args, **_kwargs: ("", ()),
+    )
+    monkeypatch.setattr(
+        conversion,
+        "_convert_with_markitdown",
+        lambda *_args, use_docintel=False, **_kwargs: "azure pdf text" if use_docintel else "",
+    )
+    monkeypatch.setattr(
+        conversion,
+        "_safe_extract_pdf_image_assets",
+        lambda *_args, **_kwargs: ("fallback-asset",),
+    )
+    monkeypatch.setattr(
+        conversion,
+        "_convert_pdf_with_local_ocr",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("local OCR should not run")
+        ),
+    )
+
+    outcome = conversion.convert_file_with_details(
+        "scan.pdf",
+        conversion.ConversionOptions(
+            ocr_enabled=True,
+            docintel_endpoint="https://example.cognitiveservices.azure.com/",
+            pdf_pipeline="pymupdf",
+            preserve_pdf_images=True,
+        ),
+    )
+
+    assert outcome.markdown == "azure pdf text"
+    assert outcome.backend == conversion.BACKEND_AZURE
+    assert outcome.assets == ("fallback-asset",)
+
+
+def test_convert_pdf_with_pymupdf_pipeline_local_ocr_fallback_keeps_asset_save_flow(
+    monkeypatch,
+    conversion,
+):
+    monkeypatch.setattr(
+        conversion,
+        "extract_pdf_markdown_with_inline_assets",
+        lambda *_args, **_kwargs: ("", ()),
+    )
+    monkeypatch.setattr(
+        conversion,
+        "_convert_with_markitdown",
+        lambda *_args, **_kwargs: "",
+    )
+    monkeypatch.setattr(
+        conversion,
+        "_convert_pdf_with_local_ocr",
+        lambda *_args, **_kwargs: "local pdf text",
+    )
+    monkeypatch.setattr(
+        conversion,
+        "_safe_extract_pdf_image_assets",
+        lambda *_args, **_kwargs: ("fallback-asset",),
+    )
+
+    outcome = conversion.convert_file_with_details(
+        "scan.pdf",
+        conversion.ConversionOptions(
+            ocr_enabled=True,
+            pdf_pipeline="pymupdf",
+            preserve_pdf_images=True,
+        ),
+    )
+
+    assert outcome.markdown == "local pdf text"
+    assert outcome.backend == conversion.BACKEND_LOCAL
+    assert outcome.assets == ("fallback-asset",)
 
 
 def test_convert_pdf_with_pymupdf_pipeline_falls_back_to_azure(monkeypatch, conversion):

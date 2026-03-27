@@ -33,3 +33,22 @@ def test_settings_interface_persists_pdf_image_controls(qapp, tmp_path):
     assert manager.get_pdf_assets_layout() == "single"
 
     widget.deleteLater()
+
+
+def test_settings_interface_restores_pdf_controls_from_persisted_settings(qapp, tmp_path):
+    manager = _settings_manager(tmp_path)
+    manager.set_pdf_pipeline("pymupdf")
+    manager.set_preserve_pdf_images(True)
+    manager.set_pdf_assets_layout("single")
+
+    widget = SettingsInterface(
+        manager,
+        lambda key: get_translation("en", key),
+    )
+
+    try:
+        assert widget.pdf_pipeline_combo.currentData() == "pymupdf"
+        assert widget.preserve_pdf_images_check.isChecked() is True
+        assert widget.pdf_assets_layout_combo.currentData() == "single"
+    finally:
+        widget.deleteLater()

@@ -18,6 +18,7 @@ from markitdowngui.core.pdf_pipeline import (
     convert_pdf_with_local_ocr as convert_pdf_with_local_ocr_pymupdf,
     extract_pdf_image_assets as extract_pdf_image_assets_pymupdf,
     extract_pdf_markdown,
+    extract_pdf_markdown_with_inline_assets,
     normalize_pdf_pipeline,
 )
 from markitdowngui.utils.logger import AppLogger
@@ -315,21 +316,47 @@ def _convert_pdf_with_pymupdf_pipeline(
     options: ConversionOptions,
 ) -> ConversionOutcome:
     if not options.ocr_enabled:
+        if options.preserve_pdf_images:
+            markdown, assets = extract_pdf_markdown_with_inline_assets(
+                file_path,
+                min_width=PDF_IMAGE_MIN_WIDTH,
+                min_height=PDF_IMAGE_MIN_HEIGHT,
+                min_bytes=PDF_IMAGE_MIN_BYTES,
+                logger=AppLogger,
+            )
+            return ConversionOutcome(
+                markdown=markdown,
+                backend=BACKEND_NATIVE,
+                assets=assets,
+            )
         return ConversionOutcome(
             markdown=extract_pdf_markdown(file_path),
             backend=BACKEND_NATIVE,
-            assets=_maybe_extract_pdf_image_assets(file_path, options),
         )
 
     native_error: Exception | None = None
     try:
-        markdown = extract_pdf_markdown(file_path)
-        if markdown.strip():
-            return ConversionOutcome(
-                markdown=markdown,
-                backend=BACKEND_NATIVE,
-                assets=_maybe_extract_pdf_image_assets(file_path, options),
+        if options.preserve_pdf_images:
+            markdown, assets = extract_pdf_markdown_with_inline_assets(
+                file_path,
+                min_width=PDF_IMAGE_MIN_WIDTH,
+                min_height=PDF_IMAGE_MIN_HEIGHT,
+                min_bytes=PDF_IMAGE_MIN_BYTES,
+                logger=AppLogger,
             )
+            if markdown.strip():
+                return ConversionOutcome(
+                    markdown=markdown,
+                    backend=BACKEND_NATIVE,
+                    assets=assets,
+                )
+        else:
+            markdown = extract_pdf_markdown(file_path)
+            if markdown.strip():
+                return ConversionOutcome(
+                    markdown=markdown,
+                    backend=BACKEND_NATIVE,
+                )
     except Exception as exc:
         native_error = exc
 

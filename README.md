@@ -16,7 +16,10 @@ It focuses on fast multi-file conversion to Markdown with a modern Fluent-style 
 - Save modes: export as one combined file or separate files.
 - Quick actions: copy Markdown, save output, back to queue, start over.
 - Optional OCR for scanned PDFs and image files, with Azure Document Intelligence first and local Tesseract fallback.
-- Settings for output folder, batch size, header style, table style, OCR, and theme mode (light/dark/system).
+- PDF pipeline toggle: `MarkItDown` for conservative wrapper behavior, or `PyMuPDF` for alternate PDF parsing.
+- Optional `Preserve PDF images in Markdown` export with `separate` or `single` asset layouts.
+- `PyMuPDF` PDF mode can place extracted images near the closest preceding text block and show them in preview before save.
+- Settings for output folder, batch size, header style, table style, OCR, PDF behavior, and theme mode (light/dark/system).
 - Built-in shortcuts dialog, update check action, and about dialog.
 
 ## Installation
@@ -48,6 +51,16 @@ pip install -e .[dev]
 - Azure Document Intelligence pricing includes [500 free pages per month](https://azure.microsoft.com/en-us/products/ai-foundry/tools/document-intelligence#Pricing) at the time of writing.
 - For API-key auth, set `AZURE_OCR_API_KEY`.
 - If `AZURE_OCR_API_KEY` is not set, Azure OCR falls back to Azure identity credentials supported by `DefaultAzureCredential`.
+- `PyMuPDF` is used internally for local PDF OCR, PDF image extraction, and the alternate PDF parsing pipeline.
+
+### PDF Notes
+
+- `MarkItDown` remains the default PDF pipeline and keeps the conservative wrapper behavior.
+- `PyMuPDF` is the alternate PDF pipeline and is the only mode that supports best-effort inline placement of extracted PDF images near the closest preceding text block.
+- Inline image placement is based on page coordinates and is best-effort, not a full layout reconstruction.
+- If no reliable preceding text block is found, the image is placed at the end of that page instead of in a global trailing image section.
+- If PDF conversion falls back to Azure OCR or local OCR text extraction, inline image placement is not preserved because that fallback path does not carry a shared page-layout model.
+- When image preservation is enabled, extracted images are saved as files and linked from the Markdown; preview materializes those assets before final save.
 
 ## Run the App
 
@@ -74,6 +87,7 @@ pyinstaller MarkItDown.spec --clean --noconfirm
 ```
 
 The default spec builds an `onedir` app in `dist/MarkItDown/`.
+The bundled spec also collects the runtime pieces required for `PyMuPDF` / `fitz`.
 Release workflows package this folder into platform-specific `.zip` artifacts.
 
 ## License
@@ -96,7 +110,7 @@ uv pip install -e .[dev]
 4. Run tests:
 
 ```sh
-uv run pytest -q
+python -m pytest
 ```
 
 5. Open a pull request with a clear summary.
