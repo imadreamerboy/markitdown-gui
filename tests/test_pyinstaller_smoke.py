@@ -7,6 +7,10 @@ import pytest
 
 pytestmark = [pytest.mark.packaging]
 
+PYINSTALLER_SMOKE_TIMEOUT_SECONDS = int(
+    os.environ.get("MARKITDOWNGUI_PYINSTALLER_SMOKE_TIMEOUT", "900")
+)
+
 
 @pytest.mark.skipif(
     os.environ.get("MARKITDOWNGUI_RUN_PYINSTALLER_SMOKE") != "1",
@@ -32,6 +36,7 @@ def test_pyinstaller_builds_markitdown_bundle(tmp_path):
         ],
         cwd=project_root,
         check=True,
+        timeout=PYINSTALLER_SMOKE_TIMEOUT_SECONDS,
     )
 
     executable_name = "MarkItDown.exe" if os.name == "nt" else "MarkItDown"
