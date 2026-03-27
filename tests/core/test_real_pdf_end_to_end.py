@@ -212,3 +212,67 @@ def test_pymupdf_pipeline_real_pdf_combined_single_layout_materializes_unique_as
         assert (tmp_path / "combined_assets" / "doc-two_page_001_img_001.png").exists()
     finally:
         _cleanup_asset_temp_dirs(temp_paths)
+
+
+def test_pymupdf_pipeline_real_pdf_deduplicates_reused_images(
+    tmp_path,
+    duplicate_image_pdf_factory,
+):
+    pdf_path = duplicate_image_pdf_factory(tmp_path / "duplicate-images.pdf")
+
+    outcome = convert_file_with_details(
+        str(pdf_path),
+        ConversionOptions(
+            pdf_pipeline="pymupdf",
+            preserve_pdf_images=True,
+        ),
+    )
+
+    temp_paths = [asset.temp_path for asset in outcome.assets]
+    try:
+        assert outcome.backend == BACKEND_NATIVE
+        assert len(outcome.assets) == 2
+        assert outcome.assets[0].temp_path == outcome.assets[1].temp_path
+
+        shared_placeholder = build_asset_placeholder(outcome.assets[0].sha256)
+        assert outcome.markdown.count(shared_placeholder) == 2
+        assert outcome.markdown.index("First anchor") < outcome.markdown.index(
+            shared_placeholder
+        ) < outcome.markdown.index("Second anchor")
+
+        output_path = tmp_path / "duplicate-output.md"
+        rewritten = materialize_assets_and_rewrite_markdown(
+            str(pdf_path),
+            outcome.markdown,
+            outcome.assets,
+            output_path,
+            ASSET_LAYOUT_SEPARATE,
+        )
+
+        assert "__PDF_ASSET_" not in rewritten
+        assert rewritten.count("duplicate-output_assets/page_001_img_001.png") == 2
+        saved_assets = list((tmp_path / "duplicate-output_assets").glob("*.png"))
+        assert len(saved_assets) == 1
+    finally:
+        _cleanup_asset_temp_dirs(temp_paths)
+
+
+def test_pymupdf_pipeline_real_pdf_filters_small_decorative_images(
+    tmp_path,
+    small_image_pdf_factory,
+):
+    pdf_path = small_image_pdf_factory(tmp_path / "small-image.pdf")
+
+    outcome = convert_file_with_details(
+        str(pdf_path),
+        ConversionOptions(
+            pdf_pipeline="pymupdf",
+            preserve_pdf_images=True,
+        ),
+    )
+
+    assert outcome.backend == BACKEND_NATIVE
+    assert outcome.assets == ()
+    assert "Only paragraph" in outcome.markdown
+    assert "__PDF_ASSET_" not in outcome.markdown
+    assert "## Extracted Images" not in outcome.markdown

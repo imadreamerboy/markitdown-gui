@@ -265,3 +265,77 @@ def sample_pdf_factory():
         return output_path
 
     return factory
+
+
+@pytest.fixture
+def duplicate_image_pdf_factory():
+    try:
+        pymupdf = _import_pymupdf_module()
+    except RuntimeError as exc:
+        pytest.skip(str(exc))
+
+    def factory(output_path: Path) -> Path:
+        output_path = Path(output_path)
+        document = pymupdf.open()
+        try:
+            shared_image = _pattern_png_bytes(128, 96, 11)
+
+            page = document.new_page(width=420, height=640)
+            page.insert_textbox(
+                pymupdf.Rect(40, 40, 360, 90),
+                "First anchor",
+            )
+            page.insert_image(
+                pymupdf.Rect(40, 120, 240, 240),
+                stream=shared_image,
+            )
+            page.insert_textbox(
+                pymupdf.Rect(40, 280, 360, 330),
+                "Second anchor",
+            )
+            page.insert_image(
+                pymupdf.Rect(40, 360, 240, 480),
+                stream=shared_image,
+            )
+
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            document.save(output_path)
+        finally:
+            document.close()
+
+        return output_path
+
+    return factory
+
+
+@pytest.fixture
+def small_image_pdf_factory():
+    try:
+        pymupdf = _import_pymupdf_module()
+    except RuntimeError as exc:
+        pytest.skip(str(exc))
+
+    def factory(output_path: Path) -> Path:
+        output_path = Path(output_path)
+        document = pymupdf.open()
+        try:
+            tiny_image = _pattern_png_bytes(32, 32, 21)
+
+            page = document.new_page(width=420, height=320)
+            page.insert_textbox(
+                pymupdf.Rect(40, 40, 360, 90),
+                "Only paragraph",
+            )
+            page.insert_image(
+                pymupdf.Rect(40, 120, 104, 184),
+                stream=tiny_image,
+            )
+
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            document.save(output_path)
+        finally:
+            document.close()
+
+        return output_path
+
+    return factory
