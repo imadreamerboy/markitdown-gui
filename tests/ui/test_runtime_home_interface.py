@@ -1,6 +1,7 @@
 from pathlib import Path
 import shutil
 
+import pytest
 from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import QFileDialog, QWidget
 
@@ -13,6 +14,8 @@ from markitdowngui.core.markdown_assets import GeneratedAsset, build_asset_place
 from markitdowngui.core.settings import SettingsManager
 from markitdowngui.ui.home_interface import HomeInterface
 from markitdowngui.utils.translations import get_translation
+
+pytestmark = [pytest.mark.runtime_ui]
 
 
 def _settings_manager(tmp_path):

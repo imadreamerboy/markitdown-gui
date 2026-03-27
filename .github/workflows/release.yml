@@ -5,6 +5,10 @@ on:
     tags:
       - 'v*'  # Runs when a tag like v1.0.0 is pushed
 
+concurrency:
+  group: release-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: write
 
@@ -65,6 +69,7 @@ jobs:
         with:
           name: MarkItDown-${{ runner.os }}
           path: dist_output/*.zip
+          retention-days: 1
 
   release:
     name: Create GitHub Release

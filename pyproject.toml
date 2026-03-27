@@ -39,3 +39,8 @@ test = [
 pythonpath = [
   "."
 ]
+markers = [
+  "runtime_ui: runtime tests that instantiate PySide widgets",
+  "pdf_real: tests that generate and convert real PDF files",
+  "packaging: packaging smoke tests such as PyInstaller builds",
+]

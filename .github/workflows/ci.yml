@@ -5,9 +5,21 @@ on:
     branches: [main, master, dev]
   pull_request:
     branches: [main, master, dev]
+  workflow_dispatch:
+    inputs:
+      run_packaging_smoke:
+        description: "Run the slow PyInstaller smoke test"
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  test:
+  fast-tests:
+    name: Fast Tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,6 +34,49 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install ".[test]"
-      - name: Run tests
+      - name: Run fast tests
         run: |
-          pytest -q
+          pytest -q -m "not runtime_ui and not pdf_real and not packaging"
+
+  integration-tests:
+    name: Runtime And Real PDF Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgl1 libegl1 libxkbcommon-x11-0
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install ".[test]"
+      - name: Run runtime and real PDF tests
+        run: |
+          pytest -q -m "runtime_ui or pdf_real"
+
+  packaging-smoke:
+    name: Packaging Smoke
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_packaging_smoke }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgl1 libegl1 libxkbcommon-x11-0
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install ".[dev]"
+      - name: Run packaging smoke test
+        env:
+          MARKITDOWNGUI_RUN_PYINSTALLER_SMOKE: "1"
+        run: |
+          pytest -q -m packaging

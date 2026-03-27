@@ -15,6 +15,8 @@ from markitdowngui.core.markdown_assets import (
     materialize_assets_and_rewrite_markdown,
 )
 
+pytestmark = [pytest.mark.pdf_real]
+
 
 def _cleanup_asset_temp_dirs(temp_paths: list[str]) -> None:
     temp_dirs = {str(Path(temp_path).parent) for temp_path in temp_paths}

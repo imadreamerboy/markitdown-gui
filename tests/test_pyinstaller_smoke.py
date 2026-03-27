@@ -5,6 +5,8 @@ import sys
 
 import pytest
 
+pytestmark = [pytest.mark.packaging]
+
 
 @pytest.mark.skipif(
     os.environ.get("MARKITDOWNGUI_RUN_PYINSTALLER_SMOKE") != "1",
