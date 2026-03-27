@@ -55,6 +55,61 @@ def test_convert_file_uses_markitdown_when_ocr_disabled(monkeypatch, conversion)
     assert calls == [("scan.png", False)]
 
 
+def test_convert_url_uses_defuddle_http_api(monkeypatch, conversion):
+    captured = {}
+
+    class FakeResponse:
+        status_code = 200
+        ok = True
+        text = "# Article\n"
+
+    def fake_get(url, **kwargs):
+        captured["url"] = url
+        captured["kwargs"] = kwargs
+        return FakeResponse()
+
+    monkeypatch.setattr(conversion.requests, "get", fake_get)
+
+    outcome = conversion.convert_file_with_details("https://example.com/article")
+
+    assert outcome.markdown == "# Article"
+    assert outcome.backend == conversion.BACKEND_DEFUDDLE
+    assert captured["url"] == "https://defuddle.md/https://example.com/article"
+    assert captured["kwargs"]["timeout"] == conversion.DEFUDDLE_REQUEST_TIMEOUT_SECONDS
+
+
+def test_build_defuddle_request_url_preserves_full_url(conversion):
+    request_url = conversion._build_defuddle_request_url("https://example.com/article?a=1")
+
+    assert request_url == "https://defuddle.md/https://example.com/article?a=1"
+
+
+def test_convert_url_surfaces_rate_limit(monkeypatch, conversion):
+    class FakeResponse:
+        status_code = 429
+        ok = False
+        text = "Too many requests"
+
+    monkeypatch.setattr(conversion.requests, "get", lambda *_args, **_kwargs: FakeResponse())
+
+    with pytest.raises(RuntimeError) as exc_info:
+        conversion.convert_file("https://example.com/article")
+
+    assert "1,000 requests per month per IP" in str(exc_info.value)
+
+
+def test_convert_url_surfaces_request_errors(monkeypatch, conversion):
+    def fake_get(*_args, **_kwargs):
+        raise conversion.requests.RequestException("network down")
+
+    monkeypatch.setattr(conversion.requests, "get", fake_get)
+
+    with pytest.raises(RuntimeError) as exc_info:
+        conversion.convert_file("https://example.com/article")
+
+    assert "failed to reach the Defuddle service" in str(exc_info.value)
+
+
 def test_convert_image_prefers_docintel_when_configured(monkeypatch, conversion):
     calls = []
 

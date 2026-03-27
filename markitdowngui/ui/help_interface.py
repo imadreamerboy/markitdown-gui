@@ -80,6 +80,12 @@ class HelpInterface(QWidget):
         repo_btn.setUrl(QUrl("https://github.com/imadreamerboy/markitdown-gui"))
         layout.addWidget(repo_btn, 0, Qt.AlignmentFlag.AlignLeft)
 
+        defuddle_docs_btn = HyperlinkButton()
+        defuddle_docs_btn.setText(self.translate("help_open_defuddle_docs"))
+        defuddle_docs_btn.setIcon(FIF.LINK)
+        defuddle_docs_btn.setUrl(QUrl("https://defuddle.md/docs"))
+        layout.addWidget(defuddle_docs_btn, 0, Qt.AlignmentFlag.AlignLeft)
+
         azure_pricing_btn = HyperlinkButton()
         azure_pricing_btn.setText(self.translate("help_open_azure_ocr_pricing"))
         azure_pricing_btn.setIcon(FIF.LINK)
@@ -98,6 +104,20 @@ class HelpInterface(QWidget):
 
         layout.addWidget(TitleLabel(self.translate("help_faq_title")))
 
+        layout.addWidget(
+            self._build_faq_card(
+                FIF.GLOBE,
+                "help_faq_defuddle_question",
+                "help_faq_defuddle_answer",
+            )
+        )
+        layout.addWidget(
+            self._build_faq_card(
+                FIF.GLOBE,
+                "help_faq_defuddle_limits_question",
+                "help_faq_defuddle_limits_answer",
+            )
+        )
         layout.addWidget(
             self._build_faq_card(
                 FIF.FOLDER,

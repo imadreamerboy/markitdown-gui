@@ -34,14 +34,21 @@ from qfluentwidgets import (
 
 from markitdowngui.core.conversion import (
     BACKEND_AZURE,
+    BACKEND_DEFUDDLE,
     BACKEND_LOCAL,
     BACKEND_NATIVE,
     ConversionOptions,
     ConversionWorker,
 )
 from markitdowngui.core.file_utils import FileManager
+from markitdowngui.core.input_sources import (
+    is_web_url,
+    source_display_name,
+    source_output_stem,
+)
 from markitdowngui.core.settings import SettingsManager
 from markitdowngui.ui.components.file_panel import FilePanel
+from markitdowngui.ui.components.url_input_bar import UrlInputBar
 from markitdowngui.ui.dialogs.shortcuts import ShortcutDialog
 from markitdowngui.ui.home_state import next_state_after_queue_change
 from markitdowngui.ui.themes import markdown_html_css
@@ -114,6 +121,10 @@ class HomeInterface(QWidget):
         self.empty_select_btn.setIcon(FIF.FOLDER_ADD)
         self.empty_select_btn.clicked.connect(self.browse_files)
         empty_layout.addWidget(self.empty_select_btn, 0, Qt.AlignmentFlag.AlignHCenter)
+        self.empty_url_input = UrlInputBar(self.translate, self.empty_card)
+        self.empty_url_input.setMaximumWidth(560)
+        self.empty_url_input.url_submitted.connect(self.submit_url)
+        empty_layout.addWidget(self.empty_url_input, 0, Qt.AlignmentFlag.AlignHCenter)
         empty_layout.addWidget(
             self.supported_formats_label,
             0,
@@ -135,6 +146,10 @@ class HomeInterface(QWidget):
         queue_header.addStretch(1)
         queue_header.addWidget(self.add_files_btn)
         queue_layout.addLayout(queue_header)
+
+        self.queue_url_input = UrlInputBar(self.translate, self.queue_card)
+        self.queue_url_input.url_submitted.connect(self.submit_url)
+        queue_layout.addWidget(self.queue_url_input)
 
         self.filePanel = FilePanel(self.translate)
         self.filePanel.files_added.connect(self.handle_files_added)
@@ -376,7 +391,7 @@ class HomeInterface(QWidget):
             return
         files = [url.toLocalFile() for url in event.mimeData().urls() if url.toLocalFile()]
         if files:
-            self._add_files_to_queue(files)
+            self._add_sources_to_queue(files)
             event.acceptProposedAction()
 
     def browse_files(self) -> None:
@@ -387,22 +402,37 @@ class HomeInterface(QWidget):
             self.translate("all_files_filter"),
         )
         if files:
-            self._add_files_to_queue(files)
+            self._add_sources_to_queue(files)
 
     def handle_files_added(self, files: list[str]) -> None:
-        self._add_files_to_queue(files, add_to_panel=False)
+        self._add_sources_to_queue(files, add_to_panel=False)
 
-    def _add_files_to_queue(self, files: list[str], add_to_panel: bool = True) -> None:
+    def submit_url(self, url: str) -> None:
+        candidate = url.strip()
+        if not is_web_url(candidate):
+            QMessageBox.warning(
+                self,
+                self.translate("home_url_invalid_title"),
+                self.translate("home_url_invalid_message"),
+            )
+            return
+
+        self._add_sources_to_queue([candidate])
+        self.empty_url_input.clear()
+        self.queue_url_input.clear()
+
+    def _add_sources_to_queue(self, sources: list[str], add_to_panel: bool = True) -> None:
         existing = set(self.filePanel.get_all_files())
         added = False
-        for file in files:
-            if not file or file in existing:
+        for source in sources:
+            if not source or source in existing:
                 continue
             if add_to_panel:
-                self.filePanel.add_file(file)
-            existing.add(file)
+                self.filePanel.add_file(source)
+            existing.add(source)
             added = True
-            self.handleNewFile(file)
+            if not is_web_url(source):
+                self.handleNewFile(source)
 
         if added:
             had_results = bool(self.conversionResults)
@@ -464,8 +494,8 @@ class HomeInterface(QWidget):
             )
             return
 
-        files = self.filePanel.get_all_files()
-        if not files:
+        sources = self.filePanel.get_all_files()
+        if not sources:
             QMessageBox.warning(
                 self,
                 self.translate("no_files_to_convert_title"),
@@ -473,8 +503,12 @@ class HomeInterface(QWidget):
             )
             return
 
-        valid_files = [f for f in files if os.path.exists(f) and os.access(f, os.R_OK)]
-        if not valid_files:
+        valid_sources = [
+            source
+            for source in sources
+            if is_web_url(source) or (os.path.exists(source) and os.access(source, os.R_OK))
+        ]
+        if not valid_sources:
             QMessageBox.warning(
                 self,
                 self.translate("no_valid_files_title"),
@@ -485,7 +519,7 @@ class HomeInterface(QWidget):
         try:
             batch_size = self.settings_manager.get_batch_size()
             options = self._build_conversion_options()
-            self.worker = ConversionWorker(valid_files, batch_size, options)
+            self.worker = ConversionWorker(valid_sources, batch_size, options)
             self.worker.progress.connect(self.update_progress)
             self.worker.finished.connect(self.handle_conversion_finished)
             self.worker.error.connect(self.handle_conversion_error)
@@ -517,7 +551,7 @@ class HomeInterface(QWidget):
 
     def update_progress(self, progress: int, current_file: str) -> None:
         text = self.translate("conversion_progress_format").format(
-            progress=progress, file=os.path.basename(current_file)
+            progress=progress, file=source_display_name(current_file)
         )
         self.progress.setValue(progress)
         self.progress.setFormat(text)
@@ -566,6 +600,7 @@ class HomeInterface(QWidget):
     def _format_processing_backend_summary(self) -> str:
         counts = {
             BACKEND_AZURE: 0,
+            BACKEND_DEFUDDLE: 0,
             BACKEND_LOCAL: 0,
             BACKEND_NATIVE: 0,
         }
@@ -579,6 +614,7 @@ class HomeInterface(QWidget):
         parts: list[str] = []
         for backend, label_key in (
             (BACKEND_AZURE, "conversion_backend_azure"),
+            (BACKEND_DEFUDDLE, "conversion_backend_defuddle"),
             (BACKEND_LOCAL, "conversion_backend_local"),
             (BACKEND_NATIVE, "conversion_backend_native"),
         ):
@@ -613,11 +649,11 @@ class HomeInterface(QWidget):
 
     def _populate_result_view(self) -> None:
         self.result_file_list.clear()
-        for file in self.conversionResults.keys():
-            item_text = os.path.basename(file)
+        for source in self.conversionResults.keys():
+            item_text = source_display_name(source)
             self.result_file_list.addItem(item_text)
             self.result_file_list.item(self.result_file_list.count() - 1).setData(
-                Qt.ItemDataRole.UserRole, file
+                Qt.ItemDataRole.UserRole, source
             )
         if self.result_file_list.count() > 0:
             self.result_file_list.setCurrentRow(0)
@@ -629,7 +665,9 @@ class HomeInterface(QWidget):
             return
         file_path = current.data(Qt.ItemDataRole.UserRole)
         self._set_preview_file_caption(
-            self.translate("home_preview_for_file").format(file=os.path.basename(file_path))
+            self.translate("home_preview_for_file").format(
+                file=source_display_name(file_path)
+            )
         )
         markdown = self.conversionResults.get(file_path, "")
         self._set_markdown_preview(markdown)
@@ -696,7 +734,10 @@ class HomeInterface(QWidget):
         if not output_path.lower().endswith(output_ext.lower()):
             output_path += output_ext
 
-        parts = [f"File: {file}\n{content}" for file, content in self.conversionResults.items()]
+        parts = [
+            self.translate("conversion_source_heading").format(source=source) + f"\n{content}"
+            for source, content in self.conversionResults.items()
+        ]
         combined_output = "\n\n".join(parts)
 
         try:
@@ -724,7 +765,7 @@ class HomeInterface(QWidget):
 
         output_ext = self.settings_manager.get_default_output_format()
         for input_file, content in self.conversionResults.items():
-            base_name = os.path.splitext(os.path.basename(input_file))[0]
+            base_name = source_output_stem(input_file)
             output_path = os.path.join(output_dir, f"{base_name}{output_ext}")
             counter = 1
             while os.path.exists(output_path):

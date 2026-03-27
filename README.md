@@ -10,6 +10,7 @@ It focuses on fast multi-file conversion to Markdown with a modern Fluent-style 
 ## Features
 
 - Queue-based file workflow with drag and drop.
+- Paste website URLs and convert article content to Markdown with the hosted Defuddle API.
 - Batch conversion with start, pause/resume, cancel, and progress feedback.
 - Results view with per-file selection and Markdown preview.
 - Preview modes: rendered Markdown view and raw Markdown view.
@@ -48,6 +49,15 @@ pip install -e .[dev]
 - Azure Document Intelligence pricing includes [500 free pages per month](https://azure.microsoft.com/en-us/products/ai-foundry/tools/document-intelligence#Pricing) at the time of writing.
 - For API-key auth, set `AZURE_OCR_API_KEY`.
 - If `AZURE_OCR_API_KEY` is not set, Azure OCR falls back to Azure identity credentials supported by `DefaultAzureCredential`.
+
+### Website URL Notes
+
+- Website conversion uses the hosted [Defuddle](https://defuddle.md/) API.
+- The app sends the pasted `http://` or `https://` URL to `https://defuddle.md/<url>` and stores the returned Markdown in the normal results view.
+- Defuddle responses typically include YAML frontmatter metadata at the top when available.
+- According to the [Defuddle Terms](https://defuddle.md/terms), unauthenticated requests are limited to `1,000` requests per month per IP address as of March 14, 2026.
+- Because requests are sent directly from the desktop app, that free-tier limit applies to the user's own network IP.
+- Website conversion requires an internet connection and depends on the external Defuddle service being available.
 
 ## Run the App
 

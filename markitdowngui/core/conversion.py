@@ -5,16 +5,23 @@ from itertools import islice
 import os
 from pathlib import Path
 
+import requests
+
 from PySide6.QtCore import QThread, Signal
+
+from markitdowngui.core.input_sources import is_web_url
 
 IMAGE_EXTENSIONS = {".bmp", ".gif", ".jpeg", ".jpg", ".png", ".tiff", ".webp"}
 DOCINTEL_IMAGE_EXTENSIONS = {".bmp", ".jpeg", ".jpg", ".png", ".tiff"}
 PDF_EXTENSION = ".pdf"
 PDF_RENDER_SCALE = 3.0
 LOCAL_OCR_TIMEOUT_SECONDS = 60
+DEFUDDLE_REQUEST_TIMEOUT_SECONDS = 30
+DEFUDDLE_API_BASE_URL = "https://defuddle.md/"
 AZURE_OCR_API_KEY_ENV_VAR = "AZURE_OCR_API_KEY"
 CONVERSION_ERROR_PREFIX = "Error converting "
 BACKEND_AZURE = "azure"
+BACKEND_DEFUDDLE = "defuddle"
 BACKEND_LOCAL = "local"
 BACKEND_NATIVE = "native"
 
@@ -150,6 +157,13 @@ def convert_file_with_details(
 ) -> ConversionOutcome:
     """Convert a single file to Markdown text and report which backend produced it."""
     effective_options = options or ConversionOptions()
+
+    if is_web_url(file_path):
+        return ConversionOutcome(
+            markdown=_convert_url_with_defuddle(file_path),
+            backend=BACKEND_DEFUDDLE,
+        )
+
     extension = Path(file_path).suffix.lower()
 
     if not effective_options.ocr_enabled:
@@ -276,6 +290,39 @@ def _convert_with_markitdown(
     md = MarkItDown(**kwargs)
     result = md.convert(file_path)
     return result.text_content or ""
+
+
+def _convert_url_with_defuddle(url: str) -> str:
+    request_url = _build_defuddle_request_url(url)
+
+    try:
+        response = requests.get(
+            request_url,
+            timeout=DEFUDDLE_REQUEST_TIMEOUT_SECONDS,
+        )
+    except requests.Timeout as exc:
+        raise RuntimeError(
+            "Website conversion timed out while waiting for the Defuddle service."
+        ) from exc
+    except requests.RequestException as exc:
+        raise RuntimeError(
+            f"Website conversion failed to reach the Defuddle service: {exc}"
+        ) from exc
+
+    if response.status_code == 429:
+        raise RuntimeError(
+            "Defuddle rate limit reached. The free tier allows up to 1,000 requests per month per IP."
+        )
+
+    if not response.ok:
+        message = response.text.strip()
+        raise RuntimeError(message or "Defuddle failed to convert the URL.")
+
+    return response.text.strip()
+
+
+def _build_defuddle_request_url(url: str) -> str:
+    return f"{DEFUDDLE_API_BASE_URL}{url.strip()}"
 
 
 def _convert_image_with_local_ocr(file_path: str, options: ConversionOptions) -> str:
