@@ -1,6 +1,9 @@
 import os
 from datetime import datetime
+import shutil
 from typing import List, Dict
+
+from markitdowngui.core.markdown_assets import SavedMarkdownAsset
 
 class FileManager:
     """Handles file operations and tracking of recent files."""
@@ -35,8 +38,20 @@ class FileManager:
     @staticmethod
     def save_markdown_file(filepath: str, content: str) -> None:
         """Save markdown content to a file."""
+        os.makedirs(os.path.dirname(filepath) or ".", exist_ok=True)
         with open(filepath, "w", encoding="utf-8") as f:
             f.write(content)
+
+    @staticmethod
+    def save_markdown_assets(
+        base_dir: str,
+        assets: list[SavedMarkdownAsset],
+    ) -> None:
+        """Save markdown companion assets relative to a base directory."""
+        for asset in assets:
+            output_path = os.path.join(base_dir, *asset.relative_path.split("/"))
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+            shutil.copy2(asset.source_path, output_path)
 
     @staticmethod
     def update_recent_list(filepath: str, recent_list: List[str], max_items: int = 10) -> List[str]:

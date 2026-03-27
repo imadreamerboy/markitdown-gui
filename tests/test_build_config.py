@@ -11,6 +11,8 @@ def test_build_hiddenimports_includes_charset_normalizer_mypyc_runtime():
             "charset_normalizer": ["charset_normalizer.api"],
             "azure.ai.documentintelligence": ["azure.ai.documentintelligence._client"],
             "azure.identity": [],
+            "fitz": ["fitz.utils"],
+            "pymupdf": ["pymupdf.table"],
             "pypdfium2": [],
             "pypdfium2_raw": [],
             "pytesseract": [],
@@ -67,4 +69,22 @@ def test_build_datas_keeps_base_files_and_warns_for_missing_optional_packages():
     assert ("pdfium.dll", "pypdfium2_raw") in datas
     assert warnings == [
         "Warning: Could not collect data files for pypdfium2: missing pdf runtime"
+    ]
+
+
+def test_build_binaries_collects_pymupdf_dynamic_libraries_and_warns_for_missing_ones():
+    warnings = []
+
+    def fake_collect(package: str) -> list[tuple[str, str]]:
+        if package == "fitz":
+            return [("libmupdf.dll", "fitz")]
+        if package == "pymupdf":
+            raise RuntimeError("missing pymupdf runtime")
+        raise AssertionError(f"Unexpected package: {package}")
+
+    binaries = build_config.build_binaries(fake_collect, warn=warnings.append)
+
+    assert ("libmupdf.dll", "fitz") in binaries
+    assert warnings == [
+        "Warning: Could not collect dynamic libraries for pymupdf: missing pymupdf runtime"
     ]

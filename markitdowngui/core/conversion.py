@@ -7,6 +7,21 @@ from pathlib import Path
 
 from PySide6.QtCore import QThread, Signal
 
+from markitdowngui.core.markdown_assets import (
+    ASSET_LAYOUT_SEPARATE,
+    GeneratedAsset,
+    normalize_assets_layout,
+)
+from markitdowngui.core.pdf_pipeline import (
+    PDF_PIPELINE_MARKITDOWN,
+    PDF_PIPELINE_PYMUPDF,
+    convert_pdf_with_local_ocr as convert_pdf_with_local_ocr_pymupdf,
+    extract_pdf_image_assets as extract_pdf_image_assets_pymupdf,
+    extract_pdf_markdown,
+    normalize_pdf_pipeline,
+)
+from markitdowngui.utils.logger import AppLogger
+
 IMAGE_EXTENSIONS = {".bmp", ".gif", ".jpeg", ".jpg", ".png", ".tiff", ".webp"}
 DOCINTEL_IMAGE_EXTENSIONS = {".bmp", ".jpeg", ".jpg", ".png", ".tiff"}
 PDF_EXTENSION = ".pdf"
@@ -17,6 +32,9 @@ CONVERSION_ERROR_PREFIX = "Error converting "
 BACKEND_AZURE = "azure"
 BACKEND_LOCAL = "local"
 BACKEND_NATIVE = "native"
+PDF_IMAGE_MIN_WIDTH = 64
+PDF_IMAGE_MIN_HEIGHT = 64
+PDF_IMAGE_MIN_BYTES = 2048
 
 
 @dataclass(frozen=True)
@@ -27,6 +45,9 @@ class ConversionOptions:
     docintel_endpoint: str = ""
     ocr_languages: str = ""
     tesseract_path: str = ""
+    preserve_pdf_images: bool = False
+    pdf_assets_layout: str = ASSET_LAYOUT_SEPARATE
+    pdf_pipeline: str = PDF_PIPELINE_MARKITDOWN
 
     @property
     def normalized_docintel_endpoint(self) -> str:
@@ -40,11 +61,20 @@ class ConversionOptions:
     def normalized_tesseract_path(self) -> str:
         return self.tesseract_path.strip()
 
+    @property
+    def normalized_pdf_assets_layout(self) -> str:
+        return normalize_assets_layout(self.pdf_assets_layout)
+
+    @property
+    def normalized_pdf_pipeline(self) -> str:
+        return normalize_pdf_pipeline(self.pdf_pipeline)
+
 
 @dataclass(frozen=True)
 class ConversionOutcome:
     markdown: str
     backend: str = BACKEND_NATIVE
+    assets: tuple[GeneratedAsset, ...] = ()
 
 
 def format_conversion_error(file_path: str, error: Exception) -> str:
@@ -152,6 +182,18 @@ def convert_file_with_details(
     effective_options = options or ConversionOptions()
     extension = Path(file_path).suffix.lower()
 
+    if extension == PDF_EXTENSION:
+        if effective_options.normalized_pdf_pipeline == PDF_PIPELINE_PYMUPDF:
+            return _convert_pdf_with_pymupdf_pipeline(file_path, effective_options)
+        if not effective_options.ocr_enabled:
+            markdown = _convert_with_markitdown(file_path, effective_options)
+            return ConversionOutcome(
+                markdown=markdown,
+                backend=BACKEND_NATIVE,
+                assets=_maybe_extract_pdf_image_assets(file_path, effective_options),
+            )
+        return _convert_pdf_with_ocr_fallback(file_path, effective_options)
+
     if not effective_options.ocr_enabled:
         return ConversionOutcome(
             markdown=_convert_with_markitdown(file_path, effective_options),
@@ -160,9 +202,6 @@ def convert_file_with_details(
 
     if extension in IMAGE_EXTENSIONS:
         return _convert_image_with_ocr(file_path, effective_options, extension)
-
-    if extension == PDF_EXTENSION:
-        return _convert_pdf_with_ocr_fallback(file_path, effective_options)
 
     return ConversionOutcome(
         markdown=_convert_with_markitdown(file_path, effective_options),
@@ -223,7 +262,11 @@ def _convert_pdf_with_ocr_fallback(
     try:
         markdown = _convert_with_markitdown(file_path, options)
         if markdown.strip():
-            return ConversionOutcome(markdown=markdown, backend=BACKEND_NATIVE)
+            return ConversionOutcome(
+                markdown=markdown,
+                backend=BACKEND_NATIVE,
+                assets=_maybe_extract_pdf_image_assets(file_path, options),
+            )
     except Exception as exc:
         native_error = exc
 
@@ -238,7 +281,11 @@ def _convert_pdf_with_ocr_fallback(
                 use_docintel=True,
             )
             if markdown.strip():
-                return ConversionOutcome(markdown=markdown, backend=BACKEND_AZURE)
+                return ConversionOutcome(
+                    markdown=markdown,
+                    backend=BACKEND_AZURE,
+                    assets=_maybe_extract_pdf_image_assets(file_path, options),
+                )
         except Exception as exc:
             docintel_error = exc
 
@@ -246,7 +293,74 @@ def _convert_pdf_with_ocr_fallback(
     try:
         markdown = _convert_pdf_with_local_ocr(file_path, options)
         if markdown.strip():
-            return ConversionOutcome(markdown=markdown, backend=BACKEND_LOCAL)
+            return ConversionOutcome(
+                markdown=markdown,
+                backend=BACKEND_LOCAL,
+                assets=_maybe_extract_pdf_image_assets(file_path, options),
+            )
+    except Exception as exc:
+        local_error = exc
+
+    return _raise_ocr_failure(
+        "PDF",
+        native_error=native_error,
+        docintel_attempted=docintel_attempted,
+        docintel_error=docintel_error,
+        local_error=local_error,
+    )
+
+
+def _convert_pdf_with_pymupdf_pipeline(
+    file_path: str,
+    options: ConversionOptions,
+) -> ConversionOutcome:
+    if not options.ocr_enabled:
+        return ConversionOutcome(
+            markdown=extract_pdf_markdown(file_path),
+            backend=BACKEND_NATIVE,
+            assets=_maybe_extract_pdf_image_assets(file_path, options),
+        )
+
+    native_error: Exception | None = None
+    try:
+        markdown = extract_pdf_markdown(file_path)
+        if markdown.strip():
+            return ConversionOutcome(
+                markdown=markdown,
+                backend=BACKEND_NATIVE,
+                assets=_maybe_extract_pdf_image_assets(file_path, options),
+            )
+    except Exception as exc:
+        native_error = exc
+
+    docintel_error: Exception | None = None
+    docintel_attempted = False
+    if options.normalized_docintel_endpoint:
+        docintel_attempted = True
+        try:
+            markdown = _convert_with_markitdown(
+                file_path,
+                options,
+                use_docintel=True,
+            )
+            if markdown.strip():
+                return ConversionOutcome(
+                    markdown=markdown,
+                    backend=BACKEND_AZURE,
+                    assets=_maybe_extract_pdf_image_assets(file_path, options),
+                )
+        except Exception as exc:
+            docintel_error = exc
+
+    local_error: Exception | None = None
+    try:
+        markdown = _convert_pdf_with_local_ocr(file_path, options)
+        if markdown.strip():
+            return ConversionOutcome(
+                markdown=markdown,
+                backend=BACKEND_LOCAL,
+                assets=_maybe_extract_pdf_image_assets(file_path, options),
+            )
     except Exception as exc:
         local_error = exc
 
@@ -265,7 +379,6 @@ def _convert_with_markitdown(
     *,
     use_docintel: bool = False,
 ) -> str:
-    # Delay heavy imports until conversion is requested.
     from markitdown import MarkItDown
 
     kwargs: dict[str, object] = {}
@@ -290,34 +403,11 @@ def _convert_image_with_local_ocr(file_path: str, options: ConversionOptions) ->
 
 
 def _convert_pdf_with_local_ocr(file_path: str, options: ConversionOptions) -> str:
-    try:
-        import pypdfium2 as pdfium
-    except ImportError as exc:
-        raise RuntimeError(
-            "Local PDF OCR requires pypdfium2 to be installed."
-        ) from exc
-
-    page_texts: list[str] = []
-    pdf = pdfium.PdfDocument(file_path)
-    try:
-        for page_index in range(len(pdf)):
-            page = pdf[page_index]
-            bitmap = None
-            try:
-                bitmap = page.render(scale=PDF_RENDER_SCALE)
-                page_text = _run_tesseract_ocr(bitmap.to_pil(), options)
-                if page_text.strip():
-                    page_texts.append(page_text.strip())
-            finally:
-                if bitmap is not None and hasattr(bitmap, "close"):
-                    bitmap.close()
-                if hasattr(page, "close"):
-                    page.close()
-    finally:
-        if hasattr(pdf, "close"):
-            pdf.close()
-
-    return "\n\n".join(page_texts).strip()
+    return convert_pdf_with_local_ocr_pymupdf(
+        file_path,
+        render_scale=PDF_RENDER_SCALE,
+        run_ocr=lambda image: _run_tesseract_ocr(image, options),
+    )
 
 
 def _run_tesseract_ocr(image, options: ConversionOptions) -> str:
@@ -343,6 +433,39 @@ def _run_tesseract_ocr(image, options: ConversionOptions) -> str:
         ) from exc
 
 
+def _safe_extract_pdf_image_assets(
+    file_path: str,
+    options: ConversionOptions,
+) -> tuple[GeneratedAsset, ...]:
+    try:
+        return _extract_pdf_image_assets(file_path)
+    except Exception as exc:
+        AppLogger.warning(
+            f"PDF image extraction failed for {file_path}: {_summarize_error(exc)}"
+        )
+        return ()
+
+
+def _maybe_extract_pdf_image_assets(
+    file_path: str,
+    options: ConversionOptions,
+) -> tuple[GeneratedAsset, ...]:
+    if not options.preserve_pdf_images:
+        return ()
+    return _safe_extract_pdf_image_assets(file_path, options)
+
+
+def _extract_pdf_image_assets(file_path: str) -> tuple[GeneratedAsset, ...]:
+    """Extract embedded PDF images for markdown export."""
+    return extract_pdf_image_assets_pymupdf(
+        file_path,
+        min_width=PDF_IMAGE_MIN_WIDTH,
+        min_height=PDF_IMAGE_MIN_HEIGHT,
+        min_bytes=PDF_IMAGE_MIN_BYTES,
+        logger=AppLogger,
+    )
+
+
 class ConversionWorker(QThread):
     progress = Signal(int, str)
     finished = Signal(dict)
@@ -364,7 +487,7 @@ class ConversionWorker(QThread):
         self.is_cancelled = False
 
     def run(self) -> None:
-        results: dict[str, str] = {}
+        results: dict[str, ConversionOutcome] = {}
         self.failed_files = set()
         self.processing_backends = {}
 
@@ -381,11 +504,14 @@ class ConversionWorker(QThread):
 
                 try:
                     outcome = convert_file_with_details(file_path, self.options)
-                    results[file_path] = outcome.markdown
+                    results[file_path] = outcome
                     self.processing_backends[file_path] = outcome.backend
                 except Exception as exc:
                     self.failed_files.add(file_path)
-                    results[file_path] = format_conversion_error(file_path, exc)
+                    results[file_path] = ConversionOutcome(
+                        markdown=format_conversion_error(file_path, exc),
+                        backend=BACKEND_NATIVE,
+                    )
 
                 progress = int((i + j + 1) / len(self.files) * 100)
                 self.progress.emit(progress, file_path)

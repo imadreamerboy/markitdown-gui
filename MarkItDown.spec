@@ -1,15 +1,16 @@
 # -*- mode: python ; coding: utf-8 -*-
 import os
-from PyInstaller.utils.hooks import collect_data_files, collect_submodules
-from markitdowngui.build_config import build_datas, build_hiddenimports
+from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, collect_submodules
+from markitdowngui.build_config import build_binaries, build_datas, build_hiddenimports
 
 hiddenimports = build_hiddenimports(collect_submodules, warn=print)
 datas = build_datas(collect_data_files, warn=print)
+binaries = build_binaries(collect_dynamic_libs, warn=print)
 
 a = Analysis(
     ["markitdowngui/main.py"],
     pathex=[],
-    binaries=[],
+    binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,
     hookspath=[],

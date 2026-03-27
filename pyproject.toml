@@ -12,7 +12,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "markitdown[az-doc-intel,docx,pdf,pptx,xls,xlsx]==0.1.5",
-    "pypdfium2",
+    "pymupdf>=1.27,<2",
     "pytesseract",
     "pyside6>=6.8.2.1",
     "pyside6-fluent-widgets>=1.11.0",

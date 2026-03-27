@@ -214,6 +214,58 @@ class SettingsInterface(QWidget):
         ocr_layout.addLayout(tesseract_row)
         layout.addWidget(self.ocr_group)
 
+        self.pdf_group = QGroupBox(self.translate("settings_pdf_group"))
+        pdf_layout = QVBoxLayout(self.pdf_group)
+        pdf_layout.setSpacing(10)
+
+        pdf_layout.addWidget(BodyLabel(self.translate("settings_pdf_pipeline_label")))
+        self.pdf_pipeline_combo = ComboBox()
+        self.pdf_pipeline_combo.setToolTip(
+            self.translate("settings_pdf_pipeline_tooltip")
+        )
+        self.pdf_pipeline_combo.addItem(
+            self.translate("settings_pdf_pipeline_markitdown"),
+            userData="markitdown",
+        )
+        self.pdf_pipeline_combo.addItem(
+            self.translate("settings_pdf_pipeline_pymupdf"),
+            userData="pymupdf",
+        )
+        self.pdf_pipeline_combo.currentIndexChanged.connect(
+            self._save_pdf_pipeline
+        )
+        pdf_layout.addWidget(self.pdf_pipeline_combo)
+
+        self.preserve_pdf_images_check = CheckBox(
+            self.translate("settings_preserve_pdf_images_label")
+        )
+        self.preserve_pdf_images_check.setToolTip(
+            self.translate("settings_preserve_pdf_images_tooltip")
+        )
+        self.preserve_pdf_images_check.toggled.connect(
+            self._save_preserve_pdf_images
+        )
+        pdf_layout.addWidget(self.preserve_pdf_images_check)
+
+        pdf_layout.addWidget(BodyLabel(self.translate("settings_pdf_assets_layout_label")))
+        self.pdf_assets_layout_combo = ComboBox()
+        self.pdf_assets_layout_combo.setToolTip(
+            self.translate("settings_pdf_assets_layout_tooltip")
+        )
+        self.pdf_assets_layout_combo.addItem(
+            self.translate("settings_pdf_assets_layout_separate"),
+            userData="separate",
+        )
+        self.pdf_assets_layout_combo.addItem(
+            self.translate("settings_pdf_assets_layout_single"),
+            userData="single",
+        )
+        self.pdf_assets_layout_combo.currentIndexChanged.connect(
+            self._save_pdf_assets_layout
+        )
+        pdf_layout.addWidget(self.pdf_assets_layout_combo)
+        layout.addWidget(self.pdf_group)
+
         self.appearance_group = QGroupBox(self.translate("settings_appearance_group"))
         appearance_layout = QVBoxLayout(self.appearance_group)
         appearance_layout.setSpacing(8)
@@ -249,6 +301,15 @@ class SettingsInterface(QWidget):
         self._update_azure_test_button_state()
         self.ocr_languages_edit.setText(self.settings_manager.get_ocr_languages())
         self.tesseract_path_edit.setText(self.settings_manager.get_tesseract_path())
+        self.preserve_pdf_images_check.setChecked(
+            self.settings_manager.get_preserve_pdf_images()
+        )
+        pipeline = self.settings_manager.get_pdf_pipeline()
+        pipeline_index = self.pdf_pipeline_combo.findData(pipeline)
+        self.pdf_pipeline_combo.setCurrentIndex(max(pipeline_index, 0))
+        layout = self.settings_manager.get_pdf_assets_layout()
+        index = self.pdf_assets_layout_combo.findData(layout)
+        self.pdf_assets_layout_combo.setCurrentIndex(max(index, 0))
 
         theme_mode = self.settings_manager.get_theme_mode()
         self.theme_light.setChecked(theme_mode == "light")
@@ -286,6 +347,19 @@ class SettingsInterface(QWidget):
 
     def _save_tesseract_path(self) -> None:
         self.settings_manager.set_tesseract_path(self.tesseract_path_edit.text())
+
+    def _save_preserve_pdf_images(self, checked: bool) -> None:
+        self.settings_manager.set_preserve_pdf_images(checked)
+
+    def _save_pdf_pipeline(self, _index: int) -> None:
+        self.settings_manager.set_pdf_pipeline(
+            str(self.pdf_pipeline_combo.currentData() or "markitdown")
+        )
+
+    def _save_pdf_assets_layout(self, _index: int) -> None:
+        self.settings_manager.set_pdf_assets_layout(
+            str(self.pdf_assets_layout_combo.currentData() or "separate")
+        )
 
     def _browse_tesseract_path(self) -> None:
         start_path = self.settings_manager.get_tesseract_path()
@@ -332,6 +406,13 @@ class SettingsInterface(QWidget):
             docintel_endpoint=self.docintel_endpoint_edit.text(),
             ocr_languages=self.ocr_languages_edit.text(),
             tesseract_path=self.tesseract_path_edit.text(),
+            preserve_pdf_images=self.preserve_pdf_images_check.isChecked(),
+            pdf_assets_layout=str(
+                self.pdf_assets_layout_combo.currentData() or "separate"
+            ),
+            pdf_pipeline=str(
+                self.pdf_pipeline_combo.currentData() or "markitdown"
+            ),
         )
         worker = AzureConnectionTestWorker(options)
         self._azure_test_worker = worker

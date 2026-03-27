@@ -117,3 +117,19 @@ def test_ocr_settings(settings_manager):
     assert settings_manager.get_tesseract_path() == ""
     settings_manager.set_tesseract_path(" /usr/bin/tesseract ")
     assert settings_manager.get_tesseract_path() == "/usr/bin/tesseract"
+
+def test_pdf_image_settings(settings_manager):
+    assert not settings_manager.get_preserve_pdf_images()
+    settings_manager.set_preserve_pdf_images(True)
+    assert settings_manager.get_preserve_pdf_images()
+
+    assert settings_manager.get_pdf_assets_layout() == "separate"
+    settings_manager.set_pdf_assets_layout("single")
+    assert settings_manager.get_pdf_assets_layout() == "single"
+
+    assert settings_manager.get_pdf_pipeline() == "markitdown"
+    settings_manager.set_pdf_pipeline("pymupdf")
+    assert settings_manager.get_pdf_pipeline() == "pymupdf"
+    assert settings_manager.get_pdf_assets_layout() == "single"
+    settings_manager.set_pdf_assets_layout("invalid")
+    assert settings_manager.get_pdf_assets_layout() == "separate"

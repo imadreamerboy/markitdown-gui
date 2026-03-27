@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
+import shutil
+import tempfile
 
-from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QKeySequence, QResizeEvent, QShortcut, QTextDocument
+from PySide6.QtCore import Qt, QTimer, QUrl
+from PySide6.QtGui import QKeySequence, QResizeEvent, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
@@ -37,9 +40,14 @@ from markitdowngui.core.conversion import (
     BACKEND_LOCAL,
     BACKEND_NATIVE,
     ConversionOptions,
+    ConversionOutcome,
     ConversionWorker,
 )
 from markitdowngui.core.file_utils import FileManager
+from markitdowngui.core.markdown_assets import (
+    ASSET_LAYOUT_SINGLE,
+    materialize_assets_and_rewrite_markdown,
+)
 from markitdowngui.core.settings import SettingsManager
 from markitdowngui.ui.components.file_panel import FilePanel
 from markitdowngui.ui.dialogs.shortcuts import ShortcutDialog
@@ -47,6 +55,20 @@ from markitdowngui.ui.home_state import next_state_after_queue_change
 from markitdowngui.ui.themes import markdown_html_css
 from markitdowngui.utils.logger import AppLogger
 from markitdowngui.utils.translations import DEFAULT_LANG
+
+
+def build_conversion_options_from_settings(
+    settings_manager: SettingsManager,
+) -> ConversionOptions:
+    return ConversionOptions(
+        ocr_enabled=settings_manager.get_ocr_enabled(),
+        docintel_endpoint=settings_manager.get_docintel_endpoint(),
+        ocr_languages=settings_manager.get_ocr_languages(),
+        tesseract_path=settings_manager.get_tesseract_path(),
+        preserve_pdf_images=settings_manager.get_preserve_pdf_images(),
+        pdf_assets_layout=settings_manager.get_pdf_assets_layout(),
+        pdf_pipeline=settings_manager.get_pdf_pipeline(),
+    )
 
 
 class HomeInterface(QWidget):
@@ -58,12 +80,14 @@ class HomeInterface(QWidget):
         self.settings_manager = settings_manager
         self.file_manager = FileManager()
         self.worker: ConversionWorker | None = None
-        self.conversionResults: dict[str, str] = {}
+        self.conversionArtifacts: dict[str, ConversionOutcome] = {}
         self.failedConversionFiles: set[str] = set()
         self.processingBackends: dict[str, str] = {}
         self._is_dark_theme = False
         self._current_markdown = ""
+        self._current_preview_base_path: str | None = None
         self._preview_file_caption_full_text = ""
+        self._preview_temp_root: str | None = None
         self.setAcceptDrops(True)
 
         self._build_ui()
@@ -299,7 +323,10 @@ class HomeInterface(QWidget):
     def apply_theme_styles(self, is_dark: bool) -> None:
         self._is_dark_theme = bool(is_dark)
         if self._current_markdown:
-            self._set_markdown_preview(self._current_markdown)
+            self._set_markdown_preview(
+                self._current_markdown,
+                self._current_preview_base_path,
+            )
 
     def setup_shortcuts(self) -> None:
         QShortcut(QKeySequence("Ctrl+O"), self, self.browse_files)
@@ -366,6 +393,8 @@ class HomeInterface(QWidget):
             self.worker.wait(2000)
         if hasattr(self, "update_checker") and self.update_checker.isRunning():
             self.update_checker.wait(2000)
+        self._cleanup_preview_temp_root()
+        self._cleanup_conversion_temp_assets()
 
     def dragEnterEvent(self, event) -> None:
         if event.mimeData().hasUrls():
@@ -405,7 +434,7 @@ class HomeInterface(QWidget):
             self.handleNewFile(file)
 
         if added:
-            had_results = bool(self.conversionResults)
+            had_results = bool(self.conversionArtifacts)
             self._set_state_queue()
             self._clear_result_views(reset_progress=had_results)
             self._update_queue_title()
@@ -434,7 +463,7 @@ class HomeInterface(QWidget):
             widget.takeItem(widget.row(item))
 
     def clear_file_list(self) -> None:
-        had_results = bool(self.conversionResults)
+        had_results = bool(self.conversionArtifacts)
         self.filePanel.clear()
         self._clear_result_views(reset_progress=had_results)
         self._set_state_empty()
@@ -508,12 +537,7 @@ class HomeInterface(QWidget):
             self._reset_controls()
 
     def _build_conversion_options(self) -> ConversionOptions:
-        return ConversionOptions(
-            ocr_enabled=self.settings_manager.get_ocr_enabled(),
-            docintel_endpoint=self.settings_manager.get_docintel_endpoint(),
-            ocr_languages=self.settings_manager.get_ocr_languages(),
-            tesseract_path=self.settings_manager.get_tesseract_path(),
-        )
+        return build_conversion_options_from_settings(self.settings_manager)
 
     def update_progress(self, progress: int, current_file: str) -> None:
         text = self.translate("conversion_progress_format").format(
@@ -523,8 +547,10 @@ class HomeInterface(QWidget):
         self.progress.setFormat(text)
         self.progress_status.setText(text)
 
-    def handle_conversion_finished(self, results: dict[str, str]) -> None:
-        self.conversionResults = results
+    def handle_conversion_finished(self, results: dict[str, ConversionOutcome]) -> None:
+        self._cleanup_preview_temp_root()
+        self._cleanup_conversion_temp_assets()
+        self.conversionArtifacts = results
         self.failedConversionFiles = set(self.worker.failed_files) if self.worker else set()
         self.processingBackends = (
             dict(self.worker.processing_backends) if self.worker else {}
@@ -613,7 +639,7 @@ class HomeInterface(QWidget):
 
     def _populate_result_view(self) -> None:
         self.result_file_list.clear()
-        for file in self.conversionResults.keys():
+        for file in self.conversionArtifacts.keys():
             item_text = os.path.basename(file)
             self.result_file_list.addItem(item_text)
             self.result_file_list.item(self.result_file_list.count() - 1).setData(
@@ -631,22 +657,56 @@ class HomeInterface(QWidget):
         self._set_preview_file_caption(
             self.translate("home_preview_for_file").format(file=os.path.basename(file_path))
         )
-        markdown = self.conversionResults.get(file_path, "")
-        self._set_markdown_preview(markdown)
+        artifact = self.conversionArtifacts.get(file_path)
+        if artifact is None:
+            self._set_markdown_preview("")
+            return
+        markdown, preview_base_path = self._build_preview_markdown(file_path, artifact)
+        self._set_markdown_preview(markdown, preview_base_path)
 
-    def _set_markdown_preview(self, markdown_text: str) -> None:
+    def _build_preview_markdown(
+        self,
+        file_path: str,
+        artifact: ConversionOutcome,
+    ) -> tuple[str, str | None]:
+        self._cleanup_preview_temp_root()
+        if not artifact.assets:
+            return artifact.markdown, None
+
+        preview_root = tempfile.mkdtemp(prefix="markitdowngui_preview_")
+        self._preview_temp_root = preview_root
+        preview_md_path = os.path.join(preview_root, f"{Path(file_path).stem}.md")
+        preview_markdown = materialize_assets_and_rewrite_markdown(
+            file_path,
+            artifact.markdown,
+            artifact.assets,
+            preview_md_path,
+            self.settings_manager.get_pdf_assets_layout(),
+            combined=False,
+        )
+        return preview_markdown, preview_md_path
+
+    def _set_markdown_preview(
+        self,
+        markdown_text: str,
+        preview_base_path: str | None = None,
+    ) -> None:
         self._current_markdown = markdown_text
+        self._current_preview_base_path = preview_base_path
         self.markdown_raw.setPlainText(markdown_text)
 
         if not markdown_text:
             self.markdown_rendered.clear()
+            self.markdown_rendered.document().setBaseUrl(QUrl())
             return
 
-        doc = QTextDocument()
-        doc.setMarkdown(markdown_text)
-        rendered_html = doc.toHtml()
-        css = markdown_html_css(self._is_dark_theme)
-        self.markdown_rendered.setHtml(f"<style>{css}</style>{rendered_html}")
+        document = self.markdown_rendered.document()
+        document.setDefaultStyleSheet(markdown_html_css(self._is_dark_theme))
+        if preview_base_path:
+            document.setBaseUrl(QUrl.fromLocalFile(os.path.abspath(preview_base_path)))
+        else:
+            document.setBaseUrl(QUrl())
+        self.markdown_rendered.setMarkdown(markdown_text)
 
     def _show_rendered_markdown(self) -> None:
         self.preview_mode_segment.setCurrentItem("rendered")
@@ -666,7 +726,7 @@ class HomeInterface(QWidget):
             QApplication.clipboard().setText(text)
 
     def save_output(self) -> None:
-        if not self.conversionResults:
+        if not self.conversionArtifacts:
             QMessageBox.warning(
                 self,
                 self.translate("no_output_to_save_title"),
@@ -696,10 +756,21 @@ class HomeInterface(QWidget):
         if not output_path.lower().endswith(output_ext.lower()):
             output_path += output_ext
 
-        parts = [f"File: {file}\n{content}" for file, content in self.conversionResults.items()]
-        combined_output = "\n\n".join(parts)
-
+        used_relative_paths: set[str] = set()
+        parts = []
         try:
+            for file, artifact in self.conversionArtifacts.items():
+                rendered_content = materialize_assets_and_rewrite_markdown(
+                    file,
+                    artifact.markdown,
+                    artifact.assets,
+                    output_path,
+                    self.settings_manager.get_pdf_assets_layout(),
+                    combined=True,
+                    used_relative_paths=used_relative_paths,
+                )
+                parts.append(f"File: {file}\n{rendered_content}")
+            combined_output = "\n\n".join(parts)
             self.file_manager.save_markdown_file(output_path, combined_output)
             self.settings_manager.set_recent_outputs(
                 self.file_manager.update_recent_list(
@@ -723,7 +794,9 @@ class HomeInterface(QWidget):
             return
 
         output_ext = self.settings_manager.get_default_output_format()
-        for input_file, content in self.conversionResults.items():
+        asset_layout = self.settings_manager.get_pdf_assets_layout()
+        used_relative_paths: set[str] | None = set() if asset_layout == ASSET_LAYOUT_SINGLE else None
+        for input_file, artifact in self.conversionArtifacts.items():
             base_name = os.path.splitext(os.path.basename(input_file))[0]
             output_path = os.path.join(output_dir, f"{base_name}{output_ext}")
             counter = 1
@@ -731,7 +804,16 @@ class HomeInterface(QWidget):
                 output_path = os.path.join(output_dir, f"{base_name}_{counter}{output_ext}")
                 counter += 1
             try:
-                self.file_manager.save_markdown_file(output_path, content)
+                rendered_content = materialize_assets_and_rewrite_markdown(
+                    input_file,
+                    artifact.markdown,
+                    artifact.assets,
+                    output_path,
+                    asset_layout,
+                    combined=False,
+                    used_relative_paths=used_relative_paths,
+                )
+                self.file_manager.save_markdown_file(output_path, rendered_content)
             except Exception:
                 AppLogger.error(f"Failed saving file: {output_path}")
 
@@ -745,13 +827,30 @@ class HomeInterface(QWidget):
         self.progress_status.setText("")
 
     def _clear_result_views(self, *, reset_progress: bool = False) -> None:
-        self.conversionResults = {}
+        self._cleanup_preview_temp_root()
+        self._cleanup_conversion_temp_assets()
+        self.conversionArtifacts = {}
         self.failedConversionFiles = set()
+        self.processingBackends = {}
         self.result_file_list.clear()
         self._set_preview_file_caption(self.translate("home_preview_file_default"))
         self._set_markdown_preview("")
         if reset_progress:
             self._reset_progress_display()
+
+    def _cleanup_preview_temp_root(self) -> None:
+        if self._preview_temp_root and os.path.isdir(self._preview_temp_root):
+            shutil.rmtree(self._preview_temp_root, ignore_errors=True)
+        self._preview_temp_root = None
+
+    def _cleanup_conversion_temp_assets(self) -> None:
+        temp_dirs: set[str] = set()
+        for artifact in self.conversionArtifacts.values():
+            for asset in artifact.assets:
+                temp_dirs.add(os.path.dirname(asset.temp_path))
+        for temp_dir in temp_dirs:
+            if temp_dir and os.path.isdir(temp_dir):
+                shutil.rmtree(temp_dir, ignore_errors=True)
 
     def _set_preview_file_caption(self, text: str) -> None:
         self._preview_file_caption_full_text = text
@@ -805,7 +904,7 @@ class HomeInterface(QWidget):
 
     def _on_queue_rows_removed(self) -> None:
         try:
-            had_results = bool(self.conversionResults)
+            had_results = bool(self.conversionArtifacts)
             if had_results:
                 self._clear_result_views(reset_progress=True)
             self._update_queue_title()

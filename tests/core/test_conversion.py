@@ -55,6 +55,61 @@ def test_convert_file_uses_markitdown_when_ocr_disabled(monkeypatch, conversion)
     assert calls == [("scan.png", False)]
 
 
+def test_convert_pdf_without_ocr_keeps_previous_behavior_when_preserve_is_disabled(
+    monkeypatch,
+    conversion,
+):
+    monkeypatch.setattr(
+        conversion,
+        "_convert_with_markitdown",
+        lambda *_args, **_kwargs: "native pdf text",
+    )
+    monkeypatch.setattr(
+        conversion,
+        "_safe_extract_pdf_image_assets",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("pdf image extraction should not run")
+        ),
+    )
+
+    outcome = conversion.convert_file_with_details(
+        "document.pdf",
+        conversion.ConversionOptions(ocr_enabled=False),
+    )
+
+    assert outcome.markdown == "native pdf text"
+    assert outcome.backend == conversion.BACKEND_NATIVE
+    assert outcome.assets == ()
+
+
+def test_convert_pdf_without_ocr_extracts_image_assets_when_preserve_is_enabled(
+    monkeypatch,
+    conversion,
+):
+    monkeypatch.setattr(
+        conversion,
+        "_convert_with_markitdown",
+        lambda *_args, **_kwargs: "native pdf text",
+    )
+    monkeypatch.setattr(
+        conversion,
+        "_safe_extract_pdf_image_assets",
+        lambda *_args, **_kwargs: ("image-asset",),
+    )
+
+    outcome = conversion.convert_file_with_details(
+        "document.pdf",
+        conversion.ConversionOptions(
+            ocr_enabled=False,
+            preserve_pdf_images=True,
+        ),
+    )
+
+    assert outcome.markdown == "native pdf text"
+    assert outcome.backend == conversion.BACKEND_NATIVE
+    assert outcome.assets == ("image-asset",)
+
+
 def test_convert_image_prefers_docintel_when_configured(monkeypatch, conversion):
     calls = []
 
@@ -502,3 +557,127 @@ def test_run_tesseract_ocr_resets_executable_path_when_custom_path_is_cleared(
     assert first_result == "ocr text"
     assert second_result == "ocr text"
     assert pytesseract_impl.tesseract_cmd == "tesseract"
+
+
+def test_safe_extract_pdf_image_assets_returns_empty_tuple_when_partial_extraction_fails(
+    monkeypatch,
+    conversion,
+):
+    monkeypatch.setattr(
+        conversion,
+        "_extract_pdf_image_assets",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("boom")),
+    )
+
+    assets = conversion._safe_extract_pdf_image_assets(
+        "scan.pdf",
+        conversion.ConversionOptions(preserve_pdf_images=True),
+    )
+
+    assert assets == ()
+
+
+def test_convert_pdf_with_pymupdf_pipeline_uses_native_extraction(monkeypatch, conversion):
+    monkeypatch.setattr(
+        conversion,
+        "extract_pdf_markdown",
+        lambda *_args, **_kwargs: "native pymupdf text",
+    )
+    monkeypatch.setattr(
+        conversion,
+        "_convert_with_markitdown",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("markitdown should not run for native pymupdf pipeline")
+        ),
+    )
+
+    outcome = conversion.convert_file_with_details(
+        "document.pdf",
+        conversion.ConversionOptions(pdf_pipeline="pymupdf"),
+    )
+
+    assert outcome.markdown == "native pymupdf text"
+    assert outcome.backend == conversion.BACKEND_NATIVE
+
+
+def test_convert_pdf_with_pymupdf_pipeline_falls_back_to_azure(monkeypatch, conversion):
+    calls = []
+
+    def fake_markitdown(_file_path, _options, use_docintel=False):
+        calls.append(use_docintel)
+        if use_docintel:
+            return "azure pdf text"
+        return ""
+
+    monkeypatch.setattr(
+        conversion,
+        "extract_pdf_markdown",
+        lambda *_args, **_kwargs: "",
+    )
+    monkeypatch.setattr(conversion, "_convert_with_markitdown", fake_markitdown)
+    monkeypatch.setattr(
+        conversion,
+        "_convert_pdf_with_local_ocr",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("local OCR should not run")
+        ),
+    )
+
+    outcome = conversion.convert_file_with_details(
+        "scan.pdf",
+        conversion.ConversionOptions(
+            ocr_enabled=True,
+            docintel_endpoint="https://example.cognitiveservices.azure.com/",
+            pdf_pipeline="pymupdf",
+        ),
+    )
+
+    assert outcome.markdown == "azure pdf text"
+    assert outcome.backend == conversion.BACKEND_AZURE
+    assert calls == [True]
+
+
+def test_convert_pdf_with_local_ocr_uses_pymupdf_renderer(monkeypatch, conversion):
+    captured = {}
+
+    def fake_convert(file_path, *, render_scale, run_ocr):
+        captured["file_path"] = file_path
+        captured["render_scale"] = render_scale
+        return run_ocr("page-image")
+
+    monkeypatch.setattr(conversion, "convert_pdf_with_local_ocr_pymupdf", fake_convert)
+    monkeypatch.setattr(conversion, "_run_tesseract_ocr", lambda image, _options: f"ocr:{image}")
+
+    result = conversion._convert_pdf_with_local_ocr(
+        "scan.pdf",
+        conversion.ConversionOptions(),
+    )
+
+    assert result == "ocr:page-image"
+    assert captured == {
+        "file_path": "scan.pdf",
+        "render_scale": conversion.PDF_RENDER_SCALE,
+    }
+
+
+def test_extract_pdf_image_assets_uses_pymupdf_helper(monkeypatch, conversion):
+    captured = {}
+
+    def fake_extract(file_path, *, min_width, min_height, min_bytes, logger):
+        captured["file_path"] = file_path
+        captured["min_width"] = min_width
+        captured["min_height"] = min_height
+        captured["min_bytes"] = min_bytes
+        captured["logger"] = logger
+        return ("asset",)
+
+    monkeypatch.setattr(conversion, "extract_pdf_image_assets_pymupdf", fake_extract)
+
+    assets = conversion._extract_pdf_image_assets("scan.pdf")
+
+    assert assets == ("asset",)
+    assert captured["file_path"] == "scan.pdf"
+    assert captured["min_width"] == conversion.PDF_IMAGE_MIN_WIDTH
+    assert captured["min_height"] == conversion.PDF_IMAGE_MIN_HEIGHT
+    assert captured["min_bytes"] == conversion.PDF_IMAGE_MIN_BYTES
+    assert captured["logger"] is conversion.AppLogger

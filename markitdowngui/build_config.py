@@ -16,6 +16,8 @@ MANDATORY_HIDDENIMPORT_PACKAGES = (
 OPTIONAL_HIDDENIMPORT_PACKAGES = (
     "azure.ai.documentintelligence",
     "azure.identity",
+    "fitz",
+    "pymupdf",
     "pypdfium2",
     "pypdfium2_raw",
     "pytesseract",
@@ -30,6 +32,10 @@ OPTIONAL_DATA_PACKAGES = (
     "magika",
     "pypdfium2",
     "pypdfium2_raw",
+)
+OPTIONAL_BINARY_PACKAGES = (
+    "fitz",
+    "pymupdf",
 )
 
 
@@ -74,3 +80,22 @@ def build_datas(
                 warn(f"Warning: Could not collect data files for {package}: {exc}")
 
     return datas
+
+
+def build_binaries(
+    collect_dynamic_libs: Callable[[str], list[tuple[str, str]]],
+    *,
+    warn: Callable[[str], None] | None = None,
+) -> list[tuple[str, str]]:
+    binaries: list[tuple[str, str]] = []
+
+    for package in OPTIONAL_BINARY_PACKAGES:
+        try:
+            binaries.extend(collect_dynamic_libs(package))
+        except Exception as exc:
+            if warn is not None:
+                warn(
+                    f"Warning: Could not collect dynamic libraries for {package}: {exc}"
+                )
+
+    return binaries

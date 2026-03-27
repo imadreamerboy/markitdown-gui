@@ -1,6 +1,11 @@
 from PySide6.QtCore import QSettings
 from typing import cast, List
 
+from markitdowngui.core.pdf_pipeline import (
+    PDF_PIPELINE_MARKITDOWN,
+    normalize_pdf_pipeline,
+)
+
 class SettingsManager:
     """Manages application settings and preferences."""
     
@@ -135,6 +140,37 @@ class SettingsManager:
     def set_tesseract_path(self, path: str) -> None:
         """Set the optional Tesseract executable path."""
         self.settings.setValue('tesseractPath', (path or '').strip())
+
+    def get_preserve_pdf_images(self) -> bool:
+        """Get whether PDF image extraction is enabled."""
+        return bool(self.settings.value('preservePdfImages', False, type=bool))
+
+    def set_preserve_pdf_images(self, enabled: bool) -> None:
+        """Set whether PDF image extraction is enabled."""
+        self.settings.setValue('preservePdfImages', enabled)
+
+    def get_pdf_assets_layout(self) -> str:
+        """Get the preferred PDF assets layout."""
+        layout = str(self.settings.value('pdfAssetsLayout', 'separate', type=str)).strip().lower()
+        return layout if layout in {'separate', 'single'} else 'separate'
+
+    def set_pdf_assets_layout(self, layout: str) -> None:
+        """Set the preferred PDF assets layout."""
+        normalized = (layout or 'separate').strip().lower()
+        if normalized not in {'separate', 'single'}:
+            normalized = 'separate'
+        self.settings.setValue('pdfAssetsLayout', normalized)
+
+    def get_pdf_pipeline(self) -> str:
+        """Get the preferred PDF conversion pipeline."""
+        pipeline = str(
+            self.settings.value('pdfPipeline', PDF_PIPELINE_MARKITDOWN, type=str)
+        ).strip()
+        return normalize_pdf_pipeline(pipeline)
+
+    def set_pdf_pipeline(self, pipeline: str) -> None:
+        """Set the preferred PDF conversion pipeline."""
+        self.settings.setValue('pdfPipeline', normalize_pdf_pipeline(pipeline))
         
     def get_update_notifications_enabled(self) -> bool:
         """Get whether update notifications are enabled."""

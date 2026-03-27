@@ -1,6 +1,11 @@
 import os
 import pytest
 from markitdowngui.core.file_utils import FileManager
+from markitdowngui.core.markdown_assets import (
+    MarkdownAssetReference,
+    SavedMarkdownAsset,
+    build_markdown_with_asset_references,
+)
 
 @pytest.fixture
 def file_manager(tmp_path, monkeypatch):
@@ -69,3 +74,44 @@ def test_save_and_get_backup_dir(file_manager):
     assert os.path.exists(backup_path)
     with open(backup_path, "r", encoding="utf-8") as f:
         assert f.read() == content 
+
+
+def test_save_markdown_assets(file_manager, tmp_path):
+    source_one = tmp_path / "source-one.png"
+    source_one.write_bytes(b"png-bytes")
+    source_two = tmp_path / "source-two.png"
+    source_two.write_bytes(b"more-bytes")
+    assets = [
+        SavedMarkdownAsset(relative_path="doc_assets/image-1.png", source_path=str(source_one)),
+        SavedMarkdownAsset(relative_path="doc_assets/nested/image-2.png", source_path=str(source_two)),
+    ]
+
+    file_manager.save_markdown_assets(str(tmp_path), assets)
+
+    assert (tmp_path / "doc_assets" / "image-1.png").read_bytes() == b"png-bytes"
+    assert (tmp_path / "doc_assets" / "nested" / "image-2.png").read_bytes() == b"more-bytes"
+
+
+def test_build_markdown_with_asset_references_groups_images_by_page():
+    markdown = "# Report"
+    references = [
+        MarkdownAssetReference(
+            relative_path="report_assets/page-001-image-01.png",
+            page_number=1,
+            alt_text="Page 1 image 1",
+        ),
+        MarkdownAssetReference(
+            relative_path="report_assets/page-002-image-01.png",
+            page_number=2,
+            alt_text="Page 2 image 1",
+        ),
+    ]
+
+    rendered = build_markdown_with_asset_references(markdown, references)
+
+    assert rendered.startswith("# Report")
+    assert "## Extracted Images" in rendered
+    assert "### Page 1" in rendered
+    assert "### Page 2" in rendered
+    assert "![Page 1 image 1](report_assets/page-001-image-01.png)" in rendered
+    assert "![Page 2 image 1](report_assets/page-002-image-01.png)" in rendered
