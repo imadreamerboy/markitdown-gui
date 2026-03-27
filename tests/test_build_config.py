@@ -1,4 +1,5 @@
 from markitdowngui import build_config
+from pathlib import Path
 
 
 def test_build_hiddenimports_includes_charset_normalizer_mypyc_runtime():
@@ -88,3 +89,12 @@ def test_build_binaries_collects_pymupdf_dynamic_libraries_and_warns_for_missing
     assert warnings == [
         "Warning: Could not collect dynamic libraries for pymupdf: missing pymupdf runtime"
     ]
+
+
+def test_pyproject_declares_pymupdf_without_direct_pypdfium2_dependency():
+    pyproject_path = Path(__file__).resolve().parents[1] / "pyproject.toml"
+    pyproject = pyproject_path.read_text(encoding="utf-8")
+
+    assert '"pymupdf>=1.27,<2"' in pyproject
+    assert '"markitdown[az-doc-intel,docx,pdf,pptx,xls,xlsx]==0.1.5"' in pyproject
+    assert '"pypdfium2",' not in pyproject

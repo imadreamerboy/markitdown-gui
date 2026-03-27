@@ -1,9 +1,14 @@
 from pathlib import Path
+import shutil
 
 from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import QFileDialog, QWidget
 
-from markitdowngui.core.conversion import ConversionOutcome
+from markitdowngui.core.conversion import (
+    ConversionOptions,
+    ConversionOutcome,
+    convert_file_with_details,
+)
 from markitdowngui.core.markdown_assets import GeneratedAsset, build_asset_placeholder
 from markitdowngui.core.settings import SettingsManager
 from markitdowngui.ui.home_interface import HomeInterface
@@ -207,3 +212,48 @@ def test_home_interface_save_combined_outputs_separate_assets_runtime(
         widget.shutdown()
         widget.deleteLater()
         parent.deleteLater()
+
+
+def test_home_interface_preview_uses_real_pymupdf_conversion_artifact(
+    qapp,
+    tmp_path,
+    sample_pdf_factory,
+):
+    manager = _settings_manager(tmp_path)
+    manager.set_pdf_pipeline("pymupdf")
+    manager.set_preserve_pdf_images(True)
+    manager.set_pdf_assets_layout("separate")
+    parent = _RuntimeWindow()
+    widget = HomeInterface(manager, parent=parent)
+    pdf_path = sample_pdf_factory(tmp_path / "runtime-inline.pdf")
+
+    outcome = convert_file_with_details(
+        str(pdf_path),
+        ConversionOptions(
+            pdf_pipeline="pymupdf",
+            preserve_pdf_images=True,
+        ),
+    )
+
+    try:
+        markdown, preview_base_path = widget._build_preview_markdown(
+            str(pdf_path),
+            outcome,
+        )
+        widget._set_markdown_preview(markdown, preview_base_path)
+
+        assert preview_base_path is not None
+        assert "Alpha paragraph" in markdown
+        assert "Beta paragraph" in markdown
+        assert "runtime-inline_assets/page_001_img_001.png" in markdown
+        assert "## Extracted Images" not in markdown
+        assert markdown.index("Alpha paragraph") < markdown.index(
+            "runtime-inline_assets/page_001_img_001.png"
+        ) < markdown.index("Beta paragraph")
+    finally:
+        temp_dirs = {str(Path(asset.temp_path).parent) for asset in outcome.assets}
+        widget.shutdown()
+        widget.deleteLater()
+        parent.deleteLater()
+        for temp_dir in temp_dirs:
+            shutil.rmtree(temp_dir, ignore_errors=True)
