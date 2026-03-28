@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from urllib.parse import unquote, urlparse
 
 WEB_URL_SCHEMES = {"http", "https"}
@@ -17,13 +17,20 @@ def is_web_url(value: str) -> bool:
     return parsed.scheme.lower() in WEB_URL_SCHEMES and bool(parsed.netloc)
 
 
+def _source_path(source: str) -> Path | PureWindowsPath:
+    candidate = source.strip()
+    if "\\" in candidate:
+        return PureWindowsPath(candidate)
+    return Path(candidate)
+
+
 def source_display_name(source: str) -> str:
-    return source.strip() if is_web_url(source) else Path(source).name or source
+    return source.strip() if is_web_url(source) else _source_path(source).name or source
 
 
 def source_output_stem(source: str) -> str:
     if not is_web_url(source):
-        return Path(source).stem or "converted"
+        return _source_path(source).stem or "converted"
 
     parsed = urlparse(source.strip())
     path_parts = [part for part in parsed.path.split("/") if part]
