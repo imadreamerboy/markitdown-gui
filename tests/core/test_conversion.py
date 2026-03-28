@@ -74,14 +74,20 @@ def test_convert_url_uses_defuddle_http_api(monkeypatch, conversion):
 
     assert outcome.markdown == "# Article"
     assert outcome.backend == conversion.BACKEND_DEFUDDLE
-    assert captured["url"] == "https://defuddle.md/https://example.com/article"
+    expected_url = conversion._build_defuddle_request_url("https://example.com/article")
+    assert captured["url"] == expected_url
     assert captured["kwargs"]["timeout"] == conversion.DEFUDDLE_REQUEST_TIMEOUT_SECONDS
 
 
-def test_build_defuddle_request_url_preserves_full_url(conversion):
-    request_url = conversion._build_defuddle_request_url("https://example.com/article?a=1")
+def test_build_defuddle_request_url_encodes_embedded_url(conversion):
+    request_url = conversion._build_defuddle_request_url(
+        "https://example.com/article?a=1&key=abc#intro"
+    )
 
-    assert request_url == "https://defuddle.md/https://example.com/article?a=1"
+    assert (
+        request_url
+        == "https://defuddle.md/https%3A%2F%2Fexample.com%2Farticle%3Fa%3D1%26key%3Dabc%23intro"
+    )
 
 
 def test_convert_url_surfaces_rate_limit(monkeypatch, conversion):

@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from itertools import islice
 import os
 from pathlib import Path
+from urllib.parse import quote
 
 import requests
 
@@ -322,7 +323,8 @@ def _convert_url_with_defuddle(url: str) -> str:
 
 
 def _build_defuddle_request_url(url: str) -> str:
-    return f"{DEFUDDLE_API_BASE_URL}{url.strip()}"
+    encoded_url = quote(url.strip(), safe="")
+    return f"{DEFUDDLE_API_BASE_URL}{encoded_url}"
 
 
 def _convert_image_with_local_ocr(file_path: str, options: ConversionOptions) -> str:

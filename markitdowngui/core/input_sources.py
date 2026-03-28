@@ -12,6 +12,8 @@ def is_web_url(value: str) -> bool:
     candidate = value.strip()
     if not candidate:
         return False
+    if any(ch.isspace() or ord(ch) < 32 for ch in candidate):
+        return False
 
     parsed = urlparse(candidate)
     return parsed.scheme.lower() in WEB_URL_SCHEMES and bool(parsed.netloc)
