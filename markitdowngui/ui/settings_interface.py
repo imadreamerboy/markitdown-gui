@@ -4,16 +4,17 @@ import os
 
 from PySide6.QtCore import QThread, Qt, Signal
 from PySide6.QtWidgets import (
-    QFrame,
-    QWidget,
-    QVBoxLayout,
-    QHBoxLayout,
     QFileDialog,
+    QFrame,
     QGroupBox,
+    QHBoxLayout,
     QScrollArea,
+    QVBoxLayout,
+    QWidget,
 )
 from qfluentwidgets import (
     BodyLabel,
+    CaptionLabel,
     CheckBox,
     ComboBox,
     FluentIcon as FIF,
@@ -27,7 +28,13 @@ from qfluentwidgets import (
 )
 
 from markitdowngui.core.conversion import ConversionOptions, test_azure_ocr_connection
-from markitdowngui.core.settings import SettingsManager
+from markitdowngui.core.settings import (
+    GLMOCR_MODE_MAAS,
+    GLMOCR_MODE_SELFHOSTED,
+    OCR_PROVIDER_GLMOCR,
+    OCR_PROVIDER_LEGACY,
+    SettingsManager,
+)
 
 
 class AzureConnectionTestWorker(QThread):
@@ -58,6 +65,8 @@ class SettingsInterface(QWidget):
         self.settings_manager = settings_manager
         self.translate = translate
         self._azure_test_worker: AzureConnectionTestWorker | None = None
+        self._ocr_provider_values = [OCR_PROVIDER_LEGACY, OCR_PROVIDER_GLMOCR]
+        self._glmocr_mode_values = [GLMOCR_MODE_MAAS, GLMOCR_MODE_SELFHOSTED]
         self._build_ui()
         self._load_settings()
 
@@ -70,7 +79,9 @@ class SettingsInterface(QWidget):
         self.scroll_area.setObjectName("SettingsScrollArea")
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setFrameShape(QFrame.Shape.NoFrame)
-        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.scroll_area.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
         root_layout.addWidget(self.scroll_area)
 
         self.content = QWidget(self.scroll_area)
@@ -152,7 +163,120 @@ class SettingsInterface(QWidget):
         self.ocr_enabled_check.toggled.connect(self._save_ocr_enabled)
         ocr_layout.addWidget(self.ocr_enabled_check)
 
-        ocr_layout.addWidget(BodyLabel(self.translate("settings_docintel_label")))
+        ocr_layout.addWidget(BodyLabel(self.translate("settings_ocr_provider_label")))
+        self.ocr_provider_combo = ComboBox()
+        self.ocr_provider_combo.addItems(
+            [
+                self.translate("settings_ocr_provider_legacy"),
+                self.translate("settings_ocr_provider_glmocr"),
+            ]
+        )
+        self.ocr_provider_combo.currentTextChanged.connect(self._save_ocr_provider)
+        ocr_layout.addWidget(self.ocr_provider_combo)
+
+        self.glmocr_group = QGroupBox(self.translate("settings_glmocr_group"))
+        glmocr_layout = QVBoxLayout(self.glmocr_group)
+        glmocr_layout.setSpacing(10)
+
+        self.ocr_fallback_check = CheckBox(
+            self.translate("settings_ocr_fallback_label")
+        )
+        self.ocr_fallback_check.setToolTip(
+            self.translate("settings_ocr_fallback_tooltip")
+        )
+        self.ocr_fallback_check.toggled.connect(self._save_ocr_fallback_enabled)
+        glmocr_layout.addWidget(self.ocr_fallback_check)
+
+        glmocr_layout.addWidget(BodyLabel(self.translate("settings_glmocr_mode_label")))
+        self.glmocr_mode_combo = ComboBox()
+        self.glmocr_mode_combo.addItems(
+            [
+                self.translate("settings_glmocr_mode_maas"),
+                self.translate("settings_glmocr_mode_selfhosted"),
+            ]
+        )
+        self.glmocr_mode_combo.currentTextChanged.connect(self._save_glmocr_mode)
+        glmocr_layout.addWidget(self.glmocr_mode_combo)
+
+        self.glmocr_maas_note = CaptionLabel(
+            self.translate("settings_glmocr_maas_note")
+        )
+        self.glmocr_maas_note.setWordWrap(True)
+        glmocr_layout.addWidget(self.glmocr_maas_note)
+
+        self.glmocr_selfhost_note = CaptionLabel(
+            self.translate("settings_glmocr_selfhost_note")
+        )
+        self.glmocr_selfhost_note.setWordWrap(True)
+        glmocr_layout.addWidget(self.glmocr_selfhost_note)
+
+        self.glmocr_selfhost_fields = QWidget(self.glmocr_group)
+        self.glmocr_selfhost_fields_layout = QVBoxLayout(self.glmocr_selfhost_fields)
+        self.glmocr_selfhost_fields_layout.setContentsMargins(0, 0, 0, 0)
+        self.glmocr_selfhost_fields_layout.setSpacing(10)
+
+        self.glmocr_api_host_label = BodyLabel(
+            self.translate("settings_glmocr_api_host_label")
+        )
+        self.glmocr_selfhost_fields_layout.addWidget(self.glmocr_api_host_label)
+        self.glmocr_api_host_edit = LineEdit()
+        self.glmocr_api_host_edit.setPlaceholderText(
+            self.translate("settings_glmocr_api_host_placeholder")
+        )
+        self.glmocr_api_host_edit.editingFinished.connect(self._save_glmocr_api_host)
+        self.glmocr_selfhost_fields_layout.addWidget(self.glmocr_api_host_edit)
+
+        self.glmocr_api_port_label = BodyLabel(
+            self.translate("settings_glmocr_api_port_label")
+        )
+        self.glmocr_selfhost_fields_layout.addWidget(self.glmocr_api_port_label)
+        self.glmocr_api_port_spin = SpinBox()
+        self.glmocr_api_port_spin.setRange(1, 65535)
+        self.glmocr_api_port_spin.valueChanged.connect(self._save_glmocr_api_port)
+        self.glmocr_selfhost_fields_layout.addWidget(self.glmocr_api_port_spin)
+
+        self.glmocr_model_label = BodyLabel(
+            self.translate("settings_glmocr_model_label")
+        )
+        self.glmocr_selfhost_fields_layout.addWidget(self.glmocr_model_label)
+        self.glmocr_model_edit = LineEdit()
+        self.glmocr_model_edit.setPlaceholderText(
+            self.translate("settings_glmocr_model_placeholder")
+        )
+        self.glmocr_model_edit.editingFinished.connect(self._save_glmocr_model)
+        self.glmocr_selfhost_fields_layout.addWidget(self.glmocr_model_edit)
+
+        self.glmocr_config_path_label = BodyLabel(
+            self.translate("settings_glmocr_config_path_label")
+        )
+        self.glmocr_selfhost_fields_layout.addWidget(self.glmocr_config_path_label)
+        glmocr_config_row = QHBoxLayout()
+        glmocr_config_row.setSpacing(8)
+        self.glmocr_config_path_edit = LineEdit()
+        self.glmocr_config_path_edit.setPlaceholderText(
+            self.translate("settings_glmocr_config_path_placeholder")
+        )
+        self.glmocr_config_path_edit.editingFinished.connect(
+            self._save_glmocr_config_path
+        )
+        self.glmocr_config_path_button = PushButton(
+            self.translate("browse_button_compact")
+        )
+        self.glmocr_config_path_button.setIcon(FIF.FOLDER)
+        self.glmocr_config_path_button.clicked.connect(self._browse_glmocr_config_path)
+        glmocr_config_row.addWidget(self.glmocr_config_path_edit, 1)
+        glmocr_config_row.addWidget(self.glmocr_config_path_button)
+        self.glmocr_selfhost_fields_layout.addLayout(glmocr_config_row)
+        glmocr_layout.addWidget(self.glmocr_selfhost_fields)
+        ocr_layout.addWidget(self.glmocr_group)
+
+        self.legacy_ocr_group = QGroupBox(
+            self.translate("settings_legacy_ocr_group")
+        )
+        legacy_layout = QVBoxLayout(self.legacy_ocr_group)
+        legacy_layout.setSpacing(10)
+
+        legacy_layout.addWidget(BodyLabel(self.translate("settings_docintel_label")))
         self.docintel_endpoint_edit = LineEdit()
         self.docintel_endpoint_edit.setPlaceholderText(
             self.translate("settings_docintel_placeholder")
@@ -166,7 +290,7 @@ class SettingsInterface(QWidget):
         self.docintel_endpoint_edit.textChanged.connect(
             lambda *_args: self._update_azure_test_button_state()
         )
-        ocr_layout.addWidget(self.docintel_endpoint_edit)
+        legacy_layout.addWidget(self.docintel_endpoint_edit)
 
         azure_test_row = QHBoxLayout()
         azure_test_row.setSpacing(8)
@@ -180,9 +304,11 @@ class SettingsInterface(QWidget):
         self.test_azure_button.clicked.connect(self._test_azure_connection)
         azure_test_row.addWidget(self.test_azure_button)
         azure_test_row.addStretch(1)
-        ocr_layout.addLayout(azure_test_row)
+        legacy_layout.addLayout(azure_test_row)
 
-        ocr_layout.addWidget(BodyLabel(self.translate("settings_ocr_language_label")))
+        legacy_layout.addWidget(
+            BodyLabel(self.translate("settings_ocr_language_label"))
+        )
         self.ocr_languages_edit = LineEdit()
         self.ocr_languages_edit.setPlaceholderText(
             self.translate("settings_ocr_language_placeholder")
@@ -191,9 +317,11 @@ class SettingsInterface(QWidget):
             self.translate("settings_ocr_language_tooltip")
         )
         self.ocr_languages_edit.editingFinished.connect(self._save_ocr_languages)
-        ocr_layout.addWidget(self.ocr_languages_edit)
+        legacy_layout.addWidget(self.ocr_languages_edit)
 
-        ocr_layout.addWidget(BodyLabel(self.translate("settings_tesseract_path_label")))
+        legacy_layout.addWidget(
+            BodyLabel(self.translate("settings_tesseract_path_label"))
+        )
         tesseract_row = QHBoxLayout()
         tesseract_row.setSpacing(8)
         self.tesseract_path_edit = LineEdit()
@@ -211,7 +339,8 @@ class SettingsInterface(QWidget):
         self.tesseract_path_button.clicked.connect(self._browse_tesseract_path)
         tesseract_row.addWidget(self.tesseract_path_edit, 1)
         tesseract_row.addWidget(self.tesseract_path_button)
-        ocr_layout.addLayout(tesseract_row)
+        legacy_layout.addLayout(tesseract_row)
+        ocr_layout.addWidget(self.legacy_ocr_group)
         layout.addWidget(self.ocr_group)
 
         self.appearance_group = QGroupBox(self.translate("settings_appearance_group"))
@@ -221,9 +350,15 @@ class SettingsInterface(QWidget):
         self.theme_light = RadioButton(self.translate("theme_light"))
         self.theme_dark = RadioButton(self.translate("theme_dark"))
         self.theme_system = RadioButton(self.translate("theme_system"))
-        self.theme_light.toggled.connect(lambda checked: self._save_theme("light", checked))
-        self.theme_dark.toggled.connect(lambda checked: self._save_theme("dark", checked))
-        self.theme_system.toggled.connect(lambda checked: self._save_theme("system", checked))
+        self.theme_light.toggled.connect(
+            lambda checked: self._save_theme("light", checked)
+        )
+        self.theme_dark.toggled.connect(
+            lambda checked: self._save_theme("dark", checked)
+        )
+        self.theme_system.toggled.connect(
+            lambda checked: self._save_theme("system", checked)
+        )
 
         appearance_layout.addWidget(self.theme_light)
         appearance_layout.addWidget(self.theme_dark)
@@ -236,34 +371,118 @@ class SettingsInterface(QWidget):
         self.output_format_combo.setCurrentText(
             self.settings_manager.get_default_output_format()
         )
-        self.output_folder_edit.setText(self.settings_manager.get_default_output_folder())
+        self.output_folder_edit.setText(
+            self.settings_manager.get_default_output_folder()
+        )
         self.batch_size_spin.setValue(self.settings_manager.get_batch_size())
 
         format_settings = self.settings_manager.get_format_settings()
-        self.header_style_combo.setCurrentText(str(format_settings.get("headerStyle", "")))
-        self.table_style_combo.setCurrentText(str(format_settings.get("tableStyle", "")))
+        self.header_style_combo.setCurrentText(
+            str(format_settings.get("headerStyle", ""))
+        )
+        self.table_style_combo.setCurrentText(
+            str(format_settings.get("tableStyle", ""))
+        )
+
         self.ocr_enabled_check.setChecked(self.settings_manager.get_ocr_enabled())
+        self._set_combo_value(
+            self.ocr_provider_combo,
+            self._ocr_provider_values,
+            self.settings_manager.get_ocr_provider(),
+        )
+        self.ocr_fallback_check.setChecked(
+            self.settings_manager.get_ocr_fallback_enabled()
+        )
+        self._set_combo_value(
+            self.glmocr_mode_combo,
+            self._glmocr_mode_values,
+            self.settings_manager.get_glmocr_mode(),
+        )
+        self.glmocr_api_host_edit.setText(self.settings_manager.get_glmocr_api_host())
+        self.glmocr_api_port_spin.setValue(self.settings_manager.get_glmocr_api_port())
+        self.glmocr_model_edit.setText(self.settings_manager.get_glmocr_model())
+        self.glmocr_config_path_edit.setText(
+            self.settings_manager.get_glmocr_config_path()
+        )
         self.docintel_endpoint_edit.setText(
             self.settings_manager.get_docintel_endpoint()
         )
-        self._update_azure_test_button_state()
         self.ocr_languages_edit.setText(self.settings_manager.get_ocr_languages())
         self.tesseract_path_edit.setText(self.settings_manager.get_tesseract_path())
+        self._update_azure_test_button_state()
+        self._update_ocr_sections_visibility()
 
         theme_mode = self.settings_manager.get_theme_mode()
         self.theme_light.setChecked(theme_mode == "light")
         self.theme_dark.setChecked(theme_mode == "dark")
         self.theme_system.setChecked(theme_mode == "system")
 
+    def _set_combo_value(self, combo: ComboBox, values: list[str], value: str) -> None:
+        try:
+            index = values.index(value)
+        except ValueError:
+            index = 0
+        combo.setCurrentIndex(index)
+
+    def _current_ocr_provider(self) -> str:
+        index = self.ocr_provider_combo.currentIndex()
+        if 0 <= index < len(self._ocr_provider_values):
+            return self._ocr_provider_values[index]
+        return OCR_PROVIDER_LEGACY
+
+    def _current_glmocr_mode(self) -> str:
+        index = self.glmocr_mode_combo.currentIndex()
+        if 0 <= index < len(self._glmocr_mode_values):
+            return self._glmocr_mode_values[index]
+        return GLMOCR_MODE_MAAS
+
+    def _build_conversion_options(self) -> ConversionOptions:
+        return ConversionOptions(
+            ocr_enabled=self.ocr_enabled_check.isChecked(),
+            ocr_provider=self._current_ocr_provider(),
+            ocr_fallback_enabled=self.ocr_fallback_check.isChecked(),
+            docintel_endpoint=self.docintel_endpoint_edit.text(),
+            ocr_languages=self.ocr_languages_edit.text(),
+            tesseract_path=self.tesseract_path_edit.text(),
+            glmocr_mode=self._current_glmocr_mode(),
+            glmocr_api_host=self.glmocr_api_host_edit.text(),
+            glmocr_api_port=self.glmocr_api_port_spin.value(),
+            glmocr_model=self.glmocr_model_edit.text(),
+            glmocr_config_path=self.glmocr_config_path_edit.text(),
+        )
+
+    def _update_ocr_sections_visibility(self) -> None:
+        provider = self._current_ocr_provider()
+        glm_mode = self._current_glmocr_mode()
+        use_glmocr = provider == OCR_PROVIDER_GLMOCR
+        legacy_visible = provider == OCR_PROVIDER_LEGACY or (
+            use_glmocr and self.ocr_fallback_check.isChecked()
+        )
+
+        self.glmocr_group.setVisible(use_glmocr)
+        self.glmocr_maas_note.setVisible(use_glmocr and glm_mode == GLMOCR_MODE_MAAS)
+        self.glmocr_selfhost_note.setVisible(
+            use_glmocr and glm_mode == GLMOCR_MODE_SELFHOSTED
+        )
+        self.glmocr_selfhost_fields.setVisible(
+            use_glmocr and glm_mode == GLMOCR_MODE_SELFHOSTED
+        )
+        self.legacy_ocr_group.setVisible(legacy_visible)
+        self._update_azure_test_button_state()
+
     def _save_output_folder(self) -> None:
-        self.settings_manager.set_default_output_folder(self.output_folder_edit.text().strip())
+        self.settings_manager.set_default_output_folder(
+            self.output_folder_edit.text().strip()
+        )
 
     def _browse_output_folder(self) -> None:
         start_dir = self.settings_manager.get_default_output_folder()
         if not start_dir or not os.path.isdir(start_dir):
             start_dir = ""
         folder = QFileDialog.getExistingDirectory(
-            self, self.translate("settings_output_folder_dialog"), start_dir
+            self,
+            self.translate("settings_output_folder_dialog"),
+            start_dir,
         )
         if folder:
             self.output_folder_edit.setText(folder)
@@ -275,10 +494,48 @@ class SettingsInterface(QWidget):
     def _save_ocr_enabled(self, checked: bool) -> None:
         self.settings_manager.set_ocr_enabled(checked)
 
-    def _save_docintel_endpoint(self) -> None:
-        self.settings_manager.set_docintel_endpoint(
-            self.docintel_endpoint_edit.text()
+    def _save_ocr_provider(self, *_args) -> None:
+        self.settings_manager.set_ocr_provider(self._current_ocr_provider())
+        self._update_ocr_sections_visibility()
+
+    def _save_ocr_fallback_enabled(self, checked: bool) -> None:
+        self.settings_manager.set_ocr_fallback_enabled(checked)
+        self._update_ocr_sections_visibility()
+
+    def _save_glmocr_mode(self, *_args) -> None:
+        self.settings_manager.set_glmocr_mode(self._current_glmocr_mode())
+        self._update_ocr_sections_visibility()
+
+    def _save_glmocr_api_host(self) -> None:
+        self.settings_manager.set_glmocr_api_host(self.glmocr_api_host_edit.text())
+
+    def _save_glmocr_api_port(self, value: int) -> None:
+        self.settings_manager.set_glmocr_api_port(value)
+
+    def _save_glmocr_model(self) -> None:
+        self.settings_manager.set_glmocr_model(self.glmocr_model_edit.text())
+
+    def _save_glmocr_config_path(self) -> None:
+        self.settings_manager.set_glmocr_config_path(
+            self.glmocr_config_path_edit.text()
         )
+
+    def _browse_glmocr_config_path(self) -> None:
+        start_path = self.settings_manager.get_glmocr_config_path()
+        if start_path and not os.path.exists(start_path):
+            start_path = ""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            self.translate("settings_glmocr_config_path_dialog"),
+            start_path,
+            self.translate("yaml_files_filter"),
+        )
+        if file_path:
+            self.glmocr_config_path_edit.setText(file_path)
+            self.settings_manager.set_glmocr_config_path(file_path)
+
+    def _save_docintel_endpoint(self) -> None:
+        self.settings_manager.set_docintel_endpoint(self.docintel_endpoint_edit.text())
         self._update_azure_test_button_state()
 
     def _save_ocr_languages(self) -> None:
@@ -318,6 +575,7 @@ class SettingsInterface(QWidget):
             return
         self.test_azure_button.setEnabled(
             bool(self.docintel_endpoint_edit.text().strip())
+            and not self.legacy_ocr_group.isHidden()
         )
 
     def _test_azure_connection(self) -> None:
@@ -327,13 +585,7 @@ class SettingsInterface(QWidget):
             self.translate("settings_test_azure_in_progress")
         )
 
-        options = ConversionOptions(
-            ocr_enabled=self.ocr_enabled_check.isChecked(),
-            docintel_endpoint=self.docintel_endpoint_edit.text(),
-            ocr_languages=self.ocr_languages_edit.text(),
-            tesseract_path=self.tesseract_path_edit.text(),
-        )
-        worker = AzureConnectionTestWorker(options)
+        worker = AzureConnectionTestWorker(self._build_conversion_options())
         self._azure_test_worker = worker
         worker.succeeded.connect(self._handle_azure_test_success)
         worker.failed.connect(self._handle_azure_test_failure)

@@ -35,6 +35,7 @@ from qfluentwidgets import (
 from markitdowngui.core.conversion import (
     BACKEND_AZURE,
     BACKEND_DEFUDDLE,
+    BACKEND_GLMOCR,
     BACKEND_LOCAL,
     BACKEND_NATIVE,
     ConversionOptions,
@@ -544,9 +545,16 @@ class HomeInterface(QWidget):
     def _build_conversion_options(self) -> ConversionOptions:
         return ConversionOptions(
             ocr_enabled=self.settings_manager.get_ocr_enabled(),
+            ocr_provider=self.settings_manager.get_ocr_provider(),
+            ocr_fallback_enabled=self.settings_manager.get_ocr_fallback_enabled(),
             docintel_endpoint=self.settings_manager.get_docintel_endpoint(),
             ocr_languages=self.settings_manager.get_ocr_languages(),
             tesseract_path=self.settings_manager.get_tesseract_path(),
+            glmocr_mode=self.settings_manager.get_glmocr_mode(),
+            glmocr_api_host=self.settings_manager.get_glmocr_api_host(),
+            glmocr_api_port=self.settings_manager.get_glmocr_api_port(),
+            glmocr_model=self.settings_manager.get_glmocr_model(),
+            glmocr_config_path=self.settings_manager.get_glmocr_config_path(),
         )
 
     def update_progress(self, progress: int, current_file: str) -> None:
@@ -601,6 +609,7 @@ class HomeInterface(QWidget):
         counts = {
             BACKEND_AZURE: 0,
             BACKEND_DEFUDDLE: 0,
+            BACKEND_GLMOCR: 0,
             BACKEND_LOCAL: 0,
             BACKEND_NATIVE: 0,
         }
@@ -615,6 +624,7 @@ class HomeInterface(QWidget):
         for backend, label_key in (
             (BACKEND_AZURE, "conversion_backend_azure"),
             (BACKEND_DEFUDDLE, "conversion_backend_defuddle"),
+            (BACKEND_GLMOCR, "conversion_backend_glmocr"),
             (BACKEND_LOCAL, "conversion_backend_local"),
             (BACKEND_NATIVE, "conversion_backend_native"),
         ):

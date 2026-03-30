@@ -1,6 +1,13 @@
 from PySide6.QtCore import QSettings
 from typing import cast, List
 
+
+OCR_PROVIDER_LEGACY = "legacy"
+OCR_PROVIDER_GLMOCR = "glmocr"
+GLMOCR_MODE_MAAS = "maas"
+GLMOCR_MODE_SELFHOSTED = "selfhosted"
+
+
 class SettingsManager:
     """Manages application settings and preferences."""
     
@@ -111,6 +118,84 @@ class SettingsManager:
     def set_ocr_enabled(self, enabled: bool) -> None:
         """Set whether OCR fallback is enabled."""
         self.settings.setValue('ocrEnabled', enabled)
+
+    def get_ocr_provider(self) -> str:
+        """Get the configured OCR provider."""
+        value = str(
+            self.settings.value('ocrProvider', OCR_PROVIDER_LEGACY, type=str)
+        ).strip().lower()
+        if value in {OCR_PROVIDER_LEGACY, OCR_PROVIDER_GLMOCR}:
+            return value
+        return OCR_PROVIDER_LEGACY
+
+    def set_ocr_provider(self, provider: str) -> None:
+        """Set the OCR provider."""
+        normalized = (provider or '').strip().lower()
+        if normalized not in {OCR_PROVIDER_LEGACY, OCR_PROVIDER_GLMOCR}:
+            normalized = OCR_PROVIDER_LEGACY
+        self.settings.setValue('ocrProvider', normalized)
+
+    def get_ocr_fallback_enabled(self) -> bool:
+        """Get whether GLM-OCR falls back to the legacy OCR stack."""
+        return bool(self.settings.value('ocrFallbackEnabled', True, type=bool))
+
+    def set_ocr_fallback_enabled(self, enabled: bool) -> None:
+        """Set whether GLM-OCR falls back to the legacy OCR stack."""
+        self.settings.setValue('ocrFallbackEnabled', enabled)
+
+    def get_glmocr_mode(self) -> str:
+        """Get the configured GLM-OCR mode."""
+        value = str(
+            self.settings.value('glmocrMode', GLMOCR_MODE_MAAS, type=str)
+        ).strip().lower()
+        if value in {GLMOCR_MODE_MAAS, GLMOCR_MODE_SELFHOSTED}:
+            return value
+        return GLMOCR_MODE_MAAS
+
+    def set_glmocr_mode(self, mode: str) -> None:
+        """Set the GLM-OCR mode."""
+        normalized = (mode or '').strip().lower()
+        if normalized not in {GLMOCR_MODE_MAAS, GLMOCR_MODE_SELFHOSTED}:
+            normalized = GLMOCR_MODE_MAAS
+        self.settings.setValue('glmocrMode', normalized)
+
+    def get_glmocr_api_host(self) -> str:
+        """Get the configured GLM-OCR self-hosted API host."""
+        value = str(self.settings.value('glmocrApiHost', '127.0.0.1', type=str)).strip()
+        return value or '127.0.0.1'
+
+    def set_glmocr_api_host(self, host: str) -> None:
+        """Set the GLM-OCR self-hosted API host."""
+        normalized = (host or '').strip() or '127.0.0.1'
+        self.settings.setValue('glmocrApiHost', normalized)
+
+    def get_glmocr_api_port(self) -> int:
+        """Get the configured GLM-OCR self-hosted API port."""
+        port = int(self.settings.value('glmocrApiPort', 8080, type=int))
+        return port if 1 <= port <= 65535 else 8080
+
+    def set_glmocr_api_port(self, port: int) -> None:
+        """Set the GLM-OCR self-hosted API port."""
+        normalized = max(1, min(65535, int(port)))
+        self.settings.setValue('glmocrApiPort', normalized)
+
+    def get_glmocr_model(self) -> str:
+        """Get the configured GLM-OCR model name."""
+        value = str(self.settings.value('glmocrModel', 'glm-ocr', type=str)).strip()
+        return value or 'glm-ocr'
+
+    def set_glmocr_model(self, model: str) -> None:
+        """Set the GLM-OCR model name."""
+        normalized = (model or '').strip() or 'glm-ocr'
+        self.settings.setValue('glmocrModel', normalized)
+
+    def get_glmocr_config_path(self) -> str:
+        """Get the optional GLM-OCR config path override."""
+        return str(self.settings.value('glmocrConfigPath', '', type=str)).strip()
+
+    def set_glmocr_config_path(self, path: str) -> None:
+        """Set the optional GLM-OCR config path override."""
+        self.settings.setValue('glmocrConfigPath', (path or '').strip())
 
     def get_docintel_endpoint(self) -> str:
         """Get the configured Azure Document Intelligence endpoint."""

@@ -23,8 +23,15 @@ AZURE_OCR_API_KEY_ENV_VAR = "AZURE_OCR_API_KEY"
 CONVERSION_ERROR_PREFIX = "Error converting "
 BACKEND_AZURE = "azure"
 BACKEND_DEFUDDLE = "defuddle"
+BACKEND_GLMOCR = "glmocr"
 BACKEND_LOCAL = "local"
 BACKEND_NATIVE = "native"
+OCR_PROVIDER_GLMOCR = "glmocr"
+OCR_PROVIDER_LEGACY = "legacy"
+GLMOCR_MODE_MAAS = "maas"
+GLMOCR_MODE_SELFHOSTED = "selfhosted"
+ZHIPU_API_KEY_ENV_VAR = "ZHIPU_API_KEY"
+GLMOCR_API_KEY_ENV_VAR = "GLMOCR_API_KEY"
 
 
 @dataclass(frozen=True)
@@ -32,9 +39,23 @@ class ConversionOptions:
     """User-controlled conversion behavior."""
 
     ocr_enabled: bool = False
+    ocr_provider: str = OCR_PROVIDER_LEGACY
+    ocr_fallback_enabled: bool = True
     docintel_endpoint: str = ""
     ocr_languages: str = ""
     tesseract_path: str = ""
+    glmocr_mode: str = GLMOCR_MODE_MAAS
+    glmocr_api_host: str = "127.0.0.1"
+    glmocr_api_port: int = 8080
+    glmocr_model: str = "glm-ocr"
+    glmocr_config_path: str = ""
+
+    @property
+    def normalized_ocr_provider(self) -> str:
+        provider = self.ocr_provider.strip().lower()
+        if provider in {OCR_PROVIDER_LEGACY, OCR_PROVIDER_GLMOCR}:
+            return provider
+        return OCR_PROVIDER_LEGACY
 
     @property
     def normalized_docintel_endpoint(self) -> str:
@@ -47,6 +68,31 @@ class ConversionOptions:
     @property
     def normalized_tesseract_path(self) -> str:
         return self.tesseract_path.strip()
+
+    @property
+    def normalized_glmocr_mode(self) -> str:
+        mode = self.glmocr_mode.strip().lower()
+        if mode in {GLMOCR_MODE_MAAS, GLMOCR_MODE_SELFHOSTED}:
+            return mode
+        return GLMOCR_MODE_MAAS
+
+    @property
+    def normalized_glmocr_api_host(self) -> str:
+        return self.glmocr_api_host.strip() or "127.0.0.1"
+
+    @property
+    def normalized_glmocr_api_port(self) -> int:
+        if 1 <= int(self.glmocr_api_port) <= 65535:
+            return int(self.glmocr_api_port)
+        return 8080
+
+    @property
+    def normalized_glmocr_model(self) -> str:
+        return self.glmocr_model.strip() or "glm-ocr"
+
+    @property
+    def normalized_glmocr_config_path(self) -> str:
+        return self.glmocr_config_path.strip()
 
 
 @dataclass(frozen=True)
@@ -106,6 +152,30 @@ def _raise_ocr_failure(
         ) from local_error
 
     raise RuntimeError(f"OCR did not extract any text from the {file_label}.")
+
+
+def _raise_glmocr_failure(
+    file_label: str,
+    *,
+    glm_error: Exception,
+    legacy_error: Exception | None = None,
+) -> str:
+    if legacy_error is not None:
+        raise RuntimeError(
+            f"GLM-OCR failed for the {file_label} ({_summarize_error(glm_error)}), "
+            f"and legacy OCR fallback also failed ({_summarize_error(legacy_error)})."
+        ) from glm_error
+
+    raise RuntimeError(
+        f"GLM-OCR failed for the {file_label}: {_summarize_error(glm_error)}"
+    ) from glm_error
+
+
+def _glmocr_api_key_available() -> bool:
+    return bool(
+        os.getenv(ZHIPU_API_KEY_ENV_VAR, "").strip()
+        or os.getenv(GLMOCR_API_KEY_ENV_VAR, "").strip()
+    )
 
 
 def _build_docintel_credential() -> tuple[object, str]:
@@ -177,7 +247,7 @@ def convert_file_with_details(
         return _convert_image_with_ocr(file_path, effective_options, extension)
 
     if extension == PDF_EXTENSION:
-        return _convert_pdf_with_ocr_fallback(file_path, effective_options)
+        return _convert_pdf_with_ocr(file_path, effective_options)
 
     return ConversionOutcome(
         markdown=_convert_with_markitdown(file_path, effective_options),
@@ -191,6 +261,41 @@ def convert_file(file_path: str, options: ConversionOptions | None = None) -> st
 
 
 def _convert_image_with_ocr(
+    file_path: str,
+    options: ConversionOptions,
+    extension: str,
+) -> ConversionOutcome:
+    if options.normalized_ocr_provider == OCR_PROVIDER_GLMOCR:
+        return _convert_image_with_glmocr(file_path, options, extension)
+
+    return _convert_image_with_legacy_ocr(file_path, options, extension)
+
+
+def _convert_image_with_glmocr(
+    file_path: str,
+    options: ConversionOptions,
+    extension: str,
+) -> ConversionOutcome:
+    try:
+        markdown = _convert_with_glmocr(file_path, options)
+        if markdown.strip():
+            return ConversionOutcome(markdown=markdown, backend=BACKEND_GLMOCR)
+        raise RuntimeError("GLM-OCR did not extract any text from the image.")
+    except Exception as exc:
+        if not options.ocr_fallback_enabled:
+            return _raise_glmocr_failure("image", glm_error=exc)
+
+        try:
+            return _convert_image_with_legacy_ocr(file_path, options, extension)
+        except Exception as legacy_error:
+            return _raise_glmocr_failure(
+                "image",
+                glm_error=exc,
+                legacy_error=legacy_error,
+            )
+
+
+def _convert_image_with_legacy_ocr(
     file_path: str,
     options: ConversionOptions,
     extension: str,
@@ -230,7 +335,40 @@ def _convert_image_with_ocr(
     )
 
 
-def _convert_pdf_with_ocr_fallback(
+def _convert_pdf_with_ocr(
+    file_path: str,
+    options: ConversionOptions,
+) -> ConversionOutcome:
+    if options.normalized_ocr_provider == OCR_PROVIDER_GLMOCR:
+        return _convert_pdf_with_glmocr(file_path, options)
+
+    return _convert_pdf_with_legacy_ocr(file_path, options)
+
+
+def _convert_pdf_with_glmocr(
+    file_path: str,
+    options: ConversionOptions,
+) -> ConversionOutcome:
+    try:
+        markdown = _convert_with_glmocr(file_path, options)
+        if markdown.strip():
+            return ConversionOutcome(markdown=markdown, backend=BACKEND_GLMOCR)
+        raise RuntimeError("GLM-OCR did not extract any text from the PDF.")
+    except Exception as exc:
+        if not options.ocr_fallback_enabled:
+            return _raise_glmocr_failure("PDF", glm_error=exc)
+
+        try:
+            return _convert_pdf_with_legacy_ocr(file_path, options)
+        except Exception as legacy_error:
+            return _raise_glmocr_failure(
+                "PDF",
+                glm_error=exc,
+                legacy_error=legacy_error,
+            )
+
+
+def _convert_pdf_with_legacy_ocr(
     file_path: str,
     options: ConversionOptions,
 ) -> ConversionOutcome:
@@ -291,6 +429,48 @@ def _convert_with_markitdown(
     md = MarkItDown(**kwargs)
     result = md.convert(file_path)
     return result.text_content or ""
+
+
+def _convert_with_glmocr(
+    file_path: str,
+    options: ConversionOptions,
+) -> str:
+    try:
+        from glmocr.api import GlmOcr
+    except ImportError as exc:
+        raise RuntimeError(
+            "GLM-OCR requires the `glmocr` package to be installed."
+        ) from exc
+
+    kwargs: dict[str, object] = {
+        "mode": options.normalized_glmocr_mode,
+        "model": options.normalized_glmocr_model,
+    }
+    if options.normalized_glmocr_config_path:
+        kwargs["config_path"] = options.normalized_glmocr_config_path
+
+    if options.normalized_glmocr_mode == GLMOCR_MODE_MAAS:
+        if not _glmocr_api_key_available():
+            raise RuntimeError(
+                "GLM-OCR MaaS requires ZHIPU_API_KEY or GLMOCR_API_KEY to be set."
+            )
+    else:
+        kwargs["ocr_api_host"] = options.normalized_glmocr_api_host
+        kwargs["ocr_api_port"] = options.normalized_glmocr_api_port
+
+    try:
+        with GlmOcr(**kwargs) as parser:
+            result = parser.parse(file_path)
+    except ImportError as exc:
+        if options.normalized_glmocr_mode == GLMOCR_MODE_SELFHOSTED:
+            raise RuntimeError(
+                "GLM-OCR self-hosted mode requires optional dependencies. "
+                "Install `glmocr[selfhosted]` in this environment."
+            ) from exc
+        raise
+
+    markdown = getattr(result, "markdown_result", "")
+    return str(markdown or "").strip()
 
 
 def _convert_url_with_defuddle(url: str) -> str:

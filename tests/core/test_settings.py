@@ -106,6 +106,42 @@ def test_ocr_settings(settings_manager):
     settings_manager.set_ocr_enabled(True)
     assert settings_manager.get_ocr_enabled()
 
+    assert settings_manager.get_ocr_provider() == "legacy"
+    settings_manager.set_ocr_provider(" glmocr ")
+    assert settings_manager.get_ocr_provider() == "glmocr"
+    settings_manager.set_ocr_provider("invalid")
+    assert settings_manager.get_ocr_provider() == "legacy"
+
+    assert settings_manager.get_ocr_fallback_enabled()
+    settings_manager.set_ocr_fallback_enabled(False)
+    assert not settings_manager.get_ocr_fallback_enabled()
+
+    assert settings_manager.get_glmocr_mode() == "maas"
+    settings_manager.set_glmocr_mode(" selfhosted ")
+    assert settings_manager.get_glmocr_mode() == "selfhosted"
+    settings_manager.set_glmocr_mode("invalid")
+    assert settings_manager.get_glmocr_mode() == "maas"
+
+    assert settings_manager.get_glmocr_api_host() == "127.0.0.1"
+    settings_manager.set_glmocr_api_host(" localhost ")
+    assert settings_manager.get_glmocr_api_host() == "localhost"
+
+    assert settings_manager.get_glmocr_api_port() == 8080
+    settings_manager.set_glmocr_api_port(9001)
+    assert settings_manager.get_glmocr_api_port() == 9001
+    settings_manager.set_glmocr_api_port(0)
+    assert settings_manager.get_glmocr_api_port() == 1
+    settings_manager.set_glmocr_api_port(70000)
+    assert settings_manager.get_glmocr_api_port() == 65535
+
+    assert settings_manager.get_glmocr_model() == "glm-ocr"
+    settings_manager.set_glmocr_model(" custom-model ")
+    assert settings_manager.get_glmocr_model() == "custom-model"
+
+    assert settings_manager.get_glmocr_config_path() == ""
+    settings_manager.set_glmocr_config_path(" /tmp/glmocr.yaml ")
+    assert settings_manager.get_glmocr_config_path() == "/tmp/glmocr.yaml"
+
     assert settings_manager.get_docintel_endpoint() == ""
     settings_manager.set_docintel_endpoint(" https://example.cognitiveservices.azure.com/ ")
     assert settings_manager.get_docintel_endpoint() == "https://example.cognitiveservices.azure.com/"

@@ -37,6 +37,15 @@ def conversion(monkeypatch):
     return importlib.reload(module)
 
 
+def _install_fake_glmocr(monkeypatch, glmocr_cls):
+    glmocr_package = types.ModuleType("glmocr")
+    glmocr_api_module = types.ModuleType("glmocr.api")
+    glmocr_api_module.GlmOcr = glmocr_cls
+    glmocr_package.api = glmocr_api_module
+    monkeypatch.setitem(sys.modules, "glmocr", glmocr_package)
+    monkeypatch.setitem(sys.modules, "glmocr.api", glmocr_api_module)
+
+
 def test_convert_file_uses_markitdown_when_ocr_disabled(monkeypatch, conversion):
     calls = []
 
@@ -166,6 +175,46 @@ def test_convert_image_falls_back_to_local_ocr(monkeypatch, conversion):
     assert result == "local image text"
 
 
+def test_convert_image_uses_glmocr_when_selected(monkeypatch, conversion):
+    captured = {}
+
+    class FakeGlmOcr:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def parse(self, _file_path):
+            return types.SimpleNamespace(markdown_result="glm image text")
+
+    _install_fake_glmocr(monkeypatch, FakeGlmOcr)
+    monkeypatch.setenv("ZHIPU_API_KEY", "secret")
+    monkeypatch.setattr(
+        conversion,
+        "_convert_image_with_legacy_ocr",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("legacy OCR should not run")
+        ),
+    )
+
+    outcome = conversion.convert_file_with_details(
+        "scan.png",
+        conversion.ConversionOptions(
+            ocr_enabled=True,
+            ocr_provider=conversion.OCR_PROVIDER_GLMOCR,
+        ),
+    )
+
+    assert outcome.markdown == "glm image text"
+    assert outcome.backend == conversion.BACKEND_GLMOCR
+    assert captured["mode"] == conversion.GLMOCR_MODE_MAAS
+    assert captured["model"] == "glm-ocr"
+
+
 def test_convert_pdf_keeps_native_text_when_available(monkeypatch, conversion):
     calls = []
 
@@ -217,6 +266,42 @@ def test_convert_pdf_falls_back_to_docintel(monkeypatch, conversion):
     assert calls == [False, True]
 
 
+def test_convert_pdf_uses_glmocr_when_selected(monkeypatch, conversion):
+    class FakeGlmOcr:
+        def __init__(self, **_kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def parse(self, _file_path):
+            return types.SimpleNamespace(markdown_result="glm pdf text")
+
+    _install_fake_glmocr(monkeypatch, FakeGlmOcr)
+    monkeypatch.setenv("GLMOCR_API_KEY", "secret")
+    monkeypatch.setattr(
+        conversion,
+        "_convert_pdf_with_legacy_ocr",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("legacy OCR should not run")
+        ),
+    )
+
+    outcome = conversion.convert_file_with_details(
+        "scan.pdf",
+        conversion.ConversionOptions(
+            ocr_enabled=True,
+            ocr_provider=conversion.OCR_PROVIDER_GLMOCR,
+        ),
+    )
+
+    assert outcome.markdown == "glm pdf text"
+    assert outcome.backend == conversion.BACKEND_GLMOCR
+
+
 def test_convert_file_with_details_reports_azure_backend(monkeypatch, conversion):
     def fake_convert(_file_path, _options, use_docintel=False):
         if use_docintel:
@@ -242,6 +327,85 @@ def test_convert_file_with_details_reports_azure_backend(monkeypatch, conversion
 
     assert outcome.markdown == "azure pdf text"
     assert outcome.backend == conversion.BACKEND_AZURE
+
+
+def test_convert_pdf_falls_back_to_legacy_ocr_after_glmocr_failure(
+    monkeypatch,
+    conversion,
+):
+    class FakeGlmOcr:
+        def __init__(self, **_kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def parse(self, _file_path):
+            raise RuntimeError("glm unavailable")
+
+    _install_fake_glmocr(monkeypatch, FakeGlmOcr)
+    monkeypatch.setenv("ZHIPU_API_KEY", "secret")
+    monkeypatch.setattr(
+        conversion,
+        "_convert_pdf_with_legacy_ocr",
+        lambda *_args, **_kwargs: conversion.ConversionOutcome(
+            markdown="legacy pdf text",
+            backend=conversion.BACKEND_NATIVE,
+        ),
+    )
+
+    outcome = conversion.convert_file_with_details(
+        "scan.pdf",
+        conversion.ConversionOptions(
+            ocr_enabled=True,
+            ocr_provider=conversion.OCR_PROVIDER_GLMOCR,
+            ocr_fallback_enabled=True,
+        ),
+    )
+
+    assert outcome.markdown == "legacy pdf text"
+    assert outcome.backend == conversion.BACKEND_NATIVE
+
+
+def test_convert_pdf_surfaces_glmocr_failure_without_fallback(monkeypatch, conversion):
+    class FakeGlmOcr:
+        def __init__(self, **_kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def parse(self, _file_path):
+            raise RuntimeError("glm unavailable")
+
+    _install_fake_glmocr(monkeypatch, FakeGlmOcr)
+    monkeypatch.setenv("ZHIPU_API_KEY", "secret")
+    monkeypatch.setattr(
+        conversion,
+        "_convert_pdf_with_legacy_ocr",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("legacy OCR should not run")
+        ),
+    )
+
+    with pytest.raises(RuntimeError) as exc_info:
+        conversion.convert_file(
+            "scan.pdf",
+            conversion.ConversionOptions(
+                ocr_enabled=True,
+                ocr_provider=conversion.OCR_PROVIDER_GLMOCR,
+                ocr_fallback_enabled=False,
+            ),
+        )
+
+    assert "GLM-OCR failed for the PDF" in str(exc_info.value)
+    assert "glm unavailable" in str(exc_info.value)
 
 
 def test_convert_pdf_falls_back_to_local_ocr_after_native_markitdown_failure(
@@ -298,6 +462,111 @@ def test_convert_pdf_falls_back_to_local_ocr_after_docintel_failure(monkeypatch,
 
     assert result == "local pdf text"
     assert calls == [False, True]
+
+
+def test_convert_with_glmocr_requires_package(monkeypatch, conversion):
+    monkeypatch.setitem(sys.modules, "glmocr", types.ModuleType("glmocr"))
+    monkeypatch.delitem(sys.modules, "glmocr.api", raising=False)
+
+    with pytest.raises(RuntimeError) as exc_info:
+        conversion._convert_with_glmocr(
+            "scan.png",
+            conversion.ConversionOptions(
+                ocr_enabled=True,
+                ocr_provider=conversion.OCR_PROVIDER_GLMOCR,
+            ),
+        )
+
+    assert "requires the `glmocr` package" in str(exc_info.value)
+
+
+def test_convert_with_glmocr_requires_maas_api_key(monkeypatch, conversion):
+    class FakeGlmOcr:
+        def __init__(self, **_kwargs):
+            raise AssertionError("GLM-OCR should not be constructed without an API key")
+
+    _install_fake_glmocr(monkeypatch, FakeGlmOcr)
+    monkeypatch.delenv("ZHIPU_API_KEY", raising=False)
+    monkeypatch.delenv("GLMOCR_API_KEY", raising=False)
+
+    with pytest.raises(RuntimeError) as exc_info:
+        conversion._convert_with_glmocr(
+            "scan.png",
+            conversion.ConversionOptions(
+                ocr_enabled=True,
+                ocr_provider=conversion.OCR_PROVIDER_GLMOCR,
+                glmocr_mode=conversion.GLMOCR_MODE_MAAS,
+            ),
+        )
+
+    assert "ZHIPU_API_KEY or GLMOCR_API_KEY" in str(exc_info.value)
+
+
+def test_convert_with_glmocr_selfhosted_forwards_connection_options(
+    monkeypatch,
+    conversion,
+):
+    captured = {}
+
+    class FakeGlmOcr:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def parse(self, _file_path):
+            return types.SimpleNamespace(markdown_result="glm text")
+
+    _install_fake_glmocr(monkeypatch, FakeGlmOcr)
+
+    result = conversion._convert_with_glmocr(
+        "scan.pdf",
+        conversion.ConversionOptions(
+            ocr_enabled=True,
+            ocr_provider=conversion.OCR_PROVIDER_GLMOCR,
+            glmocr_mode=conversion.GLMOCR_MODE_SELFHOSTED,
+            glmocr_api_host="ocr-host",
+            glmocr_api_port=9001,
+            glmocr_model="glm-ocr-custom",
+            glmocr_config_path=" /tmp/glmocr.yaml ",
+        ),
+    )
+
+    assert result == "glm text"
+    assert captured == {
+        "mode": "selfhosted",
+        "model": "glm-ocr-custom",
+        "config_path": "/tmp/glmocr.yaml",
+        "ocr_api_host": "ocr-host",
+        "ocr_api_port": 9001,
+    }
+
+
+def test_convert_with_glmocr_selfhosted_reports_optional_dependency_error(
+    monkeypatch,
+    conversion,
+):
+    class FakeGlmOcr:
+        def __init__(self, **_kwargs):
+            raise ImportError("torch missing")
+
+    _install_fake_glmocr(monkeypatch, FakeGlmOcr)
+
+    with pytest.raises(RuntimeError) as exc_info:
+        conversion._convert_with_glmocr(
+            "scan.pdf",
+            conversion.ConversionOptions(
+                ocr_enabled=True,
+                ocr_provider=conversion.OCR_PROVIDER_GLMOCR,
+                glmocr_mode=conversion.GLMOCR_MODE_SELFHOSTED,
+            ),
+        )
+
+    assert "glmocr[selfhosted]" in str(exc_info.value)
 
 
 def test_convert_pdf_surfaces_azure_failure_when_local_ocr_is_unavailable(

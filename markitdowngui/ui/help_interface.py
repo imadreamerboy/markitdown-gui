@@ -80,6 +80,12 @@ class HelpInterface(QWidget):
         repo_btn.setUrl(QUrl("https://github.com/imadreamerboy/markitdown-gui"))
         layout.addWidget(repo_btn, 0, Qt.AlignmentFlag.AlignLeft)
 
+        glmocr_btn = HyperlinkButton()
+        glmocr_btn.setText(self.translate("help_open_glmocr"))
+        glmocr_btn.setIcon(FIF.LINK)
+        glmocr_btn.setUrl(QUrl("https://github.com/zai-org/GLM-OCR"))
+        layout.addWidget(glmocr_btn, 0, Qt.AlignmentFlag.AlignLeft)
+
         defuddle_docs_btn = HyperlinkButton()
         defuddle_docs_btn.setText(self.translate("help_open_defuddle_docs"))
         defuddle_docs_btn.setIcon(FIF.LINK)
@@ -137,6 +143,13 @@ class HelpInterface(QWidget):
                 FIF.FOLDER,
                 "help_faq_tesseract_linux_question",
                 "help_faq_tesseract_linux_answer",
+            )
+        )
+        layout.addWidget(
+            self._build_faq_card(
+                FIF.LINK,
+                "help_faq_glmocr_question",
+                "help_faq_glmocr_answer",
             )
         )
         layout.addWidget(

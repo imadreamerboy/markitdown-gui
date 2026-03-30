@@ -11,6 +11,7 @@ def test_build_hiddenimports_includes_charset_normalizer_mypyc_runtime():
             "charset_normalizer": ["charset_normalizer.api"],
             "azure.ai.documentintelligence": ["azure.ai.documentintelligence._client"],
             "azure.identity": [],
+            "glmocr": ["glmocr.api"],
             "pypdfium2": [],
             "pypdfium2_raw": [],
             "pytesseract": [],
@@ -32,6 +33,8 @@ def test_build_hiddenimports_warns_and_keeps_required_modules_when_optional_coll
         if package == "markitdown":
             return []
         if package == "charset_normalizer":
+            return []
+        if package == "glmocr":
             return []
         if package == "pytesseract":
             raise RuntimeError("missing optional package")

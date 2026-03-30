@@ -16,7 +16,7 @@ It focuses on fast multi-file conversion to Markdown with a modern Fluent-style 
 - Preview modes: rendered Markdown view and raw Markdown view.
 - Save modes: export as one combined file or separate files.
 - Quick actions: copy Markdown, save output, back to queue, start over.
-- Optional OCR for scanned PDFs and image files, with Azure Document Intelligence first and local Tesseract fallback.
+- Optional OCR for scanned PDFs and image files, with selectable `Legacy (Azure/Tesseract)` and `GLM-OCR` providers.
 - Settings for output folder, batch size, header style, table style, OCR, and theme mode (light/dark/system).
 - Built-in shortcuts dialog, update check action, and about dialog.
 
@@ -44,11 +44,17 @@ pip install -e .[dev]
 ### OCR Notes
 
 - OCR is optional and disabled by default.
+- `Legacy (Azure/Tesseract)` preserves the existing Azure-first, Tesseract-fallback behavior.
+- `GLM-OCR` is available as a separate OCR provider for PDFs and images. It runs first and can fall back to the legacy OCR stack if enabled in Settings.
+- GLM-OCR MaaS mode reads `ZHIPU_API_KEY` or `GLMOCR_API_KEY` from the environment.
+- GLM-OCR self-hosted mode is advanced and expects optional runtime dependencies plus a compatible GLM-OCR environment. The app exposes host, port, model, and an optional config-path override.
+- The project depends on `glmocr==0.1.4` for MaaS mode. Advanced self-hosted usage can install `glmocr[selfhosted]`.
 - Local OCR requires a system `tesseract` binary. Install it from the [official Tesseract project](https://github.com/tesseract-ocr/tesseract). If it is not on your `PATH`, set the executable path in Settings.
 - Azure OCR requires an Azure Document Intelligence endpoint in Settings.
 - Azure Document Intelligence pricing includes [500 free pages per month](https://azure.microsoft.com/en-us/products/ai-foundry/tools/document-intelligence#Pricing) at the time of writing.
 - For API-key auth, set `AZURE_OCR_API_KEY`.
 - If `AZURE_OCR_API_KEY` is not set, Azure OCR falls back to Azure identity credentials supported by `DefaultAzureCredential`.
+- GLM-OCR project reference: [zai-org/GLM-OCR](https://github.com/zai-org/GLM-OCR)
 
 ### Website URL Notes
 
