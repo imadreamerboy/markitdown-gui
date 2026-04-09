@@ -11,7 +11,10 @@ def test_build_hiddenimports_includes_charset_normalizer_mypyc_runtime():
             "charset_normalizer": ["charset_normalizer.api"],
             "azure.ai.documentintelligence": ["azure.ai.documentintelligence._client"],
             "azure.identity": [],
+            "docling_core": ["docling_core.types.doc.document"],
+            "docling_parse": ["docling_parse.pdf_parsers"],
             "glmocr": ["glmocr.api"],
+            "markitdown_pdf_images": ["markitdown_pdf_images.converter"],
             "pypdfium2": [],
             "pypdfium2_raw": [],
             "pytesseract": [],
@@ -23,6 +26,7 @@ def test_build_hiddenimports_includes_charset_normalizer_mypyc_runtime():
     assert "charset_normalizer.md" in hiddenimports
     assert "charset_normalizer.md__mypyc" in hiddenimports
     assert "markitdown._markdown" in hiddenimports
+    assert "markitdown_pdf_images.converter" in hiddenimports
     assert calls[:2] == ["markitdown", "charset_normalizer"]
 
 
@@ -34,7 +38,13 @@ def test_build_hiddenimports_warns_and_keeps_required_modules_when_optional_coll
             return []
         if package == "charset_normalizer":
             return []
+        if package == "docling_core":
+            return []
+        if package == "docling_parse":
+            return []
         if package == "glmocr":
+            return []
+        if package == "markitdown_pdf_images":
             return []
         if package == "pytesseract":
             raise RuntimeError("missing optional package")

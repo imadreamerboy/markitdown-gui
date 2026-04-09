@@ -119,6 +119,14 @@ class SettingsManager:
         """Set whether OCR fallback is enabled."""
         self.settings.setValue('ocrEnabled', enabled)
 
+    def get_preserve_pdf_images(self) -> bool:
+        """Get whether PDF image preservation is enabled by default."""
+        return bool(self.settings.value('preservePdfImages', False, type=bool))
+
+    def set_preserve_pdf_images(self, enabled: bool) -> None:
+        """Set whether PDF image preservation is enabled by default."""
+        self.settings.setValue('preservePdfImages', enabled)
+
     def get_ocr_provider(self) -> str:
         """Get the configured OCR provider."""
         value = str(

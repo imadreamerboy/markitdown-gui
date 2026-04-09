@@ -16,7 +16,10 @@ MANDATORY_HIDDENIMPORT_PACKAGES = (
 OPTIONAL_HIDDENIMPORT_PACKAGES = (
     "azure.ai.documentintelligence",
     "azure.identity",
+    "docling_core",
+    "docling_parse",
     "glmocr",
+    "markitdown_pdf_images",
     "pypdfium2",
     "pypdfium2_raw",
     "pytesseract",

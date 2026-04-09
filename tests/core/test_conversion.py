@@ -46,6 +46,12 @@ def _install_fake_glmocr(monkeypatch, glmocr_cls):
     monkeypatch.setitem(sys.modules, "glmocr.api", glmocr_api_module)
 
 
+def _install_fake_pdf_images(monkeypatch, convert_pdf):
+    package = types.ModuleType("markitdown_pdf_images")
+    package.convert_pdf = convert_pdf
+    monkeypatch.setitem(sys.modules, "markitdown_pdf_images", package)
+
+
 def test_convert_file_uses_markitdown_when_ocr_disabled(monkeypatch, conversion):
     calls = []
 
@@ -62,6 +68,24 @@ def test_convert_file_uses_markitdown_when_ocr_disabled(monkeypatch, conversion)
 
     assert result == "native text"
     assert calls == [("scan.png", False)]
+
+
+def test_convert_pdf_without_preserve_images_keeps_native_path(monkeypatch, conversion):
+    calls = []
+
+    def fake_convert(file_path, options, use_docintel=False):
+        calls.append((file_path, use_docintel))
+        return "native pdf text"
+
+    monkeypatch.setattr(conversion, "_convert_with_markitdown", fake_convert)
+
+    result = conversion.convert_file(
+        "scan.pdf",
+        conversion.ConversionOptions(ocr_enabled=False, preserve_pdf_images=False),
+    )
+
+    assert result == "native pdf text"
+    assert calls == [("scan.pdf", False)]
 
 
 def test_convert_url_uses_defuddle_http_api(monkeypatch, conversion):
@@ -300,6 +324,159 @@ def test_convert_pdf_uses_glmocr_when_selected(monkeypatch, conversion):
 
     assert outcome.markdown == "glm pdf text"
     assert outcome.backend == conversion.BACKEND_GLMOCR
+
+
+def test_convert_pdf_with_preserved_images_uses_plugin(monkeypatch, conversion, tmp_path):
+    captured = {}
+    asset_path = tmp_path / "artifacts" / "report-123" / "page-1.png"
+    asset_path.parent.mkdir(parents=True)
+    asset_path.write_bytes(b"png")
+
+    def fake_convert_pdf(file_path, **kwargs):
+        captured["file_path"] = file_path
+        captured["kwargs"] = kwargs
+        return types.SimpleNamespace(
+            markdown="![page](C:/temp/report-123/page-1.png)\n\ntext",
+            assets=[
+                types.SimpleNamespace(
+                    filename="page-1.png",
+                    path=asset_path,
+                    markdown_path="C:/temp/report-123/page-1.png",
+                    page_number=1,
+                    kind="bitmap",
+                    ocr_text=None,
+                )
+            ],
+        )
+
+    _install_fake_pdf_images(monkeypatch, fake_convert_pdf)
+    monkeypatch.setattr(
+        conversion,
+        "_convert_with_markitdown",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("native MarkItDown should not run")
+        ),
+    )
+
+    outcome = conversion.convert_file_with_details(
+        "scan.pdf",
+        conversion.ConversionOptions(
+            preserve_pdf_images=True,
+            pdf_artifacts_dir=str(tmp_path / "artifacts"),
+        ),
+    )
+
+    assert outcome.backend == conversion.BACKEND_PDF_IMAGES
+    assert outcome.markdown == "![page](C:/temp/report-123/page-1.png)\n\ntext"
+    assert captured["file_path"] == "scan.pdf"
+    assert captured["kwargs"] == {
+        "preserve_images": True,
+        "image_mode": "external",
+        "artifacts_dir": str(tmp_path / "artifacts"),
+        "path_mode": "absolute",
+        "ocr_enabled": False,
+        "tesseract_path": None,
+        "ocr_languages": "",
+    }
+    assert outcome.assets == [
+        conversion.ConversionAsset(
+            filename="page-1.png",
+            source_path=str(asset_path.resolve()),
+            preview_markdown_path="C:/temp/report-123/page-1.png",
+            page_number=1,
+            kind="bitmap",
+            ocr_text=None,
+        )
+    ]
+
+
+def test_convert_pdf_with_preserved_images_and_local_ocr_uses_plugin(
+    monkeypatch,
+    conversion,
+    tmp_path,
+):
+    captured = {}
+
+    def fake_convert_pdf(_file_path, **kwargs):
+        captured.update(kwargs)
+        return types.SimpleNamespace(markdown="ocr pdf text", assets=[])
+
+    _install_fake_pdf_images(monkeypatch, fake_convert_pdf)
+    monkeypatch.setattr(
+        conversion,
+        "_convert_pdf_with_legacy_ocr",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("legacy OCR routing should not run")
+        ),
+    )
+
+    outcome = conversion.convert_file_with_details(
+        "scan.pdf",
+        conversion.ConversionOptions(
+            ocr_enabled=True,
+            preserve_pdf_images=True,
+            pdf_artifacts_dir=str(tmp_path / "artifacts"),
+            docintel_endpoint="https://example.cognitiveservices.azure.com/",
+            tesseract_path=" /usr/bin/tesseract ",
+            ocr_languages=" eng+deu ",
+        ),
+    )
+
+    assert outcome.backend == conversion.BACKEND_PDF_IMAGES
+    assert captured["ocr_enabled"] is True
+    assert captured["tesseract_path"] == "/usr/bin/tesseract"
+    assert captured["ocr_languages"] == "eng+deu"
+
+
+def test_convert_pdf_with_preserved_images_rejects_glmocr(
+    monkeypatch,
+    conversion,
+    tmp_path,
+):
+    monkeypatch.setenv("ZHIPU_API_KEY", "secret")
+
+    with pytest.raises(RuntimeError) as exc_info:
+        conversion.convert_file_with_details(
+            "scan.pdf",
+            conversion.ConversionOptions(
+                ocr_enabled=True,
+                preserve_pdf_images=True,
+                pdf_artifacts_dir=str(tmp_path / "artifacts"),
+                ocr_provider=conversion.OCR_PROVIDER_GLMOCR,
+            ),
+        )
+
+    assert "Preserve PDF images is not available with GLM-OCR" in str(exc_info.value)
+
+
+def test_map_pdf_assets_uses_app_owned_asset_model(conversion, tmp_path):
+    asset_path = tmp_path / "assets" / "page-1.png"
+    asset_path.parent.mkdir(parents=True)
+    asset_path.write_bytes(b"png")
+
+    mapped = conversion._map_pdf_assets(
+        [
+            types.SimpleNamespace(
+                filename="page-1.png",
+                path=asset_path,
+                markdown_path="/tmp/assets/page-1.png",
+                page_number=2,
+                kind="bitmap",
+                ocr_text="page text",
+            )
+        ]
+    )
+
+    assert mapped == [
+        conversion.ConversionAsset(
+            filename="page-1.png",
+            source_path=str(asset_path.resolve()),
+            preview_markdown_path="/tmp/assets/page-1.png",
+            page_number=2,
+            kind="bitmap",
+            ocr_text="page text",
+        )
+    ]
 
 
 def test_convert_file_with_details_reports_azure_backend(monkeypatch, conversion):

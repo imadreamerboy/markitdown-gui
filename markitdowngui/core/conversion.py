@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from itertools import islice
 import os
 from pathlib import Path
@@ -26,6 +26,7 @@ BACKEND_DEFUDDLE = "defuddle"
 BACKEND_GLMOCR = "glmocr"
 BACKEND_LOCAL = "local"
 BACKEND_NATIVE = "native"
+BACKEND_PDF_IMAGES = "pdf-images"
 OCR_PROVIDER_GLMOCR = "glmocr"
 OCR_PROVIDER_LEGACY = "legacy"
 GLMOCR_MODE_MAAS = "maas"
@@ -39,11 +40,13 @@ class ConversionOptions:
     """User-controlled conversion behavior."""
 
     ocr_enabled: bool = False
+    preserve_pdf_images: bool = False
     ocr_provider: str = OCR_PROVIDER_LEGACY
     ocr_fallback_enabled: bool = True
     docintel_endpoint: str = ""
     ocr_languages: str = ""
     tesseract_path: str = ""
+    pdf_artifacts_dir: str = ""
     glmocr_mode: str = GLMOCR_MODE_MAAS
     glmocr_api_host: str = "127.0.0.1"
     glmocr_api_port: int = 8080
@@ -58,6 +61,10 @@ class ConversionOptions:
         return OCR_PROVIDER_LEGACY
 
     @property
+    def normalized_preserve_pdf_images(self) -> bool:
+        return bool(self.preserve_pdf_images)
+
+    @property
     def normalized_docintel_endpoint(self) -> str:
         return self.docintel_endpoint.strip()
 
@@ -68,6 +75,10 @@ class ConversionOptions:
     @property
     def normalized_tesseract_path(self) -> str:
         return self.tesseract_path.strip()
+
+    @property
+    def normalized_pdf_artifacts_dir(self) -> str:
+        return self.pdf_artifacts_dir.strip()
 
     @property
     def normalized_glmocr_mode(self) -> str:
@@ -96,9 +107,20 @@ class ConversionOptions:
 
 
 @dataclass(frozen=True)
+class ConversionAsset:
+    filename: str
+    source_path: str | None
+    preview_markdown_path: str
+    page_number: int | None
+    kind: str
+    ocr_text: str | None = None
+
+
+@dataclass(frozen=True)
 class ConversionOutcome:
     markdown: str
     backend: str = BACKEND_NATIVE
+    assets: list[ConversionAsset] = field(default_factory=list)
 
 
 def format_conversion_error(file_path: str, error: Exception) -> str:
@@ -237,6 +259,9 @@ def convert_file_with_details(
 
     extension = Path(file_path).suffix.lower()
 
+    if extension == PDF_EXTENSION and effective_options.normalized_preserve_pdf_images:
+        return _convert_pdf_with_preserved_images(file_path, effective_options)
+
     if not effective_options.ocr_enabled:
         return ConversionOutcome(
             markdown=_convert_with_markitdown(file_path, effective_options),
@@ -343,6 +368,46 @@ def _convert_pdf_with_ocr(
         return _convert_pdf_with_glmocr(file_path, options)
 
     return _convert_pdf_with_legacy_ocr(file_path, options)
+
+
+def _convert_pdf_with_preserved_images(
+    file_path: str,
+    options: ConversionOptions,
+) -> ConversionOutcome:
+    if options.normalized_ocr_provider == OCR_PROVIDER_GLMOCR:
+        raise RuntimeError(
+            "Preserve PDF images is not available with GLM-OCR. "
+            "Switch the OCR provider to Legacy or disable Preserve PDF images."
+        )
+
+    artifacts_dir = options.normalized_pdf_artifacts_dir
+    if not artifacts_dir:
+        raise RuntimeError(
+            "Preserve PDF images requires a writable temporary asset directory."
+        )
+
+    try:
+        from markitdown_pdf_images import convert_pdf
+    except ImportError as exc:
+        raise RuntimeError(
+            "Preserve PDF images requires the `markitdown-pdf-images` package to be installed."
+        ) from exc
+
+    result = convert_pdf(
+        file_path,
+        preserve_images=True,
+        image_mode="external",
+        artifacts_dir=artifacts_dir,
+        path_mode="absolute",
+        ocr_enabled=options.ocr_enabled,
+        tesseract_path=options.normalized_tesseract_path or None,
+        ocr_languages=options.normalized_ocr_languages,
+    )
+    return ConversionOutcome(
+        markdown=result.markdown,
+        backend=BACKEND_PDF_IMAGES,
+        assets=_map_pdf_assets(getattr(result, "assets", [])),
+    )
 
 
 def _convert_pdf_with_glmocr(
@@ -473,6 +538,23 @@ def _convert_with_glmocr(
     return str(markdown or "").strip()
 
 
+def _map_pdf_assets(assets: list[object]) -> list[ConversionAsset]:
+    mapped_assets: list[ConversionAsset] = []
+    for asset in assets:
+        source_path = getattr(asset, "path", None)
+        mapped_assets.append(
+            ConversionAsset(
+                filename=str(getattr(asset, "filename", "")),
+                source_path=str(Path(source_path).resolve()) if source_path else None,
+                preview_markdown_path=str(getattr(asset, "markdown_path", "")),
+                page_number=getattr(asset, "page_number", None),
+                kind=str(getattr(asset, "kind", "")),
+                ocr_text=getattr(asset, "ocr_text", None),
+            )
+        )
+    return mapped_assets
+
+
 def _convert_url_with_defuddle(url: str) -> str:
     request_url = _build_defuddle_request_url(url)
 
@@ -593,7 +675,7 @@ class ConversionWorker(QThread):
         self.is_cancelled = False
 
     def run(self) -> None:
-        results: dict[str, str] = {}
+        results: dict[str, ConversionOutcome] = {}
         self.failed_files = set()
         self.processing_backends = {}
 
@@ -610,11 +692,13 @@ class ConversionWorker(QThread):
 
                 try:
                     outcome = convert_file_with_details(file_path, self.options)
-                    results[file_path] = outcome.markdown
+                    results[file_path] = outcome
                     self.processing_backends[file_path] = outcome.backend
                 except Exception as exc:
                     self.failed_files.add(file_path)
-                    results[file_path] = format_conversion_error(file_path, exc)
+                    results[file_path] = ConversionOutcome(
+                        markdown=format_conversion_error(file_path, exc)
+                    )
 
                 progress = int((i + j + 1) / len(self.files) * 100)
                 self.progress.emit(progress, file_path)
