@@ -29,8 +29,9 @@ from qfluentwidgets import (
 
 from markitdowngui.core.conversion import ConversionOptions, test_azure_ocr_connection
 from markitdowngui.core.settings import (
+    GLMOCR_MODE_DIRECT,
     GLMOCR_MODE_MAAS,
-    GLMOCR_MODE_SELFHOSTED,
+    GLMOCR_MODE_SERVER,
     OCR_PROVIDER_GLMOCR,
     OCR_PROVIDER_LEGACY,
     SettingsManager,
@@ -66,7 +67,11 @@ class SettingsInterface(QWidget):
         self.translate = translate
         self._azure_test_worker: AzureConnectionTestWorker | None = None
         self._ocr_provider_values = [OCR_PROVIDER_LEGACY, OCR_PROVIDER_GLMOCR]
-        self._glmocr_mode_values = [GLMOCR_MODE_MAAS, GLMOCR_MODE_SELFHOSTED]
+        self._glmocr_mode_values = [
+            GLMOCR_MODE_MAAS,
+            GLMOCR_MODE_SERVER,
+            GLMOCR_MODE_DIRECT,
+        ]
         self._build_ui()
         self._load_settings()
 
@@ -192,7 +197,8 @@ class SettingsInterface(QWidget):
         self.glmocr_mode_combo.addItems(
             [
                 self.translate("settings_glmocr_mode_maas"),
-                self.translate("settings_glmocr_mode_selfhosted"),
+                self.translate("settings_glmocr_mode_server"),
+                self.translate("settings_glmocr_mode_direct"),
             ]
         )
         self.glmocr_mode_combo.currentTextChanged.connect(self._save_glmocr_mode)
@@ -204,52 +210,77 @@ class SettingsInterface(QWidget):
         self.glmocr_maas_note.setWordWrap(True)
         glmocr_layout.addWidget(self.glmocr_maas_note)
 
-        self.glmocr_selfhost_note = CaptionLabel(
-            self.translate("settings_glmocr_selfhost_note")
+        self.glmocr_server_note = CaptionLabel(
+            self.translate("settings_glmocr_server_note")
         )
-        self.glmocr_selfhost_note.setWordWrap(True)
-        glmocr_layout.addWidget(self.glmocr_selfhost_note)
+        self.glmocr_server_note.setWordWrap(True)
+        glmocr_layout.addWidget(self.glmocr_server_note)
 
-        self.glmocr_selfhost_fields = QWidget(self.glmocr_group)
-        self.glmocr_selfhost_fields_layout = QVBoxLayout(self.glmocr_selfhost_fields)
-        self.glmocr_selfhost_fields_layout.setContentsMargins(0, 0, 0, 0)
-        self.glmocr_selfhost_fields_layout.setSpacing(10)
+        self.glmocr_server_fields = QWidget(self.glmocr_group)
+        self.glmocr_server_fields_layout = QVBoxLayout(self.glmocr_server_fields)
+        self.glmocr_server_fields_layout.setContentsMargins(0, 0, 0, 0)
+        self.glmocr_server_fields_layout.setSpacing(10)
+
+        self.glmocr_server_url_label = BodyLabel(
+            self.translate("settings_glmocr_server_url_label")
+        )
+        self.glmocr_server_fields_layout.addWidget(self.glmocr_server_url_label)
+        self.glmocr_server_url_edit = LineEdit()
+        self.glmocr_server_url_edit.setPlaceholderText(
+            self.translate("settings_glmocr_server_url_placeholder")
+        )
+        self.glmocr_server_url_edit.editingFinished.connect(
+            self._save_glmocr_server_url
+        )
+        self.glmocr_server_fields_layout.addWidget(self.glmocr_server_url_edit)
+        glmocr_layout.addWidget(self.glmocr_server_fields)
+
+        self.glmocr_direct_note = CaptionLabel(
+            self.translate("settings_glmocr_direct_note")
+        )
+        self.glmocr_direct_note.setWordWrap(True)
+        glmocr_layout.addWidget(self.glmocr_direct_note)
+
+        self.glmocr_direct_fields = QWidget(self.glmocr_group)
+        self.glmocr_direct_fields_layout = QVBoxLayout(self.glmocr_direct_fields)
+        self.glmocr_direct_fields_layout.setContentsMargins(0, 0, 0, 0)
+        self.glmocr_direct_fields_layout.setSpacing(10)
 
         self.glmocr_api_host_label = BodyLabel(
             self.translate("settings_glmocr_api_host_label")
         )
-        self.glmocr_selfhost_fields_layout.addWidget(self.glmocr_api_host_label)
+        self.glmocr_direct_fields_layout.addWidget(self.glmocr_api_host_label)
         self.glmocr_api_host_edit = LineEdit()
         self.glmocr_api_host_edit.setPlaceholderText(
             self.translate("settings_glmocr_api_host_placeholder")
         )
         self.glmocr_api_host_edit.editingFinished.connect(self._save_glmocr_api_host)
-        self.glmocr_selfhost_fields_layout.addWidget(self.glmocr_api_host_edit)
+        self.glmocr_direct_fields_layout.addWidget(self.glmocr_api_host_edit)
 
         self.glmocr_api_port_label = BodyLabel(
             self.translate("settings_glmocr_api_port_label")
         )
-        self.glmocr_selfhost_fields_layout.addWidget(self.glmocr_api_port_label)
+        self.glmocr_direct_fields_layout.addWidget(self.glmocr_api_port_label)
         self.glmocr_api_port_spin = SpinBox()
         self.glmocr_api_port_spin.setRange(1, 65535)
         self.glmocr_api_port_spin.valueChanged.connect(self._save_glmocr_api_port)
-        self.glmocr_selfhost_fields_layout.addWidget(self.glmocr_api_port_spin)
+        self.glmocr_direct_fields_layout.addWidget(self.glmocr_api_port_spin)
 
         self.glmocr_model_label = BodyLabel(
             self.translate("settings_glmocr_model_label")
         )
-        self.glmocr_selfhost_fields_layout.addWidget(self.glmocr_model_label)
+        self.glmocr_direct_fields_layout.addWidget(self.glmocr_model_label)
         self.glmocr_model_edit = LineEdit()
         self.glmocr_model_edit.setPlaceholderText(
             self.translate("settings_glmocr_model_placeholder")
         )
         self.glmocr_model_edit.editingFinished.connect(self._save_glmocr_model)
-        self.glmocr_selfhost_fields_layout.addWidget(self.glmocr_model_edit)
+        self.glmocr_direct_fields_layout.addWidget(self.glmocr_model_edit)
 
         self.glmocr_config_path_label = BodyLabel(
             self.translate("settings_glmocr_config_path_label")
         )
-        self.glmocr_selfhost_fields_layout.addWidget(self.glmocr_config_path_label)
+        self.glmocr_direct_fields_layout.addWidget(self.glmocr_config_path_label)
         glmocr_config_row = QHBoxLayout()
         glmocr_config_row.setSpacing(8)
         self.glmocr_config_path_edit = LineEdit()
@@ -266,8 +297,8 @@ class SettingsInterface(QWidget):
         self.glmocr_config_path_button.clicked.connect(self._browse_glmocr_config_path)
         glmocr_config_row.addWidget(self.glmocr_config_path_edit, 1)
         glmocr_config_row.addWidget(self.glmocr_config_path_button)
-        self.glmocr_selfhost_fields_layout.addLayout(glmocr_config_row)
-        glmocr_layout.addWidget(self.glmocr_selfhost_fields)
+        self.glmocr_direct_fields_layout.addLayout(glmocr_config_row)
+        glmocr_layout.addWidget(self.glmocr_direct_fields)
         ocr_layout.addWidget(self.glmocr_group)
 
         self.legacy_ocr_group = QGroupBox(
@@ -398,6 +429,9 @@ class SettingsInterface(QWidget):
             self._glmocr_mode_values,
             self.settings_manager.get_glmocr_mode(),
         )
+        self.glmocr_server_url_edit.setText(
+            self.settings_manager.get_glmocr_server_url()
+        )
         self.glmocr_api_host_edit.setText(self.settings_manager.get_glmocr_api_host())
         self.glmocr_api_port_spin.setValue(self.settings_manager.get_glmocr_api_port())
         self.glmocr_model_edit.setText(self.settings_manager.get_glmocr_model())
@@ -445,6 +479,7 @@ class SettingsInterface(QWidget):
             ocr_languages=self.ocr_languages_edit.text(),
             tesseract_path=self.tesseract_path_edit.text(),
             glmocr_mode=self._current_glmocr_mode(),
+            glmocr_server_url=self.glmocr_server_url_edit.text(),
             glmocr_api_host=self.glmocr_api_host_edit.text(),
             glmocr_api_port=self.glmocr_api_port_spin.value(),
             glmocr_model=self.glmocr_model_edit.text(),
@@ -461,11 +496,17 @@ class SettingsInterface(QWidget):
 
         self.glmocr_group.setVisible(use_glmocr)
         self.glmocr_maas_note.setVisible(use_glmocr and glm_mode == GLMOCR_MODE_MAAS)
-        self.glmocr_selfhost_note.setVisible(
-            use_glmocr and glm_mode == GLMOCR_MODE_SELFHOSTED
+        self.glmocr_server_note.setVisible(
+            use_glmocr and glm_mode == GLMOCR_MODE_SERVER
         )
-        self.glmocr_selfhost_fields.setVisible(
-            use_glmocr and glm_mode == GLMOCR_MODE_SELFHOSTED
+        self.glmocr_server_fields.setVisible(
+            use_glmocr and glm_mode == GLMOCR_MODE_SERVER
+        )
+        self.glmocr_direct_note.setVisible(
+            use_glmocr and glm_mode == GLMOCR_MODE_DIRECT
+        )
+        self.glmocr_direct_fields.setVisible(
+            use_glmocr and glm_mode == GLMOCR_MODE_DIRECT
         )
         self.legacy_ocr_group.setVisible(legacy_visible)
         self._update_azure_test_button_state()
@@ -505,6 +546,9 @@ class SettingsInterface(QWidget):
     def _save_glmocr_mode(self, *_args) -> None:
         self.settings_manager.set_glmocr_mode(self._current_glmocr_mode())
         self._update_ocr_sections_visibility()
+
+    def _save_glmocr_server_url(self) -> None:
+        self.settings_manager.set_glmocr_server_url(self.glmocr_server_url_edit.text())
 
     def _save_glmocr_api_host(self) -> None:
         self.settings_manager.set_glmocr_api_host(self.glmocr_api_host_edit.text())

@@ -46,15 +46,54 @@ pip install -e .[dev]
 - OCR is optional and disabled by default.
 - `Legacy (Azure/Tesseract)` preserves the existing Azure-first, Tesseract-fallback behavior.
 - `GLM-OCR` is available as a separate OCR provider for PDFs and images. It runs first and can fall back to the legacy OCR stack if enabled in Settings.
-- GLM-OCR MaaS mode reads `ZHIPU_API_KEY` or `GLMOCR_API_KEY` from the environment.
-- GLM-OCR self-hosted mode is advanced and expects optional runtime dependencies plus a compatible GLM-OCR environment. The app exposes host, port, model, and an optional config-path override.
-- The project depends on `glmocr==0.1.4` for MaaS mode. Advanced self-hosted usage can install `glmocr[selfhosted]`.
+- GLM-OCR offers three connection targets in Settings:
+  - `MaaS API`: easiest zero-setup path, reads `ZHIPU_API_KEY` or `GLMOCR_API_KEY` from the environment.
+  - `External GLM-OCR Server`: recommended self-hosted path. Point the app at an existing `/glmocr/parse` endpoint. Default: `http://127.0.0.1:5002/glmocr/parse`.
+  - `Advanced Direct Backend`: compatibility path for source installs and power users. This keeps the older host/port/model/config flow and may require `glmocr[selfhosted]` in the same Python environment as the app.
+- The packaged desktop app does not bundle the GLM-OCR self-hosted runtime stack (`torch`, `transformers`, `vLLM`, `SGLang`, and related server/runtime pieces stay external).
+- The project depends on `glmocr==0.1.4` for client-side MaaS/server connectivity. Advanced direct-backend usage can install `glmocr[selfhosted]`.
 - Local OCR requires a system `tesseract` binary. Install it from the [official Tesseract project](https://github.com/tesseract-ocr/tesseract). If it is not on your `PATH`, set the executable path in Settings.
 - Azure OCR requires an Azure Document Intelligence endpoint in Settings.
 - Azure Document Intelligence pricing includes [500 free pages per month](https://azure.microsoft.com/en-us/products/ai-foundry/tools/document-intelligence#Pricing) at the time of writing.
 - For API-key auth, set `AZURE_OCR_API_KEY`.
 - If `AZURE_OCR_API_KEY` is not set, Azure OCR falls back to Azure identity credentials supported by `DefaultAzureCredential`.
 - GLM-OCR project reference: [zai-org/GLM-OCR](https://github.com/zai-org/GLM-OCR)
+
+### Recommended Local Hosting
+
+For local/self-hosted GLM-OCR, the recommended path is an external SDK server, not running the full runtime inside this GUI.
+
+1. Create a separate Python environment for GLM-OCR.
+2. Install `glmocr[selfhosted,server]` in that environment.
+3. Start a local `vLLM` or `SGLang` backend for `zai-org/GLM-OCR`.
+4. Start the SDK server:
+
+```sh
+python -m glmocr.server --config config.yaml
+```
+
+5. In this app, choose `GLM-OCR` -> `External GLM-OCR Server` and keep `http://127.0.0.1:5002/glmocr/parse`.
+
+Minimal server-side `config.yaml`:
+
+```yaml
+pipeline:
+  maas:
+    enabled: false
+  ocr_api:
+    api_host: 127.0.0.1
+    api_port: 8080
+```
+
+The official GLM-OCR docs show the full `vLLM` and `SGLang` launch commands:
+
+- [Self-hosted SDK Server + Client Guide](https://github.com/zai-org/GLM-OCR/blob/main/examples/self-host/README.md)
+- [GLM-OCR README](https://github.com/zai-org/GLM-OCR)
+
+Alternative setups:
+
+- [Official Ollama deployment guide](https://github.com/zai-org/GLM-OCR/blob/main/examples/ollama-deploy/README.md)
+- Ollama is documented here as an advanced/personal-use alternative, not the app's first-class connection mode.
 
 ### Website URL Notes
 
@@ -91,6 +130,7 @@ pyinstaller MarkItDown.spec --clean --noconfirm
 
 The default spec builds an `onedir` app in `dist/MarkItDown/`.
 Release workflows package this folder into platform-specific `.zip` artifacts.
+That build intentionally excludes the GLM-OCR self-hosted runtime stack; local hosting stays external to the GUI.
 
 ## License
 

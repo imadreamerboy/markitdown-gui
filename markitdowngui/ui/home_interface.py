@@ -618,6 +618,7 @@ class HomeInterface(QWidget):
             tesseract_path=self.settings_manager.get_tesseract_path(),
             pdf_artifacts_dir=artifacts_dir,
             glmocr_mode=self.settings_manager.get_glmocr_mode(),
+            glmocr_server_url=self.settings_manager.get_glmocr_server_url(),
             glmocr_api_host=self.settings_manager.get_glmocr_api_host(),
             glmocr_api_port=self.settings_manager.get_glmocr_api_port(),
             glmocr_model=self.settings_manager.get_glmocr_model(),

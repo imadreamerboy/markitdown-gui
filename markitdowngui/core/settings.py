@@ -5,7 +5,10 @@ from typing import cast, List
 OCR_PROVIDER_LEGACY = "legacy"
 OCR_PROVIDER_GLMOCR = "glmocr"
 GLMOCR_MODE_MAAS = "maas"
+GLMOCR_MODE_SERVER = "server"
+GLMOCR_MODE_DIRECT = "direct"
 GLMOCR_MODE_SELFHOSTED = "selfhosted"
+DEFAULT_GLMOCR_SERVER_URL = "http://127.0.0.1:5002/glmocr/parse"
 
 
 class SettingsManager:
@@ -156,34 +159,58 @@ class SettingsManager:
         value = str(
             self.settings.value('glmocrMode', GLMOCR_MODE_MAAS, type=str)
         ).strip().lower()
-        if value in {GLMOCR_MODE_MAAS, GLMOCR_MODE_SELFHOSTED}:
+        if value == GLMOCR_MODE_SELFHOSTED:
+            return GLMOCR_MODE_DIRECT
+        if value in {GLMOCR_MODE_MAAS, GLMOCR_MODE_SERVER, GLMOCR_MODE_DIRECT}:
             return value
         return GLMOCR_MODE_MAAS
 
     def set_glmocr_mode(self, mode: str) -> None:
         """Set the GLM-OCR mode."""
         normalized = (mode or '').strip().lower()
-        if normalized not in {GLMOCR_MODE_MAAS, GLMOCR_MODE_SELFHOSTED}:
+        if normalized == GLMOCR_MODE_SELFHOSTED:
+            normalized = GLMOCR_MODE_DIRECT
+        if normalized not in {
+            GLMOCR_MODE_MAAS,
+            GLMOCR_MODE_SERVER,
+            GLMOCR_MODE_DIRECT,
+        }:
             normalized = GLMOCR_MODE_MAAS
         self.settings.setValue('glmocrMode', normalized)
 
+    def get_glmocr_server_url(self) -> str:
+        """Get the configured external GLM-OCR server parse endpoint."""
+        value = str(
+            self.settings.value(
+                'glmocrServerUrl',
+                DEFAULT_GLMOCR_SERVER_URL,
+                type=str,
+            )
+        ).strip()
+        return value or DEFAULT_GLMOCR_SERVER_URL
+
+    def set_glmocr_server_url(self, url: str) -> None:
+        """Set the external GLM-OCR server parse endpoint."""
+        normalized = (url or '').strip() or DEFAULT_GLMOCR_SERVER_URL
+        self.settings.setValue('glmocrServerUrl', normalized)
+
     def get_glmocr_api_host(self) -> str:
-        """Get the configured GLM-OCR self-hosted API host."""
+        """Get the configured GLM-OCR direct-backend API host."""
         value = str(self.settings.value('glmocrApiHost', '127.0.0.1', type=str)).strip()
         return value or '127.0.0.1'
 
     def set_glmocr_api_host(self, host: str) -> None:
-        """Set the GLM-OCR self-hosted API host."""
+        """Set the GLM-OCR direct-backend API host."""
         normalized = (host or '').strip() or '127.0.0.1'
         self.settings.setValue('glmocrApiHost', normalized)
 
     def get_glmocr_api_port(self) -> int:
-        """Get the configured GLM-OCR self-hosted API port."""
+        """Get the configured GLM-OCR direct-backend API port."""
         port = int(self.settings.value('glmocrApiPort', 8080, type=int))
         return port if 1 <= port <= 65535 else 8080
 
     def set_glmocr_api_port(self, port: int) -> None:
-        """Set the GLM-OCR self-hosted API port."""
+        """Set the GLM-OCR direct-backend API port."""
         normalized = max(1, min(65535, int(port)))
         self.settings.setValue('glmocrApiPort', normalized)
 

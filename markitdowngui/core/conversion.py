@@ -30,7 +30,11 @@ BACKEND_PDF_IMAGES = "pdf-images"
 OCR_PROVIDER_GLMOCR = "glmocr"
 OCR_PROVIDER_LEGACY = "legacy"
 GLMOCR_MODE_MAAS = "maas"
+GLMOCR_MODE_SERVER = "server"
+GLMOCR_MODE_DIRECT = "direct"
 GLMOCR_MODE_SELFHOSTED = "selfhosted"
+DEFAULT_GLMOCR_SERVER_URL = "http://127.0.0.1:5002/glmocr/parse"
+GLMOCR_EXTERNAL_SERVER_API_KEY = "markitdown-gui-external-server"
 ZHIPU_API_KEY_ENV_VAR = "ZHIPU_API_KEY"
 GLMOCR_API_KEY_ENV_VAR = "GLMOCR_API_KEY"
 
@@ -48,6 +52,7 @@ class ConversionOptions:
     tesseract_path: str = ""
     pdf_artifacts_dir: str = ""
     glmocr_mode: str = GLMOCR_MODE_MAAS
+    glmocr_server_url: str = DEFAULT_GLMOCR_SERVER_URL
     glmocr_api_host: str = "127.0.0.1"
     glmocr_api_port: int = 8080
     glmocr_model: str = "glm-ocr"
@@ -83,9 +88,15 @@ class ConversionOptions:
     @property
     def normalized_glmocr_mode(self) -> str:
         mode = self.glmocr_mode.strip().lower()
-        if mode in {GLMOCR_MODE_MAAS, GLMOCR_MODE_SELFHOSTED}:
+        if mode == GLMOCR_MODE_SELFHOSTED:
+            return GLMOCR_MODE_DIRECT
+        if mode in {GLMOCR_MODE_MAAS, GLMOCR_MODE_SERVER, GLMOCR_MODE_DIRECT}:
             return mode
         return GLMOCR_MODE_MAAS
+
+    @property
+    def normalized_glmocr_server_url(self) -> str:
+        return self.glmocr_server_url.strip() or DEFAULT_GLMOCR_SERVER_URL
 
     @property
     def normalized_glmocr_api_host(self) -> str:
@@ -500,6 +511,8 @@ def _convert_with_glmocr(
     file_path: str,
     options: ConversionOptions,
 ) -> str:
+    normalized_mode = options.normalized_glmocr_mode
+
     try:
         from glmocr.api import GlmOcr
     except ImportError as exc:
@@ -508,28 +521,33 @@ def _convert_with_glmocr(
         ) from exc
 
     kwargs: dict[str, object] = {
-        "mode": options.normalized_glmocr_mode,
         "model": options.normalized_glmocr_model,
     }
-    if options.normalized_glmocr_config_path:
-        kwargs["config_path"] = options.normalized_glmocr_config_path
 
-    if options.normalized_glmocr_mode == GLMOCR_MODE_MAAS:
+    if normalized_mode == GLMOCR_MODE_MAAS:
+        kwargs["mode"] = GLMOCR_MODE_MAAS
         if not _glmocr_api_key_available():
             raise RuntimeError(
                 "GLM-OCR MaaS requires ZHIPU_API_KEY or GLMOCR_API_KEY to be set."
             )
+    elif normalized_mode == GLMOCR_MODE_SERVER:
+        kwargs["mode"] = GLMOCR_MODE_MAAS
+        kwargs["api_url"] = options.normalized_glmocr_server_url
+        kwargs["api_key"] = GLMOCR_EXTERNAL_SERVER_API_KEY
     else:
+        kwargs["mode"] = GLMOCR_MODE_SELFHOSTED
         kwargs["ocr_api_host"] = options.normalized_glmocr_api_host
         kwargs["ocr_api_port"] = options.normalized_glmocr_api_port
+        if options.normalized_glmocr_config_path:
+            kwargs["config_path"] = options.normalized_glmocr_config_path
 
     try:
         with GlmOcr(**kwargs) as parser:
             result = parser.parse(file_path)
     except ImportError as exc:
-        if options.normalized_glmocr_mode == GLMOCR_MODE_SELFHOSTED:
+        if normalized_mode == GLMOCR_MODE_DIRECT:
             raise RuntimeError(
-                "GLM-OCR self-hosted mode requires optional dependencies. "
+                "GLM-OCR advanced direct-backend mode requires optional dependencies. "
                 "Install `glmocr[selfhosted]` in this environment."
             ) from exc
         raise

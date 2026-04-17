@@ -14,12 +14,32 @@ MANDATORY_HIDDENIMPORT_PACKAGES = (
     "charset_normalizer",
 )
 OPTIONAL_HIDDENIMPORT_PACKAGES = (
+)
+OPTIONAL_HIDDENIMPORTS = (
     "azure.ai.documentintelligence",
+    "azure.ai.documentintelligence.aio",
     "azure.identity",
-    "docling_core",
-    "docling_parse",
+    "docling_core.types.doc",
+    "docling_core.types.doc.base",
+    "docling_core.types.doc.document",
+    "docling_core.types.doc.labels",
+    "docling_parse.pdf_parser",
     "glmocr",
+    "glmocr.api",
+    "glmocr.config",
+    "glmocr.maas_client",
+    "glmocr.parser_result",
+    "glmocr.parser_result.base",
+    "glmocr.parser_result.pipeline_result",
+    "glmocr.utils",
+    "glmocr.utils.logging",
     "markitdown_pdf_images",
+    "markitdown_pdf_images.converter",
+    "markitdown_pdf_images.export",
+    "markitdown_pdf_images.models",
+    "markitdown_pdf_images.ocr",
+    "markitdown_pdf_images.pipeline",
+    "markitdown_pdf_images.vector",
     "pypdfium2",
     "pypdfium2_raw",
     "pytesseract",
@@ -34,6 +54,33 @@ OPTIONAL_DATA_PACKAGES = (
     "magika",
     "pypdfium2",
     "pypdfium2_raw",
+)
+BASE_EXCLUDES = (
+    "tkinter",
+    "_tkinter",
+    "pytest",
+    "_pytest",
+    "pygments",
+)
+OPTIONAL_EXCLUDES = (
+    "accelerate",
+    "glmocr.cli",
+    "glmocr.dataloader",
+    "glmocr.layout",
+    "glmocr.ocr_client",
+    "glmocr.pipeline",
+    "glmocr.postprocess",
+    "glmocr.server",
+    "glmocr.tests",
+    "huggingface_hub",
+    "sentencepiece",
+    "tensorboard",
+    "torch",
+    "torch.utils.tensorboard",
+    "torch.utils.viz",
+    "torchvision",
+    "transformers",
+    "tree_sitter",
 )
 
 
@@ -51,16 +98,13 @@ def build_hiddenimports(
     for package in MANDATORY_HIDDENIMPORT_PACKAGES:
         hiddenimports.extend(collect_submodules(package))
 
-    for package in OPTIONAL_HIDDENIMPORT_PACKAGES:
-        try:
-            hiddenimports.extend(collect_submodules(package))
-        except Exception as exc:
-            if warn is not None:
-                warn(
-                    f"Warning: Could not collect hidden imports for {package}: {exc}"
-                )
+    hiddenimports.extend(OPTIONAL_HIDDENIMPORTS)
 
     return _dedupe(hiddenimports)
+
+
+def build_excludes() -> list[str]:
+    return list(_dedupe(list(BASE_EXCLUDES) + list(OPTIONAL_EXCLUDES)))
 
 
 def build_datas(

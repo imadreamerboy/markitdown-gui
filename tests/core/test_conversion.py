@@ -679,7 +679,49 @@ def test_convert_with_glmocr_requires_maas_api_key(monkeypatch, conversion):
     assert "ZHIPU_API_KEY or GLMOCR_API_KEY" in str(exc_info.value)
 
 
-def test_convert_with_glmocr_selfhosted_forwards_connection_options(
+def test_convert_with_glmocr_external_server_uses_maas_client_without_env_key(
+    monkeypatch,
+    conversion,
+):
+    captured = {}
+
+    class FakeGlmOcr:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def parse(self, _file_path):
+            return types.SimpleNamespace(markdown_result="glm text")
+
+    _install_fake_glmocr(monkeypatch, FakeGlmOcr)
+    monkeypatch.delenv("ZHIPU_API_KEY", raising=False)
+    monkeypatch.delenv("GLMOCR_API_KEY", raising=False)
+
+    result = conversion._convert_with_glmocr(
+        "scan.pdf",
+        conversion.ConversionOptions(
+            ocr_enabled=True,
+            ocr_provider=conversion.OCR_PROVIDER_GLMOCR,
+            glmocr_mode=conversion.GLMOCR_MODE_SERVER,
+            glmocr_server_url=" http://localhost:5002/glmocr/parse ",
+        ),
+    )
+
+    assert result == "glm text"
+    assert captured == {
+        "mode": "maas",
+        "model": "glm-ocr",
+        "api_url": "http://localhost:5002/glmocr/parse",
+        "api_key": "markitdown-gui-external-server",
+    }
+
+
+def test_convert_with_glmocr_direct_backend_forwards_connection_options(
     monkeypatch,
     conversion,
 ):
@@ -705,7 +747,7 @@ def test_convert_with_glmocr_selfhosted_forwards_connection_options(
         conversion.ConversionOptions(
             ocr_enabled=True,
             ocr_provider=conversion.OCR_PROVIDER_GLMOCR,
-            glmocr_mode=conversion.GLMOCR_MODE_SELFHOSTED,
+            glmocr_mode=conversion.GLMOCR_MODE_DIRECT,
             glmocr_api_host="ocr-host",
             glmocr_api_port=9001,
             glmocr_model="glm-ocr-custom",
@@ -723,7 +765,7 @@ def test_convert_with_glmocr_selfhosted_forwards_connection_options(
     }
 
 
-def test_convert_with_glmocr_selfhosted_reports_optional_dependency_error(
+def test_convert_with_glmocr_direct_backend_reports_optional_dependency_error(
     monkeypatch,
     conversion,
 ):
@@ -739,7 +781,7 @@ def test_convert_with_glmocr_selfhosted_reports_optional_dependency_error(
             conversion.ConversionOptions(
                 ocr_enabled=True,
                 ocr_provider=conversion.OCR_PROVIDER_GLMOCR,
-                glmocr_mode=conversion.GLMOCR_MODE_SELFHOSTED,
+                glmocr_mode=conversion.GLMOCR_MODE_DIRECT,
             ),
         )
 
