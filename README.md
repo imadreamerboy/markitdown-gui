@@ -46,12 +46,13 @@ pip install -e .[dev]
 - OCR is optional and disabled by default.
 - `Legacy (Azure/Tesseract)` preserves the existing Azure-first, Tesseract-fallback behavior.
 - `GLM-OCR` is available as a separate OCR provider for PDFs and images. It runs first and can fall back to the legacy OCR stack if enabled in Settings.
-- GLM-OCR offers three connection targets in Settings:
-  - `MaaS API`: easiest zero-setup path, reads `ZHIPU_API_KEY` or `GLMOCR_API_KEY` from the environment.
-  - `External GLM-OCR Server`: recommended self-hosted path. Point the app at an existing `/glmocr/parse` endpoint. Default: `http://127.0.0.1:5002/glmocr/parse`.
-  - `Advanced Direct Backend`: compatibility path for source installs and power users. This keeps the older host/port/model/config flow and may require `glmocr[selfhosted]` in the same Python environment as the app.
+- GLM-OCR offers four modes in Settings:
+  - `Official API`: easiest zero-setup path, reads `ZHIPU_API_KEY` or `GLMOCR_API_KEY` from the environment.
+  - `Ollama`: easiest local path. Targets Ollama's native `/api/generate` endpoint with defaults `127.0.0.1:11434` and `glm-ocr:latest`.
+  - `SDK Server (vLLM / SGLang)`: stronger self-hosted path. Point the app at an existing `/glmocr/parse` endpoint. Default: `http://127.0.0.1:5002/glmocr/parse`.
+  - `Advanced Custom`: compatibility path for source installs and power users. This keeps the older host/port/model/config flow and may require `glmocr[selfhosted]` in the same Python environment as the app.
 - The packaged desktop app does not bundle the GLM-OCR self-hosted runtime stack (`torch`, `transformers`, `vLLM`, `SGLang`, and related server/runtime pieces stay external).
-- The project depends on `glmocr==0.1.4` for client-side MaaS/server connectivity. Advanced direct-backend usage can install `glmocr[selfhosted]`.
+- The project depends on `glmocr==0.1.4` for client-side Official API, Ollama, and SDK Server connectivity. Advanced custom usage can install `glmocr[selfhosted]`.
 - Local OCR requires a system `tesseract` binary. Install it from the [official Tesseract project](https://github.com/tesseract-ocr/tesseract). If it is not on your `PATH`, set the executable path in Settings.
 - Azure OCR requires an Azure Document Intelligence endpoint in Settings.
 - Azure Document Intelligence pricing includes [500 free pages per month](https://azure.microsoft.com/en-us/products/ai-foundry/tools/document-intelligence#Pricing) at the time of writing.
@@ -61,7 +62,30 @@ pip install -e .[dev]
 
 ### Recommended Local Hosting
 
-For local/self-hosted GLM-OCR, the recommended path is an external SDK server, not running the full runtime inside this GUI.
+For normal local use, the easiest path is Ollama. For stronger self-hosted deployments, use the GLM-OCR SDK Server with vLLM or SGLang.
+
+### Ollama
+
+1. Install Ollama.
+2. Pull the model:
+
+```sh
+ollama pull glm-ocr:latest
+```
+
+3. Start the service if it is not already running:
+
+```sh
+ollama serve
+```
+
+4. In this app, choose `GLM-OCR` -> `Ollama`.
+5. Keep the defaults unless you changed them:
+   - host: `127.0.0.1`
+   - port: `11434`
+   - model: `glm-ocr:latest`
+
+### SDK Server
 
 1. Create a separate Python environment for GLM-OCR.
 2. Install `glmocr[selfhosted,server]` in that environment.
@@ -72,7 +96,7 @@ For local/self-hosted GLM-OCR, the recommended path is an external SDK server, n
 python -m glmocr.server --config config.yaml
 ```
 
-5. In this app, choose `GLM-OCR` -> `External GLM-OCR Server` and keep `http://127.0.0.1:5002/glmocr/parse`.
+5. In this app, choose `GLM-OCR` -> `SDK Server (vLLM / SGLang)` and keep `http://127.0.0.1:5002/glmocr/parse`.
 
 Minimal server-side `config.yaml`:
 
@@ -85,15 +109,11 @@ pipeline:
     api_port: 8080
 ```
 
-The official GLM-OCR docs show the full `vLLM` and `SGLang` launch commands:
-
-- [Self-hosted SDK Server + Client Guide](https://github.com/zai-org/GLM-OCR/blob/main/examples/self-host/README.md)
-- [GLM-OCR README](https://github.com/zai-org/GLM-OCR)
-
-Alternative setups:
+The official GLM-OCR docs show the full Ollama, `vLLM`, and `SGLang` setup commands:
 
 - [Official Ollama deployment guide](https://github.com/zai-org/GLM-OCR/blob/main/examples/ollama-deploy/README.md)
-- Ollama is documented here as an advanced/personal-use alternative, not the app's first-class connection mode.
+- [Self-hosted SDK Server + Client Guide](https://github.com/zai-org/GLM-OCR/blob/main/examples/self-host/README.md)
+- [GLM-OCR README](https://github.com/zai-org/GLM-OCR)
 
 ### Website URL Notes
 

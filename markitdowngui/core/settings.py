@@ -5,10 +5,16 @@ from typing import cast, List
 OCR_PROVIDER_LEGACY = "legacy"
 OCR_PROVIDER_GLMOCR = "glmocr"
 GLMOCR_MODE_MAAS = "maas"
+GLMOCR_MODE_OLLAMA = "ollama"
+GLMOCR_MODE_SDK_SERVER = "sdk_server"
+GLMOCR_MODE_CUSTOM = "custom"
 GLMOCR_MODE_SERVER = "server"
 GLMOCR_MODE_DIRECT = "direct"
 GLMOCR_MODE_SELFHOSTED = "selfhosted"
-DEFAULT_GLMOCR_SERVER_URL = "http://127.0.0.1:5002/glmocr/parse"
+DEFAULT_GLMOCR_SDK_SERVER_URL = "http://127.0.0.1:5002/glmocr/parse"
+DEFAULT_GLMOCR_OLLAMA_HOST = "127.0.0.1"
+DEFAULT_GLMOCR_OLLAMA_PORT = 11434
+DEFAULT_GLMOCR_OLLAMA_MODEL = "glm-ocr:latest"
 
 
 class SettingsManager:
@@ -159,40 +165,106 @@ class SettingsManager:
         value = str(
             self.settings.value('glmocrMode', GLMOCR_MODE_MAAS, type=str)
         ).strip().lower()
-        if value == GLMOCR_MODE_SELFHOSTED:
-            return GLMOCR_MODE_DIRECT
-        if value in {GLMOCR_MODE_MAAS, GLMOCR_MODE_SERVER, GLMOCR_MODE_DIRECT}:
+        if value == GLMOCR_MODE_SERVER:
+            return GLMOCR_MODE_SDK_SERVER
+        if value in {GLMOCR_MODE_DIRECT, GLMOCR_MODE_SELFHOSTED}:
+            return GLMOCR_MODE_CUSTOM
+        if value in {
+            GLMOCR_MODE_MAAS,
+            GLMOCR_MODE_OLLAMA,
+            GLMOCR_MODE_SDK_SERVER,
+            GLMOCR_MODE_CUSTOM,
+        }:
             return value
         return GLMOCR_MODE_MAAS
 
     def set_glmocr_mode(self, mode: str) -> None:
         """Set the GLM-OCR mode."""
         normalized = (mode or '').strip().lower()
-        if normalized == GLMOCR_MODE_SELFHOSTED:
-            normalized = GLMOCR_MODE_DIRECT
+        if normalized == GLMOCR_MODE_SERVER:
+            normalized = GLMOCR_MODE_SDK_SERVER
+        if normalized in {GLMOCR_MODE_DIRECT, GLMOCR_MODE_SELFHOSTED}:
+            normalized = GLMOCR_MODE_CUSTOM
         if normalized not in {
             GLMOCR_MODE_MAAS,
-            GLMOCR_MODE_SERVER,
-            GLMOCR_MODE_DIRECT,
+            GLMOCR_MODE_OLLAMA,
+            GLMOCR_MODE_SDK_SERVER,
+            GLMOCR_MODE_CUSTOM,
         }:
             normalized = GLMOCR_MODE_MAAS
         self.settings.setValue('glmocrMode', normalized)
 
-    def get_glmocr_server_url(self) -> str:
-        """Get the configured external GLM-OCR server parse endpoint."""
+    def get_glmocr_ollama_host(self) -> str:
+        """Get the configured Ollama host."""
         value = str(
             self.settings.value(
-                'glmocrServerUrl',
-                DEFAULT_GLMOCR_SERVER_URL,
+                'glmocrOllamaHost',
+                DEFAULT_GLMOCR_OLLAMA_HOST,
                 type=str,
             )
         ).strip()
-        return value or DEFAULT_GLMOCR_SERVER_URL
+        return value or DEFAULT_GLMOCR_OLLAMA_HOST
 
-    def set_glmocr_server_url(self, url: str) -> None:
-        """Set the external GLM-OCR server parse endpoint."""
-        normalized = (url or '').strip() or DEFAULT_GLMOCR_SERVER_URL
-        self.settings.setValue('glmocrServerUrl', normalized)
+    def set_glmocr_ollama_host(self, host: str) -> None:
+        """Set the Ollama host."""
+        normalized = (host or '').strip() or DEFAULT_GLMOCR_OLLAMA_HOST
+        self.settings.setValue('glmocrOllamaHost', normalized)
+
+    def get_glmocr_ollama_port(self) -> int:
+        """Get the configured Ollama port."""
+        port = int(
+            self.settings.value(
+                'glmocrOllamaPort',
+                DEFAULT_GLMOCR_OLLAMA_PORT,
+                type=int,
+            )
+        )
+        return port if 1 <= port <= 65535 else DEFAULT_GLMOCR_OLLAMA_PORT
+
+    def set_glmocr_ollama_port(self, port: int) -> None:
+        """Set the Ollama port."""
+        normalized = max(1, min(65535, int(port)))
+        self.settings.setValue('glmocrOllamaPort', normalized)
+
+    def get_glmocr_ollama_model(self) -> str:
+        """Get the configured Ollama model name."""
+        value = str(
+            self.settings.value(
+                'glmocrOllamaModel',
+                DEFAULT_GLMOCR_OLLAMA_MODEL,
+                type=str,
+            )
+        ).strip()
+        return value or DEFAULT_GLMOCR_OLLAMA_MODEL
+
+    def set_glmocr_ollama_model(self, model: str) -> None:
+        """Set the Ollama model name."""
+        normalized = (model or '').strip() or DEFAULT_GLMOCR_OLLAMA_MODEL
+        self.settings.setValue('glmocrOllamaModel', normalized)
+
+    def get_glmocr_sdk_server_url(self) -> str:
+        """Get the configured GLM-OCR SDK server parse endpoint."""
+        value = str(
+            self.settings.value(
+                'glmocrSdkServerUrl',
+                '',
+                type=str,
+            )
+        ).strip()
+        if not value:
+            value = str(
+                self.settings.value(
+                    'glmocrServerUrl',
+                    DEFAULT_GLMOCR_SDK_SERVER_URL,
+                    type=str,
+                )
+            ).strip()
+        return value or DEFAULT_GLMOCR_SDK_SERVER_URL
+
+    def set_glmocr_sdk_server_url(self, url: str) -> None:
+        """Set the GLM-OCR SDK server parse endpoint."""
+        normalized = (url or '').strip() or DEFAULT_GLMOCR_SDK_SERVER_URL
+        self.settings.setValue('glmocrSdkServerUrl', normalized)
 
     def get_glmocr_api_host(self) -> str:
         """Get the configured GLM-OCR direct-backend API host."""

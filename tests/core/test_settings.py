@@ -121,18 +121,32 @@ def test_ocr_settings(settings_manager):
     assert not settings_manager.get_ocr_fallback_enabled()
 
     assert settings_manager.get_glmocr_mode() == "maas"
-    settings_manager.set_glmocr_mode(" server ")
-    assert settings_manager.get_glmocr_mode() == "server"
+    settings_manager.set_glmocr_mode(" ollama ")
+    assert settings_manager.get_glmocr_mode() == "ollama"
+    settings_manager.settings.setValue("glmocrMode", " server ")
+    assert settings_manager.get_glmocr_mode() == "sdk_server"
     settings_manager.settings.setValue("glmocrMode", " selfhosted ")
-    assert settings_manager.get_glmocr_mode() == "direct"
+    assert settings_manager.get_glmocr_mode() == "custom"
     settings_manager.set_glmocr_mode(" direct ")
-    assert settings_manager.get_glmocr_mode() == "direct"
+    assert settings_manager.get_glmocr_mode() == "custom"
     settings_manager.set_glmocr_mode("invalid")
     assert settings_manager.get_glmocr_mode() == "maas"
 
-    assert settings_manager.get_glmocr_server_url() == "http://127.0.0.1:5002/glmocr/parse"
-    settings_manager.set_glmocr_server_url(" http://localhost:5002/glmocr/parse ")
-    assert settings_manager.get_glmocr_server_url() == "http://localhost:5002/glmocr/parse"
+    assert settings_manager.get_glmocr_ollama_host() == "127.0.0.1"
+    settings_manager.set_glmocr_ollama_host(" localhost ")
+    assert settings_manager.get_glmocr_ollama_host() == "localhost"
+
+    assert settings_manager.get_glmocr_ollama_port() == 11434
+    settings_manager.set_glmocr_ollama_port(12434)
+    assert settings_manager.get_glmocr_ollama_port() == 12434
+
+    assert settings_manager.get_glmocr_ollama_model() == "glm-ocr:latest"
+    settings_manager.set_glmocr_ollama_model(" custom-ollama-model ")
+    assert settings_manager.get_glmocr_ollama_model() == "custom-ollama-model"
+
+    assert settings_manager.get_glmocr_sdk_server_url() == "http://127.0.0.1:5002/glmocr/parse"
+    settings_manager.set_glmocr_sdk_server_url(" http://localhost:5002/glmocr/parse ")
+    assert settings_manager.get_glmocr_sdk_server_url() == "http://localhost:5002/glmocr/parse"
 
     assert settings_manager.get_glmocr_api_host() == "127.0.0.1"
     settings_manager.set_glmocr_api_host(" localhost ")

@@ -1,4 +1,5 @@
 import importlib
+from pathlib import Path
 import sys
 import types
 
@@ -679,7 +680,7 @@ def test_convert_with_glmocr_requires_maas_api_key(monkeypatch, conversion):
     assert "ZHIPU_API_KEY or GLMOCR_API_KEY" in str(exc_info.value)
 
 
-def test_convert_with_glmocr_external_server_uses_maas_client_without_env_key(
+def test_convert_with_glmocr_sdk_server_uses_maas_client_without_env_key(
     monkeypatch,
     conversion,
 ):
@@ -707,8 +708,8 @@ def test_convert_with_glmocr_external_server_uses_maas_client_without_env_key(
         conversion.ConversionOptions(
             ocr_enabled=True,
             ocr_provider=conversion.OCR_PROVIDER_GLMOCR,
-            glmocr_mode=conversion.GLMOCR_MODE_SERVER,
-            glmocr_server_url=" http://localhost:5002/glmocr/parse ",
+            glmocr_mode=conversion.GLMOCR_MODE_SDK_SERVER,
+            glmocr_sdk_server_url=" http://localhost:5002/glmocr/parse ",
         ),
     )
 
@@ -717,11 +718,58 @@ def test_convert_with_glmocr_external_server_uses_maas_client_without_env_key(
         "mode": "maas",
         "model": "glm-ocr",
         "api_url": "http://localhost:5002/glmocr/parse",
-        "api_key": "markitdown-gui-external-server",
+        "api_key": "markitdown-gui-sdk-server",
     }
 
 
-def test_convert_with_glmocr_direct_backend_forwards_connection_options(
+def test_convert_with_glmocr_ollama_generates_native_ollama_config(
+    monkeypatch,
+    conversion,
+):
+    captured = {}
+
+    class FakeGlmOcr:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+            captured["config_content"] = (
+                Path(kwargs["config_path"]).read_text(encoding="utf-8")
+            )
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def parse(self, _file_path):
+            return types.SimpleNamespace(markdown_result="glm text")
+
+    _install_fake_glmocr(monkeypatch, FakeGlmOcr)
+
+    result = conversion._convert_with_glmocr(
+        "scan.pdf",
+        conversion.ConversionOptions(
+            ocr_enabled=True,
+            ocr_provider=conversion.OCR_PROVIDER_GLMOCR,
+            glmocr_mode=conversion.GLMOCR_MODE_OLLAMA,
+            glmocr_ollama_host=" localhost ",
+            glmocr_ollama_port=11434,
+            glmocr_ollama_model=" glm-ocr:latest ",
+        ),
+    )
+
+    assert result == "glm text"
+    assert captured["mode"] == "selfhosted"
+    assert captured["model"] == "glm-ocr:latest"
+    assert 'api_host: "localhost"' in captured["config_content"]
+    assert "api_port: 11434" in captured["config_content"]
+    assert 'api_path: "/api/generate"' in captured["config_content"]
+    assert 'model: "glm-ocr:latest"' in captured["config_content"]
+    assert 'api_mode: "ollama_generate"' in captured["config_content"]
+    assert not Path(captured["config_path"]).exists()
+
+
+def test_convert_with_glmocr_custom_forwards_connection_options(
     monkeypatch,
     conversion,
 ):
@@ -747,7 +795,7 @@ def test_convert_with_glmocr_direct_backend_forwards_connection_options(
         conversion.ConversionOptions(
             ocr_enabled=True,
             ocr_provider=conversion.OCR_PROVIDER_GLMOCR,
-            glmocr_mode=conversion.GLMOCR_MODE_DIRECT,
+            glmocr_mode=conversion.GLMOCR_MODE_CUSTOM,
             glmocr_api_host="ocr-host",
             glmocr_api_port=9001,
             glmocr_model="glm-ocr-custom",
@@ -765,7 +813,7 @@ def test_convert_with_glmocr_direct_backend_forwards_connection_options(
     }
 
 
-def test_convert_with_glmocr_direct_backend_reports_optional_dependency_error(
+def test_convert_with_glmocr_custom_reports_optional_dependency_error(
     monkeypatch,
     conversion,
 ):
@@ -781,7 +829,7 @@ def test_convert_with_glmocr_direct_backend_reports_optional_dependency_error(
             conversion.ConversionOptions(
                 ocr_enabled=True,
                 ocr_provider=conversion.OCR_PROVIDER_GLMOCR,
-                glmocr_mode=conversion.GLMOCR_MODE_DIRECT,
+                glmocr_mode=conversion.GLMOCR_MODE_CUSTOM,
             ),
         )
 

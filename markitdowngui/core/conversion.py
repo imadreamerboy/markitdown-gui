@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from itertools import islice
+import json
 import os
 from pathlib import Path
+import tempfile
 from urllib.parse import quote
 
 import requests
@@ -30,11 +32,17 @@ BACKEND_PDF_IMAGES = "pdf-images"
 OCR_PROVIDER_GLMOCR = "glmocr"
 OCR_PROVIDER_LEGACY = "legacy"
 GLMOCR_MODE_MAAS = "maas"
+GLMOCR_MODE_OLLAMA = "ollama"
+GLMOCR_MODE_SDK_SERVER = "sdk_server"
+GLMOCR_MODE_CUSTOM = "custom"
 GLMOCR_MODE_SERVER = "server"
 GLMOCR_MODE_DIRECT = "direct"
 GLMOCR_MODE_SELFHOSTED = "selfhosted"
-DEFAULT_GLMOCR_SERVER_URL = "http://127.0.0.1:5002/glmocr/parse"
-GLMOCR_EXTERNAL_SERVER_API_KEY = "markitdown-gui-external-server"
+DEFAULT_GLMOCR_SDK_SERVER_URL = "http://127.0.0.1:5002/glmocr/parse"
+DEFAULT_GLMOCR_OLLAMA_HOST = "127.0.0.1"
+DEFAULT_GLMOCR_OLLAMA_PORT = 11434
+DEFAULT_GLMOCR_OLLAMA_MODEL = "glm-ocr:latest"
+GLMOCR_SDK_SERVER_API_KEY = "markitdown-gui-sdk-server"
 ZHIPU_API_KEY_ENV_VAR = "ZHIPU_API_KEY"
 GLMOCR_API_KEY_ENV_VAR = "GLMOCR_API_KEY"
 
@@ -52,7 +60,10 @@ class ConversionOptions:
     tesseract_path: str = ""
     pdf_artifacts_dir: str = ""
     glmocr_mode: str = GLMOCR_MODE_MAAS
-    glmocr_server_url: str = DEFAULT_GLMOCR_SERVER_URL
+    glmocr_ollama_host: str = DEFAULT_GLMOCR_OLLAMA_HOST
+    glmocr_ollama_port: int = DEFAULT_GLMOCR_OLLAMA_PORT
+    glmocr_ollama_model: str = DEFAULT_GLMOCR_OLLAMA_MODEL
+    glmocr_sdk_server_url: str = DEFAULT_GLMOCR_SDK_SERVER_URL
     glmocr_api_host: str = "127.0.0.1"
     glmocr_api_port: int = 8080
     glmocr_model: str = "glm-ocr"
@@ -88,15 +99,36 @@ class ConversionOptions:
     @property
     def normalized_glmocr_mode(self) -> str:
         mode = self.glmocr_mode.strip().lower()
-        if mode == GLMOCR_MODE_SELFHOSTED:
-            return GLMOCR_MODE_DIRECT
-        if mode in {GLMOCR_MODE_MAAS, GLMOCR_MODE_SERVER, GLMOCR_MODE_DIRECT}:
+        if mode == GLMOCR_MODE_SERVER:
+            return GLMOCR_MODE_SDK_SERVER
+        if mode in {GLMOCR_MODE_DIRECT, GLMOCR_MODE_SELFHOSTED}:
+            return GLMOCR_MODE_CUSTOM
+        if mode in {
+            GLMOCR_MODE_MAAS,
+            GLMOCR_MODE_OLLAMA,
+            GLMOCR_MODE_SDK_SERVER,
+            GLMOCR_MODE_CUSTOM,
+        }:
             return mode
         return GLMOCR_MODE_MAAS
 
     @property
-    def normalized_glmocr_server_url(self) -> str:
-        return self.glmocr_server_url.strip() or DEFAULT_GLMOCR_SERVER_URL
+    def normalized_glmocr_ollama_host(self) -> str:
+        return self.glmocr_ollama_host.strip() or DEFAULT_GLMOCR_OLLAMA_HOST
+
+    @property
+    def normalized_glmocr_ollama_port(self) -> int:
+        if 1 <= int(self.glmocr_ollama_port) <= 65535:
+            return int(self.glmocr_ollama_port)
+        return DEFAULT_GLMOCR_OLLAMA_PORT
+
+    @property
+    def normalized_glmocr_ollama_model(self) -> str:
+        return self.glmocr_ollama_model.strip() or DEFAULT_GLMOCR_OLLAMA_MODEL
+
+    @property
+    def normalized_glmocr_sdk_server_url(self) -> str:
+        return self.glmocr_sdk_server_url.strip() or DEFAULT_GLMOCR_SDK_SERVER_URL
 
     @property
     def normalized_glmocr_api_host(self) -> str:
@@ -512,6 +544,7 @@ def _convert_with_glmocr(
     options: ConversionOptions,
 ) -> str:
     normalized_mode = options.normalized_glmocr_mode
+    temp_config_path: str | None = None
 
     try:
         from glmocr.api import GlmOcr
@@ -530,10 +563,15 @@ def _convert_with_glmocr(
             raise RuntimeError(
                 "GLM-OCR MaaS requires ZHIPU_API_KEY or GLMOCR_API_KEY to be set."
             )
-    elif normalized_mode == GLMOCR_MODE_SERVER:
+    elif normalized_mode == GLMOCR_MODE_OLLAMA:
+        kwargs["mode"] = GLMOCR_MODE_SELFHOSTED
+        kwargs["model"] = options.normalized_glmocr_ollama_model
+        temp_config_path = _write_glmocr_ollama_config(options)
+        kwargs["config_path"] = temp_config_path
+    elif normalized_mode == GLMOCR_MODE_SDK_SERVER:
         kwargs["mode"] = GLMOCR_MODE_MAAS
-        kwargs["api_url"] = options.normalized_glmocr_server_url
-        kwargs["api_key"] = GLMOCR_EXTERNAL_SERVER_API_KEY
+        kwargs["api_url"] = options.normalized_glmocr_sdk_server_url
+        kwargs["api_key"] = GLMOCR_SDK_SERVER_API_KEY
     else:
         kwargs["mode"] = GLMOCR_MODE_SELFHOSTED
         kwargs["ocr_api_host"] = options.normalized_glmocr_api_host
@@ -545,15 +583,40 @@ def _convert_with_glmocr(
         with GlmOcr(**kwargs) as parser:
             result = parser.parse(file_path)
     except ImportError as exc:
-        if normalized_mode == GLMOCR_MODE_DIRECT:
+        if normalized_mode in {GLMOCR_MODE_OLLAMA, GLMOCR_MODE_CUSTOM}:
             raise RuntimeError(
-                "GLM-OCR advanced direct-backend mode requires optional dependencies. "
+                "GLM-OCR local/custom modes require optional dependencies. "
                 "Install `glmocr[selfhosted]` in this environment."
             ) from exc
         raise
+    finally:
+        if temp_config_path:
+            Path(temp_config_path).unlink(missing_ok=True)
 
     markdown = getattr(result, "markdown_result", "")
     return str(markdown or "").strip()
+
+
+def _write_glmocr_ollama_config(options: ConversionOptions) -> str:
+    config = (
+        "pipeline:\n"
+        "  maas:\n"
+        "    enabled: false\n"
+        "  ocr_api:\n"
+        f"    api_host: {json.dumps(options.normalized_glmocr_ollama_host)}\n"
+        f"    api_port: {options.normalized_glmocr_ollama_port}\n"
+        '    api_path: "/api/generate"\n'
+        f"    model: {json.dumps(options.normalized_glmocr_ollama_model)}\n"
+        '    api_mode: "ollama_generate"\n'
+    )
+    with tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        suffix="-glmocr-ollama.yaml",
+        delete=False,
+    ) as handle:
+        handle.write(config)
+        return handle.name
 
 
 def _map_pdf_assets(assets: list[object]) -> list[ConversionAsset]:

@@ -29,9 +29,10 @@ from qfluentwidgets import (
 
 from markitdowngui.core.conversion import ConversionOptions, test_azure_ocr_connection
 from markitdowngui.core.settings import (
-    GLMOCR_MODE_DIRECT,
     GLMOCR_MODE_MAAS,
-    GLMOCR_MODE_SERVER,
+    GLMOCR_MODE_OLLAMA,
+    GLMOCR_MODE_SDK_SERVER,
+    GLMOCR_MODE_CUSTOM,
     OCR_PROVIDER_GLMOCR,
     OCR_PROVIDER_LEGACY,
     SettingsManager,
@@ -69,8 +70,9 @@ class SettingsInterface(QWidget):
         self._ocr_provider_values = [OCR_PROVIDER_LEGACY, OCR_PROVIDER_GLMOCR]
         self._glmocr_mode_values = [
             GLMOCR_MODE_MAAS,
-            GLMOCR_MODE_SERVER,
-            GLMOCR_MODE_DIRECT,
+            GLMOCR_MODE_OLLAMA,
+            GLMOCR_MODE_SDK_SERVER,
+            GLMOCR_MODE_CUSTOM,
         ]
         self._build_ui()
         self._load_settings()
@@ -197,8 +199,9 @@ class SettingsInterface(QWidget):
         self.glmocr_mode_combo.addItems(
             [
                 self.translate("settings_glmocr_mode_maas"),
-                self.translate("settings_glmocr_mode_server"),
-                self.translate("settings_glmocr_mode_direct"),
+                self.translate("settings_glmocr_mode_ollama"),
+                self.translate("settings_glmocr_mode_sdk_server"),
+                self.translate("settings_glmocr_mode_custom"),
             ]
         )
         self.glmocr_mode_combo.currentTextChanged.connect(self._save_glmocr_mode)
@@ -210,77 +213,130 @@ class SettingsInterface(QWidget):
         self.glmocr_maas_note.setWordWrap(True)
         glmocr_layout.addWidget(self.glmocr_maas_note)
 
-        self.glmocr_server_note = CaptionLabel(
-            self.translate("settings_glmocr_server_note")
+        self.glmocr_ollama_note = CaptionLabel(
+            self.translate("settings_glmocr_ollama_note")
         )
-        self.glmocr_server_note.setWordWrap(True)
-        glmocr_layout.addWidget(self.glmocr_server_note)
+        self.glmocr_ollama_note.setWordWrap(True)
+        glmocr_layout.addWidget(self.glmocr_ollama_note)
 
-        self.glmocr_server_fields = QWidget(self.glmocr_group)
-        self.glmocr_server_fields_layout = QVBoxLayout(self.glmocr_server_fields)
-        self.glmocr_server_fields_layout.setContentsMargins(0, 0, 0, 0)
-        self.glmocr_server_fields_layout.setSpacing(10)
+        self.glmocr_ollama_fields = QWidget(self.glmocr_group)
+        self.glmocr_ollama_fields_layout = QVBoxLayout(self.glmocr_ollama_fields)
+        self.glmocr_ollama_fields_layout.setContentsMargins(0, 0, 0, 0)
+        self.glmocr_ollama_fields_layout.setSpacing(10)
 
-        self.glmocr_server_url_label = BodyLabel(
-            self.translate("settings_glmocr_server_url_label")
+        self.glmocr_ollama_host_label = BodyLabel(
+            self.translate("settings_glmocr_ollama_host_label")
         )
-        self.glmocr_server_fields_layout.addWidget(self.glmocr_server_url_label)
-        self.glmocr_server_url_edit = LineEdit()
-        self.glmocr_server_url_edit.setPlaceholderText(
-            self.translate("settings_glmocr_server_url_placeholder")
+        self.glmocr_ollama_fields_layout.addWidget(self.glmocr_ollama_host_label)
+        self.glmocr_ollama_host_edit = LineEdit()
+        self.glmocr_ollama_host_edit.setPlaceholderText(
+            self.translate("settings_glmocr_ollama_host_placeholder")
         )
-        self.glmocr_server_url_edit.editingFinished.connect(
-            self._save_glmocr_server_url
+        self.glmocr_ollama_host_edit.editingFinished.connect(
+            self._save_glmocr_ollama_host
         )
-        self.glmocr_server_fields_layout.addWidget(self.glmocr_server_url_edit)
-        glmocr_layout.addWidget(self.glmocr_server_fields)
+        self.glmocr_ollama_fields_layout.addWidget(self.glmocr_ollama_host_edit)
 
-        self.glmocr_direct_note = CaptionLabel(
-            self.translate("settings_glmocr_direct_note")
+        self.glmocr_ollama_port_label = BodyLabel(
+            self.translate("settings_glmocr_ollama_port_label")
         )
-        self.glmocr_direct_note.setWordWrap(True)
-        glmocr_layout.addWidget(self.glmocr_direct_note)
+        self.glmocr_ollama_fields_layout.addWidget(self.glmocr_ollama_port_label)
+        self.glmocr_ollama_port_spin = SpinBox()
+        self.glmocr_ollama_port_spin.setRange(1, 65535)
+        self.glmocr_ollama_port_spin.valueChanged.connect(self._save_glmocr_ollama_port)
+        self.glmocr_ollama_fields_layout.addWidget(self.glmocr_ollama_port_spin)
 
-        self.glmocr_direct_fields = QWidget(self.glmocr_group)
-        self.glmocr_direct_fields_layout = QVBoxLayout(self.glmocr_direct_fields)
-        self.glmocr_direct_fields_layout.setContentsMargins(0, 0, 0, 0)
-        self.glmocr_direct_fields_layout.setSpacing(10)
+        self.glmocr_ollama_model_label = BodyLabel(
+            self.translate("settings_glmocr_ollama_model_label")
+        )
+        self.glmocr_ollama_fields_layout.addWidget(self.glmocr_ollama_model_label)
+        self.glmocr_ollama_model_edit = LineEdit()
+        self.glmocr_ollama_model_edit.setPlaceholderText(
+            self.translate("settings_glmocr_ollama_model_placeholder")
+        )
+        self.glmocr_ollama_model_edit.editingFinished.connect(
+            self._save_glmocr_ollama_model
+        )
+        self.glmocr_ollama_fields_layout.addWidget(self.glmocr_ollama_model_edit)
+        glmocr_layout.addWidget(self.glmocr_ollama_fields)
+
+        self.glmocr_sdk_server_note = CaptionLabel(
+            self.translate("settings_glmocr_sdk_server_note")
+        )
+        self.glmocr_sdk_server_note.setWordWrap(True)
+        glmocr_layout.addWidget(self.glmocr_sdk_server_note)
+
+        self.glmocr_sdk_server_fields = QWidget(self.glmocr_group)
+        self.glmocr_sdk_server_fields_layout = QVBoxLayout(
+            self.glmocr_sdk_server_fields
+        )
+        self.glmocr_sdk_server_fields_layout.setContentsMargins(0, 0, 0, 0)
+        self.glmocr_sdk_server_fields_layout.setSpacing(10)
+
+        self.glmocr_sdk_server_url_label = BodyLabel(
+            self.translate("settings_glmocr_sdk_server_url_label")
+        )
+        self.glmocr_sdk_server_fields_layout.addWidget(
+            self.glmocr_sdk_server_url_label
+        )
+        self.glmocr_sdk_server_url_edit = LineEdit()
+        self.glmocr_sdk_server_url_edit.setPlaceholderText(
+            self.translate("settings_glmocr_sdk_server_url_placeholder")
+        )
+        self.glmocr_sdk_server_url_edit.editingFinished.connect(
+            self._save_glmocr_sdk_server_url
+        )
+        self.glmocr_sdk_server_fields_layout.addWidget(
+            self.glmocr_sdk_server_url_edit
+        )
+        glmocr_layout.addWidget(self.glmocr_sdk_server_fields)
+
+        self.glmocr_custom_note = CaptionLabel(
+            self.translate("settings_glmocr_custom_note")
+        )
+        self.glmocr_custom_note.setWordWrap(True)
+        glmocr_layout.addWidget(self.glmocr_custom_note)
+
+        self.glmocr_custom_fields = QWidget(self.glmocr_group)
+        self.glmocr_custom_fields_layout = QVBoxLayout(self.glmocr_custom_fields)
+        self.glmocr_custom_fields_layout.setContentsMargins(0, 0, 0, 0)
+        self.glmocr_custom_fields_layout.setSpacing(10)
 
         self.glmocr_api_host_label = BodyLabel(
             self.translate("settings_glmocr_api_host_label")
         )
-        self.glmocr_direct_fields_layout.addWidget(self.glmocr_api_host_label)
+        self.glmocr_custom_fields_layout.addWidget(self.glmocr_api_host_label)
         self.glmocr_api_host_edit = LineEdit()
         self.glmocr_api_host_edit.setPlaceholderText(
             self.translate("settings_glmocr_api_host_placeholder")
         )
         self.glmocr_api_host_edit.editingFinished.connect(self._save_glmocr_api_host)
-        self.glmocr_direct_fields_layout.addWidget(self.glmocr_api_host_edit)
+        self.glmocr_custom_fields_layout.addWidget(self.glmocr_api_host_edit)
 
         self.glmocr_api_port_label = BodyLabel(
             self.translate("settings_glmocr_api_port_label")
         )
-        self.glmocr_direct_fields_layout.addWidget(self.glmocr_api_port_label)
+        self.glmocr_custom_fields_layout.addWidget(self.glmocr_api_port_label)
         self.glmocr_api_port_spin = SpinBox()
         self.glmocr_api_port_spin.setRange(1, 65535)
         self.glmocr_api_port_spin.valueChanged.connect(self._save_glmocr_api_port)
-        self.glmocr_direct_fields_layout.addWidget(self.glmocr_api_port_spin)
+        self.glmocr_custom_fields_layout.addWidget(self.glmocr_api_port_spin)
 
         self.glmocr_model_label = BodyLabel(
             self.translate("settings_glmocr_model_label")
         )
-        self.glmocr_direct_fields_layout.addWidget(self.glmocr_model_label)
+        self.glmocr_custom_fields_layout.addWidget(self.glmocr_model_label)
         self.glmocr_model_edit = LineEdit()
         self.glmocr_model_edit.setPlaceholderText(
             self.translate("settings_glmocr_model_placeholder")
         )
         self.glmocr_model_edit.editingFinished.connect(self._save_glmocr_model)
-        self.glmocr_direct_fields_layout.addWidget(self.glmocr_model_edit)
+        self.glmocr_custom_fields_layout.addWidget(self.glmocr_model_edit)
 
         self.glmocr_config_path_label = BodyLabel(
             self.translate("settings_glmocr_config_path_label")
         )
-        self.glmocr_direct_fields_layout.addWidget(self.glmocr_config_path_label)
+        self.glmocr_custom_fields_layout.addWidget(self.glmocr_config_path_label)
         glmocr_config_row = QHBoxLayout()
         glmocr_config_row.setSpacing(8)
         self.glmocr_config_path_edit = LineEdit()
@@ -297,8 +353,8 @@ class SettingsInterface(QWidget):
         self.glmocr_config_path_button.clicked.connect(self._browse_glmocr_config_path)
         glmocr_config_row.addWidget(self.glmocr_config_path_edit, 1)
         glmocr_config_row.addWidget(self.glmocr_config_path_button)
-        self.glmocr_direct_fields_layout.addLayout(glmocr_config_row)
-        glmocr_layout.addWidget(self.glmocr_direct_fields)
+        self.glmocr_custom_fields_layout.addLayout(glmocr_config_row)
+        glmocr_layout.addWidget(self.glmocr_custom_fields)
         ocr_layout.addWidget(self.glmocr_group)
 
         self.legacy_ocr_group = QGroupBox(
@@ -429,8 +485,17 @@ class SettingsInterface(QWidget):
             self._glmocr_mode_values,
             self.settings_manager.get_glmocr_mode(),
         )
-        self.glmocr_server_url_edit.setText(
-            self.settings_manager.get_glmocr_server_url()
+        self.glmocr_ollama_host_edit.setText(
+            self.settings_manager.get_glmocr_ollama_host()
+        )
+        self.glmocr_ollama_port_spin.setValue(
+            self.settings_manager.get_glmocr_ollama_port()
+        )
+        self.glmocr_ollama_model_edit.setText(
+            self.settings_manager.get_glmocr_ollama_model()
+        )
+        self.glmocr_sdk_server_url_edit.setText(
+            self.settings_manager.get_glmocr_sdk_server_url()
         )
         self.glmocr_api_host_edit.setText(self.settings_manager.get_glmocr_api_host())
         self.glmocr_api_port_spin.setValue(self.settings_manager.get_glmocr_api_port())
@@ -479,7 +544,10 @@ class SettingsInterface(QWidget):
             ocr_languages=self.ocr_languages_edit.text(),
             tesseract_path=self.tesseract_path_edit.text(),
             glmocr_mode=self._current_glmocr_mode(),
-            glmocr_server_url=self.glmocr_server_url_edit.text(),
+            glmocr_ollama_host=self.glmocr_ollama_host_edit.text(),
+            glmocr_ollama_port=self.glmocr_ollama_port_spin.value(),
+            glmocr_ollama_model=self.glmocr_ollama_model_edit.text(),
+            glmocr_sdk_server_url=self.glmocr_sdk_server_url_edit.text(),
             glmocr_api_host=self.glmocr_api_host_edit.text(),
             glmocr_api_port=self.glmocr_api_port_spin.value(),
             glmocr_model=self.glmocr_model_edit.text(),
@@ -496,17 +564,23 @@ class SettingsInterface(QWidget):
 
         self.glmocr_group.setVisible(use_glmocr)
         self.glmocr_maas_note.setVisible(use_glmocr and glm_mode == GLMOCR_MODE_MAAS)
-        self.glmocr_server_note.setVisible(
-            use_glmocr and glm_mode == GLMOCR_MODE_SERVER
+        self.glmocr_ollama_note.setVisible(
+            use_glmocr and glm_mode == GLMOCR_MODE_OLLAMA
         )
-        self.glmocr_server_fields.setVisible(
-            use_glmocr and glm_mode == GLMOCR_MODE_SERVER
+        self.glmocr_ollama_fields.setVisible(
+            use_glmocr and glm_mode == GLMOCR_MODE_OLLAMA
         )
-        self.glmocr_direct_note.setVisible(
-            use_glmocr and glm_mode == GLMOCR_MODE_DIRECT
+        self.glmocr_sdk_server_note.setVisible(
+            use_glmocr and glm_mode == GLMOCR_MODE_SDK_SERVER
         )
-        self.glmocr_direct_fields.setVisible(
-            use_glmocr and glm_mode == GLMOCR_MODE_DIRECT
+        self.glmocr_sdk_server_fields.setVisible(
+            use_glmocr and glm_mode == GLMOCR_MODE_SDK_SERVER
+        )
+        self.glmocr_custom_note.setVisible(
+            use_glmocr and glm_mode == GLMOCR_MODE_CUSTOM
+        )
+        self.glmocr_custom_fields.setVisible(
+            use_glmocr and glm_mode == GLMOCR_MODE_CUSTOM
         )
         self.legacy_ocr_group.setVisible(legacy_visible)
         self._update_azure_test_button_state()
@@ -547,8 +621,19 @@ class SettingsInterface(QWidget):
         self.settings_manager.set_glmocr_mode(self._current_glmocr_mode())
         self._update_ocr_sections_visibility()
 
-    def _save_glmocr_server_url(self) -> None:
-        self.settings_manager.set_glmocr_server_url(self.glmocr_server_url_edit.text())
+    def _save_glmocr_ollama_host(self) -> None:
+        self.settings_manager.set_glmocr_ollama_host(self.glmocr_ollama_host_edit.text())
+
+    def _save_glmocr_ollama_port(self, value: int) -> None:
+        self.settings_manager.set_glmocr_ollama_port(value)
+
+    def _save_glmocr_ollama_model(self) -> None:
+        self.settings_manager.set_glmocr_ollama_model(self.glmocr_ollama_model_edit.text())
+
+    def _save_glmocr_sdk_server_url(self) -> None:
+        self.settings_manager.set_glmocr_sdk_server_url(
+            self.glmocr_sdk_server_url_edit.text()
+        )
 
     def _save_glmocr_api_host(self) -> None:
         self.settings_manager.set_glmocr_api_host(self.glmocr_api_host_edit.text())

@@ -43,12 +43,13 @@ pip install -e .[dev]
 - OCR 为可选功能，默认关闭。
 - `旧版 (Azure/Tesseract)` 会保留当前的 Azure 优先、本地 Tesseract 回退行为。
 - `GLM-OCR` 是新的 OCR 提供方，适用于 PDF 和图片。它会先运行，若设置中启用了回退，则失败后会回退到旧版 OCR 栈。
-- GLM-OCR 在设置页中提供三种连接目标：
-  - `MaaS API`：最省事的零配置方式，从环境变量读取 `ZHIPU_API_KEY` 或 `GLMOCR_API_KEY`。
-  - `External GLM-OCR Server`：推荐的自托管路径。把应用指向现成的 `/glmocr/parse` 端点即可。默认值为 `http://127.0.0.1:5002/glmocr/parse`。
-  - `Advanced Direct Backend`：面向源码安装和高级用户的兼容路径，保留旧的 host/port/model/config 直连方式，并且可能需要在应用当前 Python 环境中安装 `glmocr[selfhosted]`。
+- GLM-OCR 在设置页中提供四种模式：
+  - `Official API`：最省事的零配置方式，从环境变量读取 `ZHIPU_API_KEY` 或 `GLMOCR_API_KEY`。
+  - `Ollama`：最简单的本地路径。默认连接 Ollama 原生 `/api/generate` 接口，使用 `127.0.0.1:11434` 和 `glm-ocr:latest`。
+  - `SDK Server (vLLM / SGLang)`：更强的自托管路径。把应用指向现成的 `/glmocr/parse` 端点即可。默认值为 `http://127.0.0.1:5002/glmocr/parse`。
+  - `Advanced Custom`：面向源码安装和高级用户的兼容路径，保留旧的 host/port/model/config 直连方式，并且可能需要在应用当前 Python 环境中安装 `glmocr[selfhosted]`。
 - 打包后的桌面应用并不内置 GLM-OCR 的 self-hosted 运行时栈；`torch`、`transformers`、`vLLM`、`SGLang` 等仍然需要在应用外部单独部署。
-- 项目默认依赖 `glmocr==0.1.4`，用于客户端侧的 MaaS / 外部 Server 连接。高级 direct-backend 用法可额外安装 `glmocr[selfhosted]`。
+- 项目默认依赖 `glmocr==0.1.4`，用于客户端侧的 Official API、Ollama 和 SDK Server 连接。高级 custom 用法可额外安装 `glmocr[selfhosted]`。
 - 本地 OCR 需要系统已安装 `tesseract`。可从 [Tesseract 官方项目](https://github.com/tesseract-ocr/tesseract) 安装。如果它不在 `PATH` 中，可以在设置页里指定可执行文件路径。
 - Azure OCR 需要在设置页里填写 Azure Document Intelligence 终结点。
 - Azure Document Intelligence 定价页面目前标注有 [每月 500 页免费额度](https://azure.microsoft.com/en-us/products/ai-foundry/tools/document-intelligence#Pricing)。
@@ -58,7 +59,30 @@ pip install -e .[dev]
 
 ### 推荐的本地托管方式
 
-如果你想本地/自托管运行 GLM-OCR，推荐方式是外部 SDK Server，而不是把完整运行时塞进这个 GUI。
+对普通本地使用来说，最简单的路径是 Ollama。对更强的自托管部署，再使用 GLM-OCR SDK Server + vLLM / SGLang。
+
+### Ollama
+
+1. 安装 Ollama。
+2. 拉取模型：
+
+```sh
+ollama pull glm-ocr:latest
+```
+
+3. 如果服务没有自动启动，就运行：
+
+```sh
+ollama serve
+```
+
+4. 在本应用里选择 `GLM-OCR` -> `Ollama`。
+5. 除非你改过本地配置，否则保持默认值即可：
+   - host：`127.0.0.1`
+   - port：`11434`
+   - model：`glm-ocr:latest`
+
+### SDK Server
 
 1. 为 GLM-OCR 创建单独的 Python 环境。
 2. 在该环境中安装 `glmocr[selfhosted,server]`。
@@ -69,7 +93,7 @@ pip install -e .[dev]
 python -m glmocr.server --config config.yaml
 ```
 
-5. 在本应用里选择 `GLM-OCR` -> `External GLM-OCR Server`，并使用 `http://127.0.0.1:5002/glmocr/parse`。
+5. 在本应用里选择 `GLM-OCR` -> `SDK Server (vLLM / SGLang)`，并使用 `http://127.0.0.1:5002/glmocr/parse`。
 
 最小 server 侧 `config.yaml`：
 
@@ -82,15 +106,11 @@ pipeline:
     api_port: 8080
 ```
 
-完整的 `vLLM` / `SGLang` 启动方式请参考官方文档：
-
-- [Self-hosted SDK Server + Client 指南](https://github.com/zai-org/GLM-OCR/blob/main/examples/self-host/README.md)
-- [GLM-OCR README](https://github.com/zai-org/GLM-OCR)
-
-替代方案：
+完整的 Ollama、`vLLM` / `SGLang` 启动方式请参考官方文档：
 
 - [官方 Ollama 部署指南](https://github.com/zai-org/GLM-OCR/blob/main/examples/ollama-deploy/README.md)
-- 这里把 Ollama 作为高级/个人使用场景的备选方案记录下来，而不是当前应用的一等连接模式。
+- [Self-hosted SDK Server + Client 指南](https://github.com/zai-org/GLM-OCR/blob/main/examples/self-host/README.md)
+- [GLM-OCR README](https://github.com/zai-org/GLM-OCR)
 
 ## 运行应用
 
