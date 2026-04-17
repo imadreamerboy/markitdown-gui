@@ -947,7 +947,7 @@ xlsx = [
 [[package]]
 name = "markitdown-pdf-images"
 version = "0.1.0"
-source = { directory = "../markitdown-pdf-images" }
+source = { git = "https://github.com/imadreamerboy/markitdown-pdf-images.git?rev=b1e2fafec9545acd5713974a32a2f7fe7a37b7f4#b1e2fafec9545acd5713974a32a2f7fe7a37b7f4" }
 dependencies = [
     { name = "docling-core" },
     { name = "docling-parse" },
@@ -955,22 +955,6 @@ dependencies = [
     { name = "pillow" },
     { name = "pypdfium2" },
     { name = "pytesseract" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "docling-core", specifier = ">=2.70.0" },
-    { name = "docling-parse", specifier = ">=5.6.0" },
-    { name = "markitdown", extras = ["pdf"], specifier = ">=0.1.5" },
-    { name = "pillow", specifier = ">=11.0.0" },
-    { name = "pypdfium2", specifier = ">=4.30.0" },
-    { name = "pytesseract", specifier = ">=0.3.10" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "pytest", specifier = ">=8.0.0" },
-    { name = "reportlab", specifier = ">=4.4.0" },
 ]
 
 [[package]]
@@ -1006,7 +990,7 @@ requires-dist = [
     { name = "glmocr", specifier = "==0.1.4" },
     { name = "glmocr", extras = ["selfhosted"], marker = "extra == 'glmocr-selfhosted'", specifier = "==0.1.4" },
     { name = "markitdown", extras = ["az-doc-intel", "docx", "pdf", "pptx", "xls", "xlsx"], specifier = "==0.1.5" },
-    { name = "markitdown-pdf-images", directory = "../markitdown-pdf-images" },
+    { name = "markitdown-pdf-images", git = "https://github.com/imadreamerboy/markitdown-pdf-images.git?rev=b1e2fafec9545acd5713974a32a2f7fe7a37b7f4" },
     { name = "markitdowngui", extras = ["test"], marker = "extra == 'dev'" },
     { name = "pyinstaller", marker = "extra == 'dev'" },
     { name = "pypdfium2" },
