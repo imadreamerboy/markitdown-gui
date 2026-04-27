@@ -1,5 +1,8 @@
 [阅读中文版本](README_zh.md)
 
+> [!IMPORTANT] 
+> Ill update/merge changes ater NeurIps deadline (may 6th)
+
 # MarkItDown GUI Wrapper
 
 A desktop GUI for `MarkItDown`, built with `PySide6` and `QFluentWidgets`.
