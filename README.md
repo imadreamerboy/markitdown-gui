@@ -16,7 +16,7 @@ It focuses on fast multi-file conversion to Markdown with a modern Fluent-style 
 - Preview modes: rendered Markdown view and raw Markdown view.
 - Save modes: export as one combined file or separate files.
 - Quick actions: copy Markdown, save output, back to queue, start over.
-- Optional OCR for scanned PDFs and image files, with selectable `Legacy (Azure/Tesseract)` and `GLM-OCR` providers.
+- Optional OCR for scanned PDFs and image files, with selectable `Azure/Tesseract OCR` and `GLM-OCR` providers.
 - Settings for output folder, batch size, header style, table style, OCR, and theme mode (light/dark/system).
 - Built-in shortcuts dialog, update check action, and about dialog.
 
@@ -44,15 +44,14 @@ pip install -e .[dev]
 ### OCR Notes
 
 - OCR is optional and disabled by default.
-- `Legacy (Azure/Tesseract)` preserves the existing Azure-first, Tesseract-fallback behavior.
-- `GLM-OCR` is available as a separate OCR provider for PDFs and images. It runs first and can fall back to the legacy OCR stack if enabled in Settings.
-- GLM-OCR offers four modes in Settings:
+- `Azure/Tesseract OCR` uses Azure Document Intelligence first when configured, then local Tesseract fallback.
+- `GLM-OCR` is available as a separate OCR provider for PDFs and images. It runs first and can fall back to Azure/Tesseract OCR if enabled in Settings.
+- GLM-OCR offers three modes in Settings:
   - `Official API`: easiest zero-setup path, reads `ZHIPU_API_KEY` or `GLMOCR_API_KEY` from the environment.
-  - `Ollama`: easiest local path. Targets Ollama's native `/api/generate` endpoint with defaults `127.0.0.1:11434` and `glm-ocr:latest`.
+  - `Ollama`: easiest local path. The GUI calls Ollama's native `/api/generate` endpoint directly, with defaults `127.0.0.1:11434` and `glm-ocr:latest`.
   - `SDK Server (vLLM / SGLang)`: stronger self-hosted path. Point the app at an existing `/glmocr/parse` endpoint. Default: `http://127.0.0.1:5002/glmocr/parse`.
-  - `Advanced Custom`: compatibility path for source installs and power users. This keeps the older host/port/model/config flow and may require `glmocr[selfhosted]` in the same Python environment as the app.
 - The packaged desktop app does not bundle the GLM-OCR self-hosted runtime stack (`torch`, `transformers`, `vLLM`, `SGLang`, and related server/runtime pieces stay external).
-- The project depends on `glmocr==0.1.4` for client-side Official API, Ollama, and SDK Server connectivity. Advanced custom usage can install `glmocr[selfhosted]`.
+- The project depends on `glmocr==0.1.4` for client-side Official API and SDK Server connectivity. Ollama is called directly over HTTP.
 - Local OCR requires a system `tesseract` binary. Install it from the [official Tesseract project](https://github.com/tesseract-ocr/tesseract). If it is not on your `PATH`, set the executable path in Settings.
 - Azure OCR requires an Azure Document Intelligence endpoint in Settings.
 - Azure Document Intelligence pricing includes [500 free pages per month](https://azure.microsoft.com/en-us/products/ai-foundry/tools/document-intelligence#Pricing) at the time of writing.

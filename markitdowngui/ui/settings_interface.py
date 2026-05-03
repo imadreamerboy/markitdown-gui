@@ -32,7 +32,6 @@ from markitdowngui.core.settings import (
     GLMOCR_MODE_MAAS,
     GLMOCR_MODE_OLLAMA,
     GLMOCR_MODE_SDK_SERVER,
-    GLMOCR_MODE_CUSTOM,
     OCR_PROVIDER_GLMOCR,
     OCR_PROVIDER_LEGACY,
     SettingsManager,
@@ -72,7 +71,6 @@ class SettingsInterface(QWidget):
             GLMOCR_MODE_MAAS,
             GLMOCR_MODE_OLLAMA,
             GLMOCR_MODE_SDK_SERVER,
-            GLMOCR_MODE_CUSTOM,
         ]
         self._build_ui()
         self._load_settings()
@@ -174,7 +172,7 @@ class SettingsInterface(QWidget):
         self.ocr_provider_combo = ComboBox()
         self.ocr_provider_combo.addItems(
             [
-                self.translate("settings_ocr_provider_legacy"),
+                self.translate("settings_ocr_provider_azure_tesseract"),
                 self.translate("settings_ocr_provider_glmocr"),
             ]
         )
@@ -201,7 +199,6 @@ class SettingsInterface(QWidget):
                 self.translate("settings_glmocr_mode_maas"),
                 self.translate("settings_glmocr_mode_ollama"),
                 self.translate("settings_glmocr_mode_sdk_server"),
-                self.translate("settings_glmocr_mode_custom"),
             ]
         )
         self.glmocr_mode_combo.currentTextChanged.connect(self._save_glmocr_mode)
@@ -291,79 +288,17 @@ class SettingsInterface(QWidget):
         )
         glmocr_layout.addWidget(self.glmocr_sdk_server_fields)
 
-        self.glmocr_custom_note = CaptionLabel(
-            self.translate("settings_glmocr_custom_note")
-        )
-        self.glmocr_custom_note.setWordWrap(True)
-        glmocr_layout.addWidget(self.glmocr_custom_note)
-
-        self.glmocr_custom_fields = QWidget(self.glmocr_group)
-        self.glmocr_custom_fields_layout = QVBoxLayout(self.glmocr_custom_fields)
-        self.glmocr_custom_fields_layout.setContentsMargins(0, 0, 0, 0)
-        self.glmocr_custom_fields_layout.setSpacing(10)
-
-        self.glmocr_api_host_label = BodyLabel(
-            self.translate("settings_glmocr_api_host_label")
-        )
-        self.glmocr_custom_fields_layout.addWidget(self.glmocr_api_host_label)
-        self.glmocr_api_host_edit = LineEdit()
-        self.glmocr_api_host_edit.setPlaceholderText(
-            self.translate("settings_glmocr_api_host_placeholder")
-        )
-        self.glmocr_api_host_edit.editingFinished.connect(self._save_glmocr_api_host)
-        self.glmocr_custom_fields_layout.addWidget(self.glmocr_api_host_edit)
-
-        self.glmocr_api_port_label = BodyLabel(
-            self.translate("settings_glmocr_api_port_label")
-        )
-        self.glmocr_custom_fields_layout.addWidget(self.glmocr_api_port_label)
-        self.glmocr_api_port_spin = SpinBox()
-        self.glmocr_api_port_spin.setRange(1, 65535)
-        self.glmocr_api_port_spin.valueChanged.connect(self._save_glmocr_api_port)
-        self.glmocr_custom_fields_layout.addWidget(self.glmocr_api_port_spin)
-
-        self.glmocr_model_label = BodyLabel(
-            self.translate("settings_glmocr_model_label")
-        )
-        self.glmocr_custom_fields_layout.addWidget(self.glmocr_model_label)
-        self.glmocr_model_edit = LineEdit()
-        self.glmocr_model_edit.setPlaceholderText(
-            self.translate("settings_glmocr_model_placeholder")
-        )
-        self.glmocr_model_edit.editingFinished.connect(self._save_glmocr_model)
-        self.glmocr_custom_fields_layout.addWidget(self.glmocr_model_edit)
-
-        self.glmocr_config_path_label = BodyLabel(
-            self.translate("settings_glmocr_config_path_label")
-        )
-        self.glmocr_custom_fields_layout.addWidget(self.glmocr_config_path_label)
-        glmocr_config_row = QHBoxLayout()
-        glmocr_config_row.setSpacing(8)
-        self.glmocr_config_path_edit = LineEdit()
-        self.glmocr_config_path_edit.setPlaceholderText(
-            self.translate("settings_glmocr_config_path_placeholder")
-        )
-        self.glmocr_config_path_edit.editingFinished.connect(
-            self._save_glmocr_config_path
-        )
-        self.glmocr_config_path_button = PushButton(
-            self.translate("browse_button_compact")
-        )
-        self.glmocr_config_path_button.setIcon(FIF.FOLDER)
-        self.glmocr_config_path_button.clicked.connect(self._browse_glmocr_config_path)
-        glmocr_config_row.addWidget(self.glmocr_config_path_edit, 1)
-        glmocr_config_row.addWidget(self.glmocr_config_path_button)
-        self.glmocr_custom_fields_layout.addLayout(glmocr_config_row)
-        glmocr_layout.addWidget(self.glmocr_custom_fields)
         ocr_layout.addWidget(self.glmocr_group)
 
-        self.legacy_ocr_group = QGroupBox(
-            self.translate("settings_legacy_ocr_group")
+        self.azure_tesseract_ocr_group = QGroupBox(
+            self.translate("settings_azure_tesseract_ocr_group")
         )
-        legacy_layout = QVBoxLayout(self.legacy_ocr_group)
-        legacy_layout.setSpacing(10)
+        azure_tesseract_layout = QVBoxLayout(self.azure_tesseract_ocr_group)
+        azure_tesseract_layout.setSpacing(10)
 
-        legacy_layout.addWidget(BodyLabel(self.translate("settings_docintel_label")))
+        azure_tesseract_layout.addWidget(
+            BodyLabel(self.translate("settings_docintel_label"))
+        )
         self.docintel_endpoint_edit = LineEdit()
         self.docintel_endpoint_edit.setPlaceholderText(
             self.translate("settings_docintel_placeholder")
@@ -377,7 +312,7 @@ class SettingsInterface(QWidget):
         self.docintel_endpoint_edit.textChanged.connect(
             lambda *_args: self._update_azure_test_button_state()
         )
-        legacy_layout.addWidget(self.docintel_endpoint_edit)
+        azure_tesseract_layout.addWidget(self.docintel_endpoint_edit)
 
         azure_test_row = QHBoxLayout()
         azure_test_row.setSpacing(8)
@@ -391,9 +326,9 @@ class SettingsInterface(QWidget):
         self.test_azure_button.clicked.connect(self._test_azure_connection)
         azure_test_row.addWidget(self.test_azure_button)
         azure_test_row.addStretch(1)
-        legacy_layout.addLayout(azure_test_row)
+        azure_tesseract_layout.addLayout(azure_test_row)
 
-        legacy_layout.addWidget(
+        azure_tesseract_layout.addWidget(
             BodyLabel(self.translate("settings_ocr_language_label"))
         )
         self.ocr_languages_edit = LineEdit()
@@ -404,9 +339,9 @@ class SettingsInterface(QWidget):
             self.translate("settings_ocr_language_tooltip")
         )
         self.ocr_languages_edit.editingFinished.connect(self._save_ocr_languages)
-        legacy_layout.addWidget(self.ocr_languages_edit)
+        azure_tesseract_layout.addWidget(self.ocr_languages_edit)
 
-        legacy_layout.addWidget(
+        azure_tesseract_layout.addWidget(
             BodyLabel(self.translate("settings_tesseract_path_label"))
         )
         tesseract_row = QHBoxLayout()
@@ -426,8 +361,8 @@ class SettingsInterface(QWidget):
         self.tesseract_path_button.clicked.connect(self._browse_tesseract_path)
         tesseract_row.addWidget(self.tesseract_path_edit, 1)
         tesseract_row.addWidget(self.tesseract_path_button)
-        legacy_layout.addLayout(tesseract_row)
-        ocr_layout.addWidget(self.legacy_ocr_group)
+        azure_tesseract_layout.addLayout(tesseract_row)
+        ocr_layout.addWidget(self.azure_tesseract_ocr_group)
         layout.addWidget(self.ocr_group)
 
         self.appearance_group = QGroupBox(self.translate("settings_appearance_group"))
@@ -497,12 +432,6 @@ class SettingsInterface(QWidget):
         self.glmocr_sdk_server_url_edit.setText(
             self.settings_manager.get_glmocr_sdk_server_url()
         )
-        self.glmocr_api_host_edit.setText(self.settings_manager.get_glmocr_api_host())
-        self.glmocr_api_port_spin.setValue(self.settings_manager.get_glmocr_api_port())
-        self.glmocr_model_edit.setText(self.settings_manager.get_glmocr_model())
-        self.glmocr_config_path_edit.setText(
-            self.settings_manager.get_glmocr_config_path()
-        )
         self.docintel_endpoint_edit.setText(
             self.settings_manager.get_docintel_endpoint()
         )
@@ -548,17 +477,13 @@ class SettingsInterface(QWidget):
             glmocr_ollama_port=self.glmocr_ollama_port_spin.value(),
             glmocr_ollama_model=self.glmocr_ollama_model_edit.text(),
             glmocr_sdk_server_url=self.glmocr_sdk_server_url_edit.text(),
-            glmocr_api_host=self.glmocr_api_host_edit.text(),
-            glmocr_api_port=self.glmocr_api_port_spin.value(),
-            glmocr_model=self.glmocr_model_edit.text(),
-            glmocr_config_path=self.glmocr_config_path_edit.text(),
         )
 
     def _update_ocr_sections_visibility(self) -> None:
         provider = self._current_ocr_provider()
         glm_mode = self._current_glmocr_mode()
         use_glmocr = provider == OCR_PROVIDER_GLMOCR
-        legacy_visible = provider == OCR_PROVIDER_LEGACY or (
+        azure_tesseract_visible = provider == OCR_PROVIDER_LEGACY or (
             use_glmocr and self.ocr_fallback_check.isChecked()
         )
 
@@ -576,13 +501,7 @@ class SettingsInterface(QWidget):
         self.glmocr_sdk_server_fields.setVisible(
             use_glmocr and glm_mode == GLMOCR_MODE_SDK_SERVER
         )
-        self.glmocr_custom_note.setVisible(
-            use_glmocr and glm_mode == GLMOCR_MODE_CUSTOM
-        )
-        self.glmocr_custom_fields.setVisible(
-            use_glmocr and glm_mode == GLMOCR_MODE_CUSTOM
-        )
-        self.legacy_ocr_group.setVisible(legacy_visible)
+        self.azure_tesseract_ocr_group.setVisible(azure_tesseract_visible)
         self._update_azure_test_button_state()
 
     def _save_output_folder(self) -> None:
@@ -635,34 +554,6 @@ class SettingsInterface(QWidget):
             self.glmocr_sdk_server_url_edit.text()
         )
 
-    def _save_glmocr_api_host(self) -> None:
-        self.settings_manager.set_glmocr_api_host(self.glmocr_api_host_edit.text())
-
-    def _save_glmocr_api_port(self, value: int) -> None:
-        self.settings_manager.set_glmocr_api_port(value)
-
-    def _save_glmocr_model(self) -> None:
-        self.settings_manager.set_glmocr_model(self.glmocr_model_edit.text())
-
-    def _save_glmocr_config_path(self) -> None:
-        self.settings_manager.set_glmocr_config_path(
-            self.glmocr_config_path_edit.text()
-        )
-
-    def _browse_glmocr_config_path(self) -> None:
-        start_path = self.settings_manager.get_glmocr_config_path()
-        if start_path and not os.path.exists(start_path):
-            start_path = ""
-        file_path, _ = QFileDialog.getOpenFileName(
-            self,
-            self.translate("settings_glmocr_config_path_dialog"),
-            start_path,
-            self.translate("yaml_files_filter"),
-        )
-        if file_path:
-            self.glmocr_config_path_edit.setText(file_path)
-            self.settings_manager.set_glmocr_config_path(file_path)
-
     def _save_docintel_endpoint(self) -> None:
         self.settings_manager.set_docintel_endpoint(self.docintel_endpoint_edit.text())
         self._update_azure_test_button_state()
@@ -704,7 +595,7 @@ class SettingsInterface(QWidget):
             return
         self.test_azure_button.setEnabled(
             bool(self.docintel_endpoint_edit.text().strip())
-            and not self.legacy_ocr_group.isHidden()
+            and not self.azure_tesseract_ocr_group.isHidden()
         )
 
     def _test_azure_connection(self) -> None:

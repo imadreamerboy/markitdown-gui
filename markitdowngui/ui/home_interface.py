@@ -622,10 +622,6 @@ class HomeInterface(QWidget):
             glmocr_ollama_port=self.settings_manager.get_glmocr_ollama_port(),
             glmocr_ollama_model=self.settings_manager.get_glmocr_ollama_model(),
             glmocr_sdk_server_url=self.settings_manager.get_glmocr_sdk_server_url(),
-            glmocr_api_host=self.settings_manager.get_glmocr_api_host(),
-            glmocr_api_port=self.settings_manager.get_glmocr_api_port(),
-            glmocr_model=self.settings_manager.get_glmocr_model(),
-            glmocr_config_path=self.settings_manager.get_glmocr_config_path(),
         )
 
     def update_progress(self, progress: int, current_file: str) -> None:

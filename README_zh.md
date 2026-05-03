@@ -13,7 +13,7 @@
 - 预览模式支持渲染视图和原始 Markdown 视图。
 - 保存模式支持合并为单文件或分别保存多个文件。
 - 常用操作：复制 Markdown、保存输出、返回队列、重新开始。
-- 可选 OCR，支持扫描版 PDF 和图片文件，可在 `旧版 (Azure/Tesseract)` 与 `GLM-OCR` 两种提供方之间切换。
+- 可选 OCR，支持扫描版 PDF 和图片文件，可在 `Azure/Tesseract OCR` 与 `GLM-OCR` 两种提供方之间切换。
 - 设置项包括输出目录、批处理大小、标题样式、表格样式、OCR 和主题模式（浅色/深色/跟随系统）。
 - 内置快捷键面板、检查更新入口和关于对话框。
 
@@ -41,15 +41,14 @@ pip install -e .[dev]
 ### OCR 说明
 
 - OCR 为可选功能，默认关闭。
-- `旧版 (Azure/Tesseract)` 会保留当前的 Azure 优先、本地 Tesseract 回退行为。
-- `GLM-OCR` 是新的 OCR 提供方，适用于 PDF 和图片。它会先运行，若设置中启用了回退，则失败后会回退到旧版 OCR 栈。
-- GLM-OCR 在设置页中提供四种模式：
+- `Azure/Tesseract OCR` 会在配置后优先使用 Azure Document Intelligence，然后回退到本地 Tesseract。
+- `GLM-OCR` 是新的 OCR 提供方，适用于 PDF 和图片。它会先运行，若设置中启用了回退，则失败后会回退到 Azure/Tesseract OCR。
+- GLM-OCR 在设置页中提供三种模式：
   - `Official API`：最省事的零配置方式，从环境变量读取 `ZHIPU_API_KEY` 或 `GLMOCR_API_KEY`。
-  - `Ollama`：最简单的本地路径。默认连接 Ollama 原生 `/api/generate` 接口，使用 `127.0.0.1:11434` 和 `glm-ocr:latest`。
+  - `Ollama`：最简单的本地路径。GUI 会直接调用 Ollama 原生 `/api/generate` 接口，默认使用 `127.0.0.1:11434` 和 `glm-ocr:latest`。
   - `SDK Server (vLLM / SGLang)`：更强的自托管路径。把应用指向现成的 `/glmocr/parse` 端点即可。默认值为 `http://127.0.0.1:5002/glmocr/parse`。
-  - `Advanced Custom`：面向源码安装和高级用户的兼容路径，保留旧的 host/port/model/config 直连方式，并且可能需要在应用当前 Python 环境中安装 `glmocr[selfhosted]`。
 - 打包后的桌面应用并不内置 GLM-OCR 的 self-hosted 运行时栈；`torch`、`transformers`、`vLLM`、`SGLang` 等仍然需要在应用外部单独部署。
-- 项目默认依赖 `glmocr==0.1.4`，用于客户端侧的 Official API、Ollama 和 SDK Server 连接。高级 custom 用法可额外安装 `glmocr[selfhosted]`。
+- 项目默认依赖 `glmocr==0.1.4`，用于客户端侧的 Official API 和 SDK Server 连接。Ollama 通过 HTTP 直接调用。
 - 本地 OCR 需要系统已安装 `tesseract`。可从 [Tesseract 官方项目](https://github.com/tesseract-ocr/tesseract) 安装。如果它不在 `PATH` 中，可以在设置页里指定可执行文件路径。
 - Azure OCR 需要在设置页里填写 Azure Document Intelligence 终结点。
 - Azure Document Intelligence 定价页面目前标注有 [每月 500 页免费额度](https://azure.microsoft.com/en-us/products/ai-foundry/tools/document-intelligence#Pricing)。

@@ -36,9 +36,6 @@ test = [
     "pytest",
     "pytest-mock",
 ]
-glmocr-selfhosted = [
-    "glmocr[selfhosted]==0.1.4",
-]
 
 [tool.pytest.ini_options]
 pythonpath = [
