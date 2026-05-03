@@ -1,5 +1,8 @@
 [阅读中文版本](README_zh.md)
 
+> [!IMPORTANT] 
+> Ill update/merge changes ater NeurIps deadline (may 6th)
+
 # MarkItDown GUI Wrapper
 
 A desktop GUI for `MarkItDown`, built with `PySide6` and `QFluentWidgets`.
@@ -113,6 +116,23 @@ The official GLM-OCR docs show the full Ollama, `vLLM`, and `SGLang` setup comma
 - [Official Ollama deployment guide](https://github.com/zai-org/GLM-OCR/blob/main/examples/ollama-deploy/README.md)
 - [Self-hosted SDK Server + Client Guide](https://github.com/zai-org/GLM-OCR/blob/main/examples/self-host/README.md)
 - [GLM-OCR README](https://github.com/zai-org/GLM-OCR)
+
+### Website URL Notes
+
+- Website conversion uses the hosted [Defuddle](https://defuddle.md/) API.
+- The app sends the pasted `http://` or `https://` URL to `https://defuddle.md/<url>` and stores the returned Markdown in the normal results view.
+- Defuddle responses typically include YAML frontmatter metadata at the top when available.
+- According to the [Defuddle Terms](https://defuddle.md/terms), unauthenticated requests are limited to `1,000` requests per month per IP address as of March 14, 2026.
+- Because requests are sent directly from the desktop app, that free-tier limit applies to the user's own network IP.
+- Website conversion requires an internet connection and depends on the external Defuddle service being available.
+### OCR Notes
+
+- OCR is optional and disabled by default.
+- Local OCR requires a system `tesseract` binary. Install it from the [official Tesseract project](https://github.com/tesseract-ocr/tesseract). If it is not on your `PATH`, set the executable path in Settings.
+- Azure OCR requires an Azure Document Intelligence endpoint in Settings.
+- Azure Document Intelligence pricing includes [500 free pages per month](https://azure.microsoft.com/en-us/products/ai-foundry/tools/document-intelligence#Pricing) at the time of writing.
+- For API-key auth, set `AZURE_OCR_API_KEY`.
+- If `AZURE_OCR_API_KEY` is not set, Azure OCR falls back to Azure identity credentials supported by `DefaultAzureCredential`.
 
 ### Website URL Notes
 
