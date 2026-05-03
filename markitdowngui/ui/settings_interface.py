@@ -123,6 +123,17 @@ class SettingsInterface(QWidget):
         folder_row.addWidget(self.output_folder_edit, 1)
         folder_row.addWidget(self.output_folder_button)
         general_layout.addLayout(folder_row)
+
+        self.save_to_source_folder_check = CheckBox(
+            self.translate("settings_save_to_source_folder_label")
+        )
+        self.save_to_source_folder_check.setToolTip(
+            self.translate("settings_save_to_source_folder_tooltip")
+        )
+        self.save_to_source_folder_check.toggled.connect(
+            self._save_to_source_folder_changed
+        )
+        general_layout.addWidget(self.save_to_source_folder_check)
         layout.addWidget(self.general_group)
 
         self.conversion_group = QGroupBox(self.translate("settings_conversion_group"))
@@ -396,6 +407,9 @@ class SettingsInterface(QWidget):
         self.output_folder_edit.setText(
             self.settings_manager.get_default_output_folder()
         )
+        self.save_to_source_folder_check.setChecked(
+            self.settings_manager.get_save_to_source_folder()
+        )
         self.batch_size_spin.setValue(self.settings_manager.get_batch_size())
 
         format_settings = self.settings_manager.get_format_settings()
@@ -521,6 +535,9 @@ class SettingsInterface(QWidget):
         if folder:
             self.output_folder_edit.setText(folder)
             self.settings_manager.set_default_output_folder(folder)
+
+    def _save_to_source_folder_changed(self, checked: bool) -> None:
+        self.settings_manager.set_save_to_source_folder(checked)
 
     def _save_batch_size(self, value: int) -> None:
         self.settings_manager.set_batch_size(value)

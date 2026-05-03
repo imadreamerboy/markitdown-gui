@@ -428,25 +428,40 @@ def test_convert_pdf_with_preserved_images_and_local_ocr_uses_plugin(
     assert captured["ocr_languages"] == "eng+deu"
 
 
-def test_convert_pdf_with_preserved_images_rejects_glmocr(
+def test_convert_pdf_with_preserved_images_and_glmocr_uses_plugin(
     monkeypatch,
     conversion,
     tmp_path,
 ):
-    monkeypatch.setenv("ZHIPU_API_KEY", "secret")
+    captured = {}
 
-    with pytest.raises(RuntimeError) as exc_info:
-        conversion.convert_file_with_details(
-            "scan.pdf",
-            conversion.ConversionOptions(
-                ocr_enabled=True,
-                preserve_pdf_images=True,
-                pdf_artifacts_dir=str(tmp_path / "artifacts"),
-                ocr_provider=conversion.OCR_PROVIDER_GLMOCR,
-            ),
-        )
+    def fake_convert_pdf(_file_path, **kwargs):
+        captured.update(kwargs)
+        return types.SimpleNamespace(markdown="ocr pdf text", assets=[])
 
-    assert "Preserve PDF images is not available with GLM-OCR" in str(exc_info.value)
+    _install_fake_pdf_images(monkeypatch, fake_convert_pdf)
+    monkeypatch.setattr(
+        conversion,
+        "_convert_pdf_with_glmocr",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("GLM-OCR routing should not run")
+        ),
+    )
+
+    outcome = conversion.convert_file_with_details(
+        "scan.pdf",
+        conversion.ConversionOptions(
+            ocr_enabled=True,
+            preserve_pdf_images=True,
+            pdf_artifacts_dir=str(tmp_path / "artifacts"),
+            ocr_provider=conversion.OCR_PROVIDER_GLMOCR,
+            tesseract_path=" /usr/bin/tesseract ",
+        ),
+    )
+
+    assert outcome.backend == conversion.BACKEND_PDF_IMAGES
+    assert captured["ocr_enabled"] is True
+    assert captured["tesseract_path"] == "/usr/bin/tesseract"
 
 
 def test_map_pdf_assets_uses_app_owned_asset_model(conversion, tmp_path):

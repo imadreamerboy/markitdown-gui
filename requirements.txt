@@ -93,7 +93,7 @@ markitdown==0.1.5
     # via
     #   markitdowngui (pyproject.toml)
     #   markitdown-pdf-images
-../markitdown-pdf-images
+markitdown-pdf-images @ git+https://github.com/imadreamerboy/markitdown-pdf-images.git@b1e2fafec9545acd5713974a32a2f7fe7a37b7f4
     # via markitdowngui (pyproject.toml)
 mdurl==0.1.2
     # via markdown-it-py

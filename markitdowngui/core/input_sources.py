@@ -48,3 +48,13 @@ def source_output_stem(source: str) -> str:
     candidate = "-".join(segments)
     sanitized = UNSAFE_FILENAME_CHARS.sub("-", candidate).strip("._-")
     return sanitized or "website"
+
+
+def source_output_dir(source: str) -> str:
+    if is_web_url(source):
+        return ""
+
+    parent = _source_path(source).parent
+    if str(parent) in {"", "."}:
+        return ""
+    return str(parent)

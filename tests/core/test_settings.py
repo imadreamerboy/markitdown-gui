@@ -90,6 +90,10 @@ def test_output_defaults(settings_manager, tmp_path):
     settings_manager.set_default_output_folder(str(tmp_path))
     assert settings_manager.get_default_output_folder() == str(tmp_path)
 
+    assert not settings_manager.get_save_to_source_folder()
+    settings_manager.set_save_to_source_folder(True)
+    assert settings_manager.get_save_to_source_folder()
+
 def test_batch_size(settings_manager):
     """Test batch size bounds and persistence."""
     assert settings_manager.get_batch_size() == 3

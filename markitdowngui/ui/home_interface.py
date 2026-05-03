@@ -43,12 +43,12 @@ from markitdowngui.core.conversion import (
     ConversionOptions,
     ConversionOutcome,
     ConversionWorker,
-    OCR_PROVIDER_GLMOCR,
 )
 from markitdowngui.core.file_utils import FileManager
 from markitdowngui.core.input_sources import (
     is_web_url,
     source_display_name,
+    source_output_dir,
     source_output_stem,
 )
 from markitdowngui.core.markdown_assets import (
@@ -568,17 +568,6 @@ class HomeInterface(QWidget):
                 self._clear_result_views(reset_progress=False)
             batch_size = self.settings_manager.get_batch_size()
             options = self._build_conversion_options()
-            if (
-                options.preserve_pdf_images
-                and options.normalized_ocr_provider == OCR_PROVIDER_GLMOCR
-            ):
-                QMessageBox.warning(
-                    self,
-                    self.translate("conversion_error_title"),
-                    self.translate("home_preserve_pdf_images_glmocr_note"),
-                )
-                self._cleanup_temp_asset_root()
-                return
             self.worker = ConversionWorker(valid_sources, batch_size, options)
             self.worker.progress.connect(self.update_progress)
             self.worker.finished.connect(self.handle_conversion_finished)
@@ -803,10 +792,7 @@ class HomeInterface(QWidget):
 
     def save_combined_output(self) -> None:
         output_ext = self.settings_manager.get_default_output_format()
-        output_dir = self._get_default_output_dir()
-        default_name = f"converted{output_ext}"
-        if output_dir:
-            default_name = os.path.join(output_dir, default_name)
+        default_name = self._default_combined_output_path(output_ext)
 
         output_path, _ = QFileDialog.getSaveFileName(
             self,
@@ -840,6 +826,13 @@ class HomeInterface(QWidget):
                     output_path, self.settings_manager.get_recent_outputs()
                 )
             )
+            QMessageBox.information(
+                self,
+                self.translate("save_combined_complete_title"),
+                self.translate("save_combined_complete_message").format(
+                    path=output_path
+                ),
+            )
         except Exception as e:
             QMessageBox.critical(
                 self,
@@ -848,16 +841,14 @@ class HomeInterface(QWidget):
             )
 
     def save_individual_outputs(self) -> None:
-        output_dir = QFileDialog.getExistingDirectory(
-            self,
-            self.translate("select_directory_title"),
-            self._get_default_output_dir(),
-        )
-        if not output_dir:
+        output_dirs = self._individual_output_dirs()
+        if not output_dirs:
             return
 
         output_ext = self.settings_manager.get_default_output_format()
+        saved_paths: list[str] = []
         for input_file, outcome in self.conversionResults.items():
+            output_dir = output_dirs[input_file]
             base_name = source_output_stem(input_file)
             output_path = os.path.join(output_dir, f"{base_name}{output_ext}")
             counter = 1
@@ -871,8 +862,71 @@ class HomeInterface(QWidget):
                     output_path,
                 )
                 self.file_manager.save_markdown_file(output_path, saved_markdown)
+                saved_paths.append(output_path)
             except Exception:
                 AppLogger.error(f"Failed saving file: {output_path}")
+
+        if saved_paths:
+            saved_dirs = {os.path.dirname(path) for path in saved_paths}
+            if len(saved_dirs) == 1:
+                message = self.translate("save_individual_complete_message").format(
+                    count=len(saved_paths),
+                    dir=next(iter(saved_dirs)),
+                )
+            else:
+                message = self.translate(
+                    "save_individual_complete_multi_dir_message"
+                ).format(count=len(saved_paths))
+            QMessageBox.information(
+                self,
+                self.translate("save_individual_complete_title"),
+                message,
+            )
+
+    def _default_combined_output_path(self, output_ext: str) -> str:
+        source = next(iter(self.conversionResults), "")
+        if len(self.conversionResults) == 1:
+            output_dir = self._source_output_dir(source)
+            default_name = f"{source_output_stem(source)}{output_ext}"
+        else:
+            output_dir = self._get_default_output_dir()
+            default_name = f"converted{output_ext}"
+
+        return os.path.join(output_dir, default_name) if output_dir else default_name
+
+    def _individual_output_dirs(self) -> dict[str, str]:
+        if self.settings_manager.get_save_to_source_folder():
+            output_dirs = {
+                source: self._source_output_dir(source)
+                for source in self.conversionResults
+            }
+            missing_sources = [
+                source for source, output_dir in output_dirs.items() if not output_dir
+            ]
+            if not missing_sources:
+                return output_dirs
+        else:
+            output_dirs = {}
+            missing_sources = list(self.conversionResults)
+
+        fallback_dir = QFileDialog.getExistingDirectory(
+            self,
+            self.translate("select_directory_title"),
+            self._get_default_output_dir(),
+        )
+        if not fallback_dir:
+            return {}
+
+        for source in missing_sources:
+            output_dirs[source] = fallback_dir
+        return output_dirs
+
+    def _source_output_dir(self, source: str) -> str:
+        if self.settings_manager.get_save_to_source_folder():
+            output_dir = source_output_dir(source)
+            if output_dir and os.path.isdir(output_dir):
+                return output_dir
+        return self._get_default_output_dir()
 
     def _get_default_output_dir(self) -> str:
         output_dir = self.settings_manager.get_default_output_folder()
@@ -998,19 +1052,8 @@ class HomeInterface(QWidget):
         self._update_preserve_pdf_images_state()
 
     def _update_preserve_pdf_images_state(self) -> None:
-        provider = self.settings_manager.get_ocr_provider()
-        preserve_unavailable = provider == OCR_PROVIDER_GLMOCR
-        note_key = "home_preserve_pdf_images_note"
-        if preserve_unavailable:
-            note_key = "home_preserve_pdf_images_glmocr_note"
-            if self.preserve_pdf_images_check.isChecked():
-                self.preserve_pdf_images_check.blockSignals(True)
-                self.preserve_pdf_images_check.setChecked(False)
-                self.preserve_pdf_images_check.blockSignals(False)
-                self.settings_manager.set_preserve_pdf_images(False)
-
-        self.preserve_pdf_images_check.setEnabled(not preserve_unavailable)
-        self.queue_options_note.setText(self.translate(note_key))
+        self.preserve_pdf_images_check.setEnabled(True)
+        self.queue_options_note.setText(self.translate("home_preserve_pdf_images_note"))
 
     def _cleanup_temp_asset_root(self) -> None:
         cleanup_temp_asset_root(self._temp_asset_root)
