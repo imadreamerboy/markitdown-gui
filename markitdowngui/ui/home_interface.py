@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 from qfluentwidgets import (
     BodyLabel,
     CaptionLabel,
+    CheckBox,
     ElevatedCardWidget,
     FluentIcon as FIF,
     InfoBar,
@@ -35,16 +36,28 @@ from qfluentwidgets import (
 from markitdowngui.core.conversion import (
     BACKEND_AZURE,
     BACKEND_DEFUDDLE,
+    BACKEND_GLMOCR,
     BACKEND_LOCAL,
     BACKEND_NATIVE,
+    BACKEND_PDF_IMAGES,
     ConversionOptions,
+    ConversionOutcome,
     ConversionWorker,
+    OCR_PROVIDER_GLMOCR,
 )
 from markitdowngui.core.file_utils import FileManager
 from markitdowngui.core.input_sources import (
     is_web_url,
     source_display_name,
     source_output_stem,
+)
+from markitdowngui.core.markdown_assets import (
+    MarkdownSaveInput,
+    cleanup_temp_asset_root,
+    create_temp_asset_root,
+    prepare_combined_markdown_for_save,
+    prepare_markdown_for_separate_save,
+    rewrite_markdown_for_preview,
 )
 from markitdowngui.core.settings import SettingsManager
 from markitdowngui.ui.components.file_panel import FilePanel
@@ -65,15 +78,17 @@ class HomeInterface(QWidget):
         self.settings_manager = settings_manager
         self.file_manager = FileManager()
         self.worker: ConversionWorker | None = None
-        self.conversionResults: dict[str, str] = {}
+        self.conversionResults: dict[str, ConversionOutcome] = {}
         self.failedConversionFiles: set[str] = set()
         self.processingBackends: dict[str, str] = {}
         self._is_dark_theme = False
         self._current_markdown = ""
         self._preview_file_caption_full_text = ""
+        self._temp_asset_root: str | None = None
         self.setAcceptDrops(True)
 
         self._build_ui()
+        self._sync_conversion_toggle_state()
         self.setup_shortcuts()
         self.setup_update_checker()
         self._set_state_empty()
@@ -171,6 +186,31 @@ class HomeInterface(QWidget):
         queue_actions.addWidget(self.clear_list_btn)
         queue_actions.addStretch(1)
         queue_layout.addLayout(queue_actions)
+
+        queue_options = QHBoxLayout()
+        queue_options.setSpacing(12)
+        self.preserve_pdf_images_check = CheckBox(
+            self.translate("home_preserve_pdf_images_label")
+        )
+        self.preserve_pdf_images_check.setToolTip(
+            self.translate("home_preserve_pdf_images_tooltip")
+        )
+        self.preserve_pdf_images_check.toggled.connect(
+            self._save_preserve_pdf_images_setting
+        )
+        self.ocr_enabled_check = CheckBox(self.translate("home_queue_ocr_label"))
+        self.ocr_enabled_check.setToolTip(
+            self.translate("home_queue_ocr_tooltip")
+        )
+        self.ocr_enabled_check.toggled.connect(self._save_queue_ocr_enabled)
+        queue_options.addWidget(self.preserve_pdf_images_check)
+        queue_options.addWidget(self.ocr_enabled_check)
+        queue_options.addStretch(1)
+        queue_layout.addLayout(queue_options)
+
+        self.queue_options_note = CaptionLabel("")
+        self.queue_options_note.setWordWrap(True)
+        queue_layout.addWidget(self.queue_options_note)
 
         self.progress = ProgressBar()
         self.progress_status = CaptionLabel("")
@@ -314,7 +354,13 @@ class HomeInterface(QWidget):
     def apply_theme_styles(self, is_dark: bool) -> None:
         self._is_dark_theme = bool(is_dark)
         if self._current_markdown:
-            self._set_markdown_preview(self._current_markdown)
+            current_item = self.result_file_list.currentItem()
+            current_outcome = None
+            if current_item is not None:
+                current_outcome = self.conversionResults.get(
+                    current_item.data(Qt.ItemDataRole.UserRole)
+                )
+            self._set_markdown_preview(current_outcome)
 
     def setup_shortcuts(self) -> None:
         QShortcut(QKeySequence("Ctrl+O"), self, self.browse_files)
@@ -381,6 +427,7 @@ class HomeInterface(QWidget):
             self.worker.wait(2000)
         if hasattr(self, "update_checker") and self.update_checker.isRunning():
             self.update_checker.wait(2000)
+        self._cleanup_temp_asset_root()
 
     def dragEnterEvent(self, event) -> None:
         if event.mimeData().hasUrls():
@@ -517,8 +564,21 @@ class HomeInterface(QWidget):
             return
 
         try:
+            if self.conversionResults:
+                self._clear_result_views(reset_progress=False)
             batch_size = self.settings_manager.get_batch_size()
             options = self._build_conversion_options()
+            if (
+                options.preserve_pdf_images
+                and options.normalized_ocr_provider == OCR_PROVIDER_GLMOCR
+            ):
+                QMessageBox.warning(
+                    self,
+                    self.translate("conversion_error_title"),
+                    self.translate("home_preserve_pdf_images_glmocr_note"),
+                )
+                self._cleanup_temp_asset_root()
+                return
             self.worker = ConversionWorker(valid_sources, batch_size, options)
             self.worker.progress.connect(self.update_progress)
             self.worker.finished.connect(self.handle_conversion_finished)
@@ -539,14 +599,29 @@ class HomeInterface(QWidget):
                 self.translate("conversion_start_error_title"),
                 self.translate("conversion_start_error_message").format(error=str(e)),
             )
+            self._cleanup_temp_asset_root()
             self._reset_controls()
 
     def _build_conversion_options(self) -> ConversionOptions:
+        artifacts_dir = ""
+        if self.preserve_pdf_images_check.isChecked():
+            self._cleanup_temp_asset_root()
+            self._temp_asset_root = str(create_temp_asset_root())
+            artifacts_dir = self._temp_asset_root
         return ConversionOptions(
-            ocr_enabled=self.settings_manager.get_ocr_enabled(),
+            ocr_enabled=self.ocr_enabled_check.isChecked(),
+            preserve_pdf_images=self.preserve_pdf_images_check.isChecked(),
+            ocr_provider=self.settings_manager.get_ocr_provider(),
+            ocr_fallback_enabled=self.settings_manager.get_ocr_fallback_enabled(),
             docintel_endpoint=self.settings_manager.get_docintel_endpoint(),
             ocr_languages=self.settings_manager.get_ocr_languages(),
             tesseract_path=self.settings_manager.get_tesseract_path(),
+            pdf_artifacts_dir=artifacts_dir,
+            glmocr_mode=self.settings_manager.get_glmocr_mode(),
+            glmocr_ollama_host=self.settings_manager.get_glmocr_ollama_host(),
+            glmocr_ollama_port=self.settings_manager.get_glmocr_ollama_port(),
+            glmocr_ollama_model=self.settings_manager.get_glmocr_ollama_model(),
+            glmocr_sdk_server_url=self.settings_manager.get_glmocr_sdk_server_url(),
         )
 
     def update_progress(self, progress: int, current_file: str) -> None:
@@ -557,7 +632,7 @@ class HomeInterface(QWidget):
         self.progress.setFormat(text)
         self.progress_status.setText(text)
 
-    def handle_conversion_finished(self, results: dict[str, str]) -> None:
+    def handle_conversion_finished(self, results: dict[str, ConversionOutcome]) -> None:
         self.conversionResults = results
         self.failedConversionFiles = set(self.worker.failed_files) if self.worker else set()
         self.processingBackends = (
@@ -601,8 +676,10 @@ class HomeInterface(QWidget):
         counts = {
             BACKEND_AZURE: 0,
             BACKEND_DEFUDDLE: 0,
+            BACKEND_GLMOCR: 0,
             BACKEND_LOCAL: 0,
             BACKEND_NATIVE: 0,
+            BACKEND_PDF_IMAGES: 0,
         }
 
         for file_path, backend in self.processingBackends.items():
@@ -615,8 +692,10 @@ class HomeInterface(QWidget):
         for backend, label_key in (
             (BACKEND_AZURE, "conversion_backend_azure"),
             (BACKEND_DEFUDDLE, "conversion_backend_defuddle"),
+            (BACKEND_GLMOCR, "conversion_backend_glmocr"),
             (BACKEND_LOCAL, "conversion_backend_local"),
             (BACKEND_NATIVE, "conversion_backend_native"),
+            (BACKEND_PDF_IMAGES, "conversion_backend_pdf_images"),
         ):
             count = counts[backend]
             if count:
@@ -636,6 +715,7 @@ class HomeInterface(QWidget):
 
     def handle_conversion_error(self, error_msg: str) -> None:
         AppLogger.error(error_msg)
+        self._cleanup_temp_asset_root()
         QMessageBox.critical(self, self.translate("conversion_error_title"), error_msg)
         self._reset_controls()
 
@@ -661,7 +741,7 @@ class HomeInterface(QWidget):
     def _on_result_file_changed(self, current, _previous) -> None:
         if not current:
             self._set_preview_file_caption(self.translate("home_preview_file_default"))
-            self._set_markdown_preview("")
+            self._set_markdown_preview(None)
             return
         file_path = current.data(Qt.ItemDataRole.UserRole)
         self._set_preview_file_caption(
@@ -669,10 +749,10 @@ class HomeInterface(QWidget):
                 file=source_display_name(file_path)
             )
         )
-        markdown = self.conversionResults.get(file_path, "")
-        self._set_markdown_preview(markdown)
+        self._set_markdown_preview(self.conversionResults.get(file_path))
 
-    def _set_markdown_preview(self, markdown_text: str) -> None:
+    def _set_markdown_preview(self, outcome: ConversionOutcome | None) -> None:
+        markdown_text = outcome.markdown if outcome else ""
         self._current_markdown = markdown_text
         self.markdown_raw.setPlainText(markdown_text)
 
@@ -680,8 +760,13 @@ class HomeInterface(QWidget):
             self.markdown_rendered.clear()
             return
 
+        preview_markdown = (
+            rewrite_markdown_for_preview(markdown_text, outcome.assets)
+            if outcome is not None
+            else markdown_text
+        )
         doc = QTextDocument()
-        doc.setMarkdown(markdown_text)
+        doc.setMarkdown(preview_markdown)
         rendered_html = doc.toHtml()
         css = markdown_html_css(self._is_dark_theme)
         self.markdown_rendered.setHtml(f"<style>{css}</style>{rendered_html}")
@@ -735,12 +820,20 @@ class HomeInterface(QWidget):
             output_path += output_ext
 
         parts = [
-            self.translate("conversion_source_heading").format(source=source) + f"\n{content}"
-            for source, content in self.conversionResults.items()
+            MarkdownSaveInput(
+                source=source,
+                markdown=outcome.markdown,
+                assets=outcome.assets,
+            )
+            for source, outcome in self.conversionResults.items()
         ]
-        combined_output = "\n\n".join(parts)
 
         try:
+            combined_output = prepare_combined_markdown_for_save(
+                parts,
+                output_path,
+                source_heading_template=self.translate("conversion_source_heading"),
+            )
             self.file_manager.save_markdown_file(output_path, combined_output)
             self.settings_manager.set_recent_outputs(
                 self.file_manager.update_recent_list(
@@ -764,7 +857,7 @@ class HomeInterface(QWidget):
             return
 
         output_ext = self.settings_manager.get_default_output_format()
-        for input_file, content in self.conversionResults.items():
+        for input_file, outcome in self.conversionResults.items():
             base_name = source_output_stem(input_file)
             output_path = os.path.join(output_dir, f"{base_name}{output_ext}")
             counter = 1
@@ -772,7 +865,12 @@ class HomeInterface(QWidget):
                 output_path = os.path.join(output_dir, f"{base_name}_{counter}{output_ext}")
                 counter += 1
             try:
-                self.file_manager.save_markdown_file(output_path, content)
+                saved_markdown = prepare_markdown_for_separate_save(
+                    outcome.markdown,
+                    outcome.assets,
+                    output_path,
+                )
+                self.file_manager.save_markdown_file(output_path, saved_markdown)
             except Exception:
                 AppLogger.error(f"Failed saving file: {output_path}")
 
@@ -788,9 +886,11 @@ class HomeInterface(QWidget):
     def _clear_result_views(self, *, reset_progress: bool = False) -> None:
         self.conversionResults = {}
         self.failedConversionFiles = set()
+        self.processingBackends = {}
+        self._cleanup_temp_asset_root()
         self.result_file_list.clear()
         self._set_preview_file_caption(self.translate("home_preview_file_default"))
-        self._set_markdown_preview("")
+        self._set_markdown_preview(None)
         if reset_progress:
             self._reset_progress_display()
 
@@ -834,6 +934,7 @@ class HomeInterface(QWidget):
 
     def _set_state_queue(self) -> None:
         has_files = bool(self.filePanel.get_all_files())
+        self._sync_conversion_toggle_state()
         self.empty_card.setVisible(not has_files)
         self.queue_card.setVisible(has_files)
         self.results_card.setVisible(False)
@@ -877,3 +978,40 @@ class HomeInterface(QWidget):
     def show_shortcuts(self) -> None:
         dialog = ShortcutDialog(self.translate, self)
         dialog.exec()
+
+    def _save_queue_ocr_enabled(self, enabled: bool) -> None:
+        self.settings_manager.set_ocr_enabled(enabled)
+
+    def _save_preserve_pdf_images_setting(self, enabled: bool) -> None:
+        self.settings_manager.set_preserve_pdf_images(enabled)
+
+    def _sync_conversion_toggle_state(self) -> None:
+        self.ocr_enabled_check.blockSignals(True)
+        self.ocr_enabled_check.setChecked(self.settings_manager.get_ocr_enabled())
+        self.ocr_enabled_check.blockSignals(False)
+
+        self.preserve_pdf_images_check.blockSignals(True)
+        self.preserve_pdf_images_check.setChecked(
+            self.settings_manager.get_preserve_pdf_images()
+        )
+        self.preserve_pdf_images_check.blockSignals(False)
+        self._update_preserve_pdf_images_state()
+
+    def _update_preserve_pdf_images_state(self) -> None:
+        provider = self.settings_manager.get_ocr_provider()
+        preserve_unavailable = provider == OCR_PROVIDER_GLMOCR
+        note_key = "home_preserve_pdf_images_note"
+        if preserve_unavailable:
+            note_key = "home_preserve_pdf_images_glmocr_note"
+            if self.preserve_pdf_images_check.isChecked():
+                self.preserve_pdf_images_check.blockSignals(True)
+                self.preserve_pdf_images_check.setChecked(False)
+                self.preserve_pdf_images_check.blockSignals(False)
+                self.settings_manager.set_preserve_pdf_images(False)
+
+        self.preserve_pdf_images_check.setEnabled(not preserve_unavailable)
+        self.queue_options_note.setText(self.translate(note_key))
+
+    def _cleanup_temp_asset_root(self) -> None:
+        cleanup_temp_asset_root(self._temp_asset_root)
+        self._temp_asset_root = None

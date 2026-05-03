@@ -106,6 +106,44 @@ def test_ocr_settings(settings_manager):
     settings_manager.set_ocr_enabled(True)
     assert settings_manager.get_ocr_enabled()
 
+    assert not settings_manager.get_preserve_pdf_images()
+    settings_manager.set_preserve_pdf_images(True)
+    assert settings_manager.get_preserve_pdf_images()
+
+    assert settings_manager.get_ocr_provider() == "legacy"
+    settings_manager.set_ocr_provider(" glmocr ")
+    assert settings_manager.get_ocr_provider() == "glmocr"
+    settings_manager.set_ocr_provider("invalid")
+    assert settings_manager.get_ocr_provider() == "legacy"
+
+    assert settings_manager.get_ocr_fallback_enabled()
+    settings_manager.set_ocr_fallback_enabled(False)
+    assert not settings_manager.get_ocr_fallback_enabled()
+
+    assert settings_manager.get_glmocr_mode() == "maas"
+    settings_manager.set_glmocr_mode(" ollama ")
+    assert settings_manager.get_glmocr_mode() == "ollama"
+    settings_manager.settings.setValue("glmocrMode", " server ")
+    assert settings_manager.get_glmocr_mode() == "sdk_server"
+    settings_manager.set_glmocr_mode("invalid")
+    assert settings_manager.get_glmocr_mode() == "maas"
+
+    assert settings_manager.get_glmocr_ollama_host() == "127.0.0.1"
+    settings_manager.set_glmocr_ollama_host(" localhost ")
+    assert settings_manager.get_glmocr_ollama_host() == "localhost"
+
+    assert settings_manager.get_glmocr_ollama_port() == 11434
+    settings_manager.set_glmocr_ollama_port(12434)
+    assert settings_manager.get_glmocr_ollama_port() == 12434
+
+    assert settings_manager.get_glmocr_ollama_model() == "glm-ocr:latest"
+    settings_manager.set_glmocr_ollama_model(" custom-ollama-model ")
+    assert settings_manager.get_glmocr_ollama_model() == "custom-ollama-model"
+
+    assert settings_manager.get_glmocr_sdk_server_url() == "http://127.0.0.1:5002/glmocr/parse"
+    settings_manager.set_glmocr_sdk_server_url(" http://localhost:5002/glmocr/parse ")
+    assert settings_manager.get_glmocr_sdk_server_url() == "http://localhost:5002/glmocr/parse"
+
     assert settings_manager.get_docintel_endpoint() == ""
     settings_manager.set_docintel_endpoint(" https://example.cognitiveservices.azure.com/ ")
     assert settings_manager.get_docintel_endpoint() == "https://example.cognitiveservices.azure.com/"

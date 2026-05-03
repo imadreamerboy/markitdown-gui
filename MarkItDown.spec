@@ -1,10 +1,11 @@
 # -*- mode: python ; coding: utf-8 -*-
 import os
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
-from markitdowngui.build_config import build_datas, build_hiddenimports
+from markitdowngui.build_config import build_datas, build_excludes, build_hiddenimports
 
 hiddenimports = build_hiddenimports(collect_submodules, warn=print)
 datas = build_datas(collect_data_files, warn=print)
+excludes = build_excludes()
 
 a = Analysis(
     ["markitdowngui/main.py"],
@@ -15,10 +16,7 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[
-        "tkinter", "_tkinter",
-        "pytest", "_pytest", "pygments",
-    ],
+    excludes=excludes,
     noarchive=False,
     optimize=1,
 )

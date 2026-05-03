@@ -1,8 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from itertools import islice
+import base64
 import os
+from io import BytesIO
 from pathlib import Path
 from urllib.parse import quote
 
@@ -23,8 +25,31 @@ AZURE_OCR_API_KEY_ENV_VAR = "AZURE_OCR_API_KEY"
 CONVERSION_ERROR_PREFIX = "Error converting "
 BACKEND_AZURE = "azure"
 BACKEND_DEFUDDLE = "defuddle"
+BACKEND_GLMOCR = "glmocr"
 BACKEND_LOCAL = "local"
 BACKEND_NATIVE = "native"
+BACKEND_PDF_IMAGES = "pdf-images"
+OCR_PROVIDER_GLMOCR = "glmocr"
+OCR_PROVIDER_LEGACY = "legacy"
+GLMOCR_MODE_MAAS = "maas"
+GLMOCR_MODE_OLLAMA = "ollama"
+GLMOCR_MODE_SDK_SERVER = "sdk_server"
+GLMOCR_MODE_SERVER = "server"
+DEFAULT_GLMOCR_SDK_SERVER_URL = "http://127.0.0.1:5002/glmocr/parse"
+DEFAULT_GLMOCR_OLLAMA_HOST = "127.0.0.1"
+DEFAULT_GLMOCR_OLLAMA_PORT = 11434
+DEFAULT_GLMOCR_OLLAMA_MODEL = "glm-ocr:latest"
+GLMOCR_OLLAMA_API_PATH = "/api/generate"
+GLMOCR_OLLAMA_TIMEOUT_SECONDS = 300
+GLMOCR_OLLAMA_MAX_TOKENS = 16384
+GLMOCR_OLLAMA_PROMPT = (
+    "Recognize the text in the image and output in Markdown format. "
+    "Preserve the original layout, including headings, paragraphs, tables, and formulas. "
+    "Do not fabricate content that does not exist in the image."
+)
+GLMOCR_SDK_SERVER_API_KEY = "markitdown-gui-sdk-server"
+ZHIPU_API_KEY_ENV_VAR = "ZHIPU_API_KEY"
+GLMOCR_API_KEY_ENV_VAR = "GLMOCR_API_KEY"
 
 
 @dataclass(frozen=True)
@@ -32,9 +57,29 @@ class ConversionOptions:
     """User-controlled conversion behavior."""
 
     ocr_enabled: bool = False
+    preserve_pdf_images: bool = False
+    ocr_provider: str = OCR_PROVIDER_LEGACY
+    ocr_fallback_enabled: bool = True
     docintel_endpoint: str = ""
     ocr_languages: str = ""
     tesseract_path: str = ""
+    pdf_artifacts_dir: str = ""
+    glmocr_mode: str = GLMOCR_MODE_MAAS
+    glmocr_ollama_host: str = DEFAULT_GLMOCR_OLLAMA_HOST
+    glmocr_ollama_port: int = DEFAULT_GLMOCR_OLLAMA_PORT
+    glmocr_ollama_model: str = DEFAULT_GLMOCR_OLLAMA_MODEL
+    glmocr_sdk_server_url: str = DEFAULT_GLMOCR_SDK_SERVER_URL
+
+    @property
+    def normalized_ocr_provider(self) -> str:
+        provider = self.ocr_provider.strip().lower()
+        if provider in {OCR_PROVIDER_LEGACY, OCR_PROVIDER_GLMOCR}:
+            return provider
+        return OCR_PROVIDER_LEGACY
+
+    @property
+    def normalized_preserve_pdf_images(self) -> bool:
+        return bool(self.preserve_pdf_images)
 
     @property
     def normalized_docintel_endpoint(self) -> str:
@@ -48,11 +93,57 @@ class ConversionOptions:
     def normalized_tesseract_path(self) -> str:
         return self.tesseract_path.strip()
 
+    @property
+    def normalized_pdf_artifacts_dir(self) -> str:
+        return self.pdf_artifacts_dir.strip()
+
+    @property
+    def normalized_glmocr_mode(self) -> str:
+        mode = self.glmocr_mode.strip().lower()
+        if mode == GLMOCR_MODE_SERVER:
+            return GLMOCR_MODE_SDK_SERVER
+        if mode in {
+            GLMOCR_MODE_MAAS,
+            GLMOCR_MODE_OLLAMA,
+            GLMOCR_MODE_SDK_SERVER,
+        }:
+            return mode
+        return GLMOCR_MODE_MAAS
+
+    @property
+    def normalized_glmocr_ollama_host(self) -> str:
+        return self.glmocr_ollama_host.strip() or DEFAULT_GLMOCR_OLLAMA_HOST
+
+    @property
+    def normalized_glmocr_ollama_port(self) -> int:
+        if 1 <= int(self.glmocr_ollama_port) <= 65535:
+            return int(self.glmocr_ollama_port)
+        return DEFAULT_GLMOCR_OLLAMA_PORT
+
+    @property
+    def normalized_glmocr_ollama_model(self) -> str:
+        return self.glmocr_ollama_model.strip() or DEFAULT_GLMOCR_OLLAMA_MODEL
+
+    @property
+    def normalized_glmocr_sdk_server_url(self) -> str:
+        return self.glmocr_sdk_server_url.strip() or DEFAULT_GLMOCR_SDK_SERVER_URL
+
+
+@dataclass(frozen=True)
+class ConversionAsset:
+    filename: str
+    source_path: str | None
+    preview_markdown_path: str
+    page_number: int | None
+    kind: str
+    ocr_text: str | None = None
+
 
 @dataclass(frozen=True)
 class ConversionOutcome:
     markdown: str
     backend: str = BACKEND_NATIVE
+    assets: list[ConversionAsset] = field(default_factory=list)
 
 
 def format_conversion_error(file_path: str, error: Exception) -> str:
@@ -106,6 +197,30 @@ def _raise_ocr_failure(
         ) from local_error
 
     raise RuntimeError(f"OCR did not extract any text from the {file_label}.")
+
+
+def _raise_glmocr_failure(
+    file_label: str,
+    *,
+    glm_error: Exception,
+    fallback_error: Exception | None = None,
+) -> str:
+    if fallback_error is not None:
+        raise RuntimeError(
+            f"GLM-OCR failed for the {file_label} ({_summarize_error(glm_error)}), "
+            f"and Azure/Tesseract OCR fallback also failed ({_summarize_error(fallback_error)})."
+        ) from glm_error
+
+    raise RuntimeError(
+        f"GLM-OCR failed for the {file_label}: {_summarize_error(glm_error)}"
+    ) from glm_error
+
+
+def _glmocr_api_key_available() -> bool:
+    return bool(
+        os.getenv(ZHIPU_API_KEY_ENV_VAR, "").strip()
+        or os.getenv(GLMOCR_API_KEY_ENV_VAR, "").strip()
+    )
 
 
 def _build_docintel_credential() -> tuple[object, str]:
@@ -167,6 +282,9 @@ def convert_file_with_details(
 
     extension = Path(file_path).suffix.lower()
 
+    if extension == PDF_EXTENSION and effective_options.normalized_preserve_pdf_images:
+        return _convert_pdf_with_preserved_images(file_path, effective_options)
+
     if not effective_options.ocr_enabled:
         return ConversionOutcome(
             markdown=_convert_with_markitdown(file_path, effective_options),
@@ -177,7 +295,7 @@ def convert_file_with_details(
         return _convert_image_with_ocr(file_path, effective_options, extension)
 
     if extension == PDF_EXTENSION:
-        return _convert_pdf_with_ocr_fallback(file_path, effective_options)
+        return _convert_pdf_with_ocr(file_path, effective_options)
 
     return ConversionOutcome(
         markdown=_convert_with_markitdown(file_path, effective_options),
@@ -191,6 +309,41 @@ def convert_file(file_path: str, options: ConversionOptions | None = None) -> st
 
 
 def _convert_image_with_ocr(
+    file_path: str,
+    options: ConversionOptions,
+    extension: str,
+) -> ConversionOutcome:
+    if options.normalized_ocr_provider == OCR_PROVIDER_GLMOCR:
+        return _convert_image_with_glmocr(file_path, options, extension)
+
+    return _convert_image_with_azure_tesseract_ocr(file_path, options, extension)
+
+
+def _convert_image_with_glmocr(
+    file_path: str,
+    options: ConversionOptions,
+    extension: str,
+) -> ConversionOutcome:
+    try:
+        markdown = _convert_with_glmocr(file_path, options)
+        if markdown.strip():
+            return ConversionOutcome(markdown=markdown, backend=BACKEND_GLMOCR)
+        raise RuntimeError("GLM-OCR did not extract any text from the image.")
+    except Exception as exc:
+        if not options.ocr_fallback_enabled:
+            return _raise_glmocr_failure("image", glm_error=exc)
+
+        try:
+            return _convert_image_with_azure_tesseract_ocr(file_path, options, extension)
+        except Exception as fallback_error:
+            return _raise_glmocr_failure(
+                "image",
+                glm_error=exc,
+                fallback_error=fallback_error,
+            )
+
+
+def _convert_image_with_azure_tesseract_ocr(
     file_path: str,
     options: ConversionOptions,
     extension: str,
@@ -230,7 +383,80 @@ def _convert_image_with_ocr(
     )
 
 
-def _convert_pdf_with_ocr_fallback(
+def _convert_pdf_with_ocr(
+    file_path: str,
+    options: ConversionOptions,
+) -> ConversionOutcome:
+    if options.normalized_ocr_provider == OCR_PROVIDER_GLMOCR:
+        return _convert_pdf_with_glmocr(file_path, options)
+
+    return _convert_pdf_with_azure_tesseract_ocr(file_path, options)
+
+
+def _convert_pdf_with_preserved_images(
+    file_path: str,
+    options: ConversionOptions,
+) -> ConversionOutcome:
+    if options.normalized_ocr_provider == OCR_PROVIDER_GLMOCR:
+        raise RuntimeError(
+            "Preserve PDF images is not available with GLM-OCR. "
+            "Switch the OCR provider to Azure/Tesseract OCR or disable Preserve PDF images."
+        )
+
+    artifacts_dir = options.normalized_pdf_artifacts_dir
+    if not artifacts_dir:
+        raise RuntimeError(
+            "Preserve PDF images requires a writable temporary asset directory."
+        )
+
+    try:
+        from markitdown_pdf_images import convert_pdf
+    except ImportError as exc:
+        raise RuntimeError(
+            "Preserve PDF images requires the `markitdown-pdf-images` package to be installed."
+        ) from exc
+
+    result = convert_pdf(
+        file_path,
+        preserve_images=True,
+        image_mode="external",
+        artifacts_dir=artifacts_dir,
+        path_mode="absolute",
+        ocr_enabled=options.ocr_enabled,
+        tesseract_path=options.normalized_tesseract_path or None,
+        ocr_languages=options.normalized_ocr_languages,
+    )
+    return ConversionOutcome(
+        markdown=result.markdown,
+        backend=BACKEND_PDF_IMAGES,
+        assets=_map_pdf_assets(getattr(result, "assets", [])),
+    )
+
+
+def _convert_pdf_with_glmocr(
+    file_path: str,
+    options: ConversionOptions,
+) -> ConversionOutcome:
+    try:
+        markdown = _convert_with_glmocr(file_path, options)
+        if markdown.strip():
+            return ConversionOutcome(markdown=markdown, backend=BACKEND_GLMOCR)
+        raise RuntimeError("GLM-OCR did not extract any text from the PDF.")
+    except Exception as exc:
+        if not options.ocr_fallback_enabled:
+            return _raise_glmocr_failure("PDF", glm_error=exc)
+
+        try:
+            return _convert_pdf_with_azure_tesseract_ocr(file_path, options)
+        except Exception as fallback_error:
+            return _raise_glmocr_failure(
+                "PDF",
+                glm_error=exc,
+                fallback_error=fallback_error,
+            )
+
+
+def _convert_pdf_with_azure_tesseract_ocr(
     file_path: str,
     options: ConversionOptions,
 ) -> ConversionOutcome:
@@ -291,6 +517,187 @@ def _convert_with_markitdown(
     md = MarkItDown(**kwargs)
     result = md.convert(file_path)
     return result.text_content or ""
+
+
+def _convert_with_glmocr(
+    file_path: str,
+    options: ConversionOptions,
+) -> str:
+    normalized_mode = options.normalized_glmocr_mode
+
+    if normalized_mode == GLMOCR_MODE_OLLAMA:
+        return _convert_with_glmocr_ollama(file_path, options)
+
+    try:
+        from glmocr.api import GlmOcr
+    except ImportError as exc:
+        raise RuntimeError(
+            "GLM-OCR requires the `glmocr` package to be installed."
+        ) from exc
+
+    kwargs: dict[str, object] = {"model": "glm-ocr"}
+
+    if normalized_mode == GLMOCR_MODE_MAAS:
+        kwargs["mode"] = GLMOCR_MODE_MAAS
+        if not _glmocr_api_key_available():
+            raise RuntimeError(
+                "GLM-OCR MaaS requires ZHIPU_API_KEY or GLMOCR_API_KEY to be set."
+            )
+    elif normalized_mode == GLMOCR_MODE_SDK_SERVER:
+        kwargs["mode"] = GLMOCR_MODE_MAAS
+        kwargs["api_url"] = options.normalized_glmocr_sdk_server_url
+        kwargs["api_key"] = GLMOCR_SDK_SERVER_API_KEY
+
+    with GlmOcr(**kwargs) as parser:
+        result = parser.parse(file_path)
+
+    markdown = getattr(result, "markdown_result", "")
+    return str(markdown or "").strip()
+
+
+def _convert_with_glmocr_ollama(
+    file_path: str,
+    options: ConversionOptions,
+) -> str:
+    page_markdowns: list[str] = []
+
+    for image in _iter_glmocr_ollama_images(file_path):
+        try:
+            markdown = _call_glmocr_ollama(image, options)
+            if markdown.strip():
+                page_markdowns.append(markdown.strip())
+        finally:
+            if hasattr(image, "close"):
+                image.close()
+
+    return "\n\n".join(page_markdowns).strip()
+
+
+def _iter_glmocr_ollama_images(file_path: str):
+    extension = Path(file_path).suffix.lower()
+
+    if extension == PDF_EXTENSION:
+        try:
+            import pypdfium2 as pdfium
+        except ImportError as exc:
+            raise RuntimeError(
+                "GLM-OCR Ollama PDF conversion requires pypdfium2 to be installed."
+            ) from exc
+
+        pdf = pdfium.PdfDocument(file_path)
+        try:
+            for page_index in range(len(pdf)):
+                page = pdf[page_index]
+                bitmap = None
+                try:
+                    bitmap = page.render(scale=PDF_RENDER_SCALE)
+                    yield bitmap.to_pil().convert("RGB")
+                finally:
+                    if bitmap is not None and hasattr(bitmap, "close"):
+                        bitmap.close()
+                    if hasattr(page, "close"):
+                        page.close()
+        finally:
+            if hasattr(pdf, "close"):
+                pdf.close()
+        return
+
+    try:
+        from PIL import Image, ImageOps
+    except ImportError as exc:
+        raise RuntimeError(
+            "GLM-OCR Ollama image conversion requires Pillow to be installed."
+        ) from exc
+
+    with Image.open(file_path) as image:
+        yield ImageOps.exif_transpose(image).convert("RGB")
+
+
+def _call_glmocr_ollama(image, options: ConversionOptions) -> str:
+    request_url = _build_glmocr_ollama_url(options)
+    payload = {
+        "model": options.normalized_glmocr_ollama_model,
+        "prompt": GLMOCR_OLLAMA_PROMPT,
+        "images": [_encode_image_for_ollama(image)],
+        "stream": False,
+        "options": {
+            "num_predict": GLMOCR_OLLAMA_MAX_TOKENS,
+            "temperature": 0.01,
+            "top_p": 0.00001,
+            "top_k": 1,
+            "repeat_penalty": 1.1,
+        },
+    }
+
+    try:
+        response = requests.post(
+            request_url,
+            json=payload,
+            timeout=GLMOCR_OLLAMA_TIMEOUT_SECONDS,
+        )
+    except requests.Timeout as exc:
+        raise RuntimeError("GLM-OCR Ollama request timed out.") from exc
+    except requests.RequestException as exc:
+        raise RuntimeError(
+            f"GLM-OCR Ollama request failed to reach Ollama at {request_url}: {exc}"
+        ) from exc
+
+    if not response.ok:
+        message = response.text.strip()
+        raise RuntimeError(
+            message
+            or f"GLM-OCR Ollama request failed with status {response.status_code}."
+        )
+
+    try:
+        result = response.json()
+    except ValueError as exc:
+        raise RuntimeError("GLM-OCR Ollama returned an invalid JSON response.") from exc
+
+    if result.get("error"):
+        raise RuntimeError(f"GLM-OCR Ollama error: {result['error']}")
+
+    markdown = result.get("response")
+    if markdown is None:
+        raise RuntimeError("GLM-OCR Ollama response did not include output text.")
+
+    return str(markdown)
+
+
+def _build_glmocr_ollama_url(options: ConversionOptions) -> str:
+    host = options.normalized_glmocr_ollama_host.rstrip("/")
+    if "://" in host:
+        base_url = host
+    elif ":" in host and not host.startswith("["):
+        base_url = f"http://{host}"
+    else:
+        base_url = f"http://{host}:{options.normalized_glmocr_ollama_port}"
+    return f"{base_url}{GLMOCR_OLLAMA_API_PATH}"
+
+
+def _encode_image_for_ollama(image) -> str:
+    if image.mode != "RGB":
+        image = image.convert("RGB")
+    buffer = BytesIO()
+    image.save(buffer, format="JPEG")
+    return base64.b64encode(buffer.getvalue()).decode("ascii")
+
+
+def _map_pdf_assets(assets: list[object]) -> list[ConversionAsset]:
+    mapped_assets: list[ConversionAsset] = []
+    for asset in assets:
+        source_path = getattr(asset, "path", None)
+        mapped_assets.append(
+            ConversionAsset(
+                filename=str(getattr(asset, "filename", "")),
+                source_path=str(Path(source_path).resolve()) if source_path else None,
+                preview_markdown_path=str(getattr(asset, "markdown_path", "")),
+                page_number=getattr(asset, "page_number", None),
+                kind=str(getattr(asset, "kind", "")),
+                ocr_text=getattr(asset, "ocr_text", None),
+            )
+        )
+    return mapped_assets
 
 
 def _convert_url_with_defuddle(url: str) -> str:
@@ -413,7 +820,7 @@ class ConversionWorker(QThread):
         self.is_cancelled = False
 
     def run(self) -> None:
-        results: dict[str, str] = {}
+        results: dict[str, ConversionOutcome] = {}
         self.failed_files = set()
         self.processing_backends = {}
 
@@ -430,11 +837,13 @@ class ConversionWorker(QThread):
 
                 try:
                     outcome = convert_file_with_details(file_path, self.options)
-                    results[file_path] = outcome.markdown
+                    results[file_path] = outcome
                     self.processing_backends[file_path] = outcome.backend
                 except Exception as exc:
                     self.failed_files.add(file_path)
-                    results[file_path] = format_conversion_error(file_path, exc)
+                    results[file_path] = ConversionOutcome(
+                        markdown=format_conversion_error(file_path, exc)
+                    )
 
                 progress = int((i + j + 1) / len(self.files) * 100)
                 self.progress.emit(progress, file_path)

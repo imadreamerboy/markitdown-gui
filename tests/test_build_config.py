@@ -9,11 +9,6 @@ def test_build_hiddenimports_includes_charset_normalizer_mypyc_runtime():
         return {
             "markitdown": ["markitdown._markdown"],
             "charset_normalizer": ["charset_normalizer.api"],
-            "azure.ai.documentintelligence": ["azure.ai.documentintelligence._client"],
-            "azure.identity": [],
-            "pypdfium2": [],
-            "pypdfium2_raw": [],
-            "pytesseract": [],
         }[package]
 
     hiddenimports = build_config.build_hiddenimports(fake_collect)
@@ -22,30 +17,25 @@ def test_build_hiddenimports_includes_charset_normalizer_mypyc_runtime():
     assert "charset_normalizer.md" in hiddenimports
     assert "charset_normalizer.md__mypyc" in hiddenimports
     assert "markitdown._markdown" in hiddenimports
+    assert "azure.ai.documentintelligence.aio" in hiddenimports
+    assert "glmocr.api" in hiddenimports
+    assert "markitdown_pdf_images.converter" in hiddenimports
     assert calls[:2] == ["markitdown", "charset_normalizer"]
 
 
-def test_build_hiddenimports_warns_and_keeps_required_modules_when_optional_collection_fails():
-    warnings = []
-
+def test_build_hiddenimports_keeps_required_modules_without_collecting_optional_packages():
     def fake_collect(package: str) -> list[str]:
         if package == "markitdown":
             return []
         if package == "charset_normalizer":
             return []
-        if package == "pytesseract":
-            raise RuntimeError("missing optional package")
-        return []
+        raise AssertionError(f"Unexpected package: {package}")
 
-    hiddenimports = build_config.build_hiddenimports(
-        fake_collect,
-        warn=warnings.append,
-    )
+    hiddenimports = build_config.build_hiddenimports(fake_collect)
 
     assert "charset_normalizer.md__mypyc" in hiddenimports
-    assert warnings == [
-        "Warning: Could not collect hidden imports for pytesseract: missing optional package"
-    ]
+    assert "glmocr.maas_client" in hiddenimports
+    assert "docling_parse.pdf_parser" in hiddenimports
 
 
 def test_build_datas_keeps_base_files_and_warns_for_missing_optional_packages():
@@ -68,3 +58,14 @@ def test_build_datas_keeps_base_files_and_warns_for_missing_optional_packages():
     assert warnings == [
         "Warning: Could not collect data files for pypdfium2: missing pdf runtime"
     ]
+
+
+def test_build_excludes_contains_default_and_optional_ml_packages():
+    excludes = build_config.build_excludes()
+
+    assert "tkinter" in excludes
+    assert "torch" in excludes
+    assert "torch.utils.viz" in excludes
+    assert "transformers" in excludes
+    assert "glmocr.server" in excludes
+    assert "glmocr.pipeline" in excludes

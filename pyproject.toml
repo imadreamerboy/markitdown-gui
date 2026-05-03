@@ -16,6 +16,8 @@ dependencies = [
     "pytesseract",
     "pyside6>=6.8.2.1",
     "pyside6-fluent-widgets>=1.11.0",
+    "glmocr==0.1.4",
+    "markitdown-pdf-images @ git+https://github.com/imadreamerboy/markitdown-pdf-images.git@b1e2fafec9545acd5713974a32a2f7fe7a37b7f4",
 ]
 
 [project.urls]

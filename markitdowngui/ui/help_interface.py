@@ -80,6 +80,30 @@ class HelpInterface(QWidget):
         repo_btn.setUrl(QUrl("https://github.com/imadreamerboy/markitdown-gui"))
         layout.addWidget(repo_btn, 0, Qt.AlignmentFlag.AlignLeft)
 
+        glmocr_btn = HyperlinkButton()
+        glmocr_btn.setText(self.translate("help_open_glmocr"))
+        glmocr_btn.setIcon(FIF.LINK)
+        glmocr_btn.setUrl(QUrl("https://github.com/zai-org/GLM-OCR"))
+        layout.addWidget(glmocr_btn, 0, Qt.AlignmentFlag.AlignLeft)
+
+        glmocr_self_host_btn = HyperlinkButton()
+        glmocr_self_host_btn.setText(self.translate("help_open_glmocr_self_host"))
+        glmocr_self_host_btn.setIcon(FIF.LINK)
+        glmocr_self_host_btn.setUrl(
+            QUrl("https://github.com/zai-org/GLM-OCR/blob/main/examples/self-host/README.md")
+        )
+        layout.addWidget(glmocr_self_host_btn, 0, Qt.AlignmentFlag.AlignLeft)
+
+        glmocr_ollama_btn = HyperlinkButton()
+        glmocr_ollama_btn.setText(self.translate("help_open_glmocr_ollama"))
+        glmocr_ollama_btn.setIcon(FIF.LINK)
+        glmocr_ollama_btn.setUrl(
+            QUrl(
+                "https://github.com/zai-org/GLM-OCR/blob/main/examples/ollama-deploy/README.md"
+            )
+        )
+        layout.addWidget(glmocr_ollama_btn, 0, Qt.AlignmentFlag.AlignLeft)
+
         defuddle_docs_btn = HyperlinkButton()
         defuddle_docs_btn.setText(self.translate("help_open_defuddle_docs"))
         defuddle_docs_btn.setIcon(FIF.LINK)
@@ -137,6 +161,20 @@ class HelpInterface(QWidget):
                 FIF.FOLDER,
                 "help_faq_tesseract_linux_question",
                 "help_faq_tesseract_linux_answer",
+            )
+        )
+        layout.addWidget(
+            self._build_faq_card(
+                FIF.LINK,
+                "help_faq_glmocr_local_hosting_question",
+                "help_faq_glmocr_local_hosting_answer",
+            )
+        )
+        layout.addWidget(
+            self._build_faq_card(
+                FIF.LINK,
+                "help_faq_glmocr_question",
+                "help_faq_glmocr_answer",
             )
         )
         layout.addWidget(

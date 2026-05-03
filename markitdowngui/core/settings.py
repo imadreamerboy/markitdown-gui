@@ -1,6 +1,19 @@
 from PySide6.QtCore import QSettings
 from typing import cast, List
 
+
+OCR_PROVIDER_LEGACY = "legacy"
+OCR_PROVIDER_GLMOCR = "glmocr"
+GLMOCR_MODE_MAAS = "maas"
+GLMOCR_MODE_OLLAMA = "ollama"
+GLMOCR_MODE_SDK_SERVER = "sdk_server"
+GLMOCR_MODE_SERVER = "server"
+DEFAULT_GLMOCR_SDK_SERVER_URL = "http://127.0.0.1:5002/glmocr/parse"
+DEFAULT_GLMOCR_OLLAMA_HOST = "127.0.0.1"
+DEFAULT_GLMOCR_OLLAMA_PORT = 11434
+DEFAULT_GLMOCR_OLLAMA_MODEL = "glm-ocr:latest"
+
+
 class SettingsManager:
     """Manages application settings and preferences."""
     
@@ -111,6 +124,138 @@ class SettingsManager:
     def set_ocr_enabled(self, enabled: bool) -> None:
         """Set whether OCR fallback is enabled."""
         self.settings.setValue('ocrEnabled', enabled)
+
+    def get_preserve_pdf_images(self) -> bool:
+        """Get whether PDF image preservation is enabled by default."""
+        return bool(self.settings.value('preservePdfImages', False, type=bool))
+
+    def set_preserve_pdf_images(self, enabled: bool) -> None:
+        """Set whether PDF image preservation is enabled by default."""
+        self.settings.setValue('preservePdfImages', enabled)
+
+    def get_ocr_provider(self) -> str:
+        """Get the configured OCR provider."""
+        value = str(
+            self.settings.value('ocrProvider', OCR_PROVIDER_LEGACY, type=str)
+        ).strip().lower()
+        if value in {OCR_PROVIDER_LEGACY, OCR_PROVIDER_GLMOCR}:
+            return value
+        return OCR_PROVIDER_LEGACY
+
+    def set_ocr_provider(self, provider: str) -> None:
+        """Set the OCR provider."""
+        normalized = (provider or '').strip().lower()
+        if normalized not in {OCR_PROVIDER_LEGACY, OCR_PROVIDER_GLMOCR}:
+            normalized = OCR_PROVIDER_LEGACY
+        self.settings.setValue('ocrProvider', normalized)
+
+    def get_ocr_fallback_enabled(self) -> bool:
+        """Get whether GLM-OCR falls back to Azure/Tesseract OCR."""
+        return bool(self.settings.value('ocrFallbackEnabled', True, type=bool))
+
+    def set_ocr_fallback_enabled(self, enabled: bool) -> None:
+        """Set whether GLM-OCR falls back to Azure/Tesseract OCR."""
+        self.settings.setValue('ocrFallbackEnabled', enabled)
+
+    def get_glmocr_mode(self) -> str:
+        """Get the configured GLM-OCR mode."""
+        value = str(
+            self.settings.value('glmocrMode', GLMOCR_MODE_MAAS, type=str)
+        ).strip().lower()
+        if value == GLMOCR_MODE_SERVER:
+            return GLMOCR_MODE_SDK_SERVER
+        if value in {
+            GLMOCR_MODE_MAAS,
+            GLMOCR_MODE_OLLAMA,
+            GLMOCR_MODE_SDK_SERVER,
+        }:
+            return value
+        return GLMOCR_MODE_MAAS
+
+    def set_glmocr_mode(self, mode: str) -> None:
+        """Set the GLM-OCR mode."""
+        normalized = (mode or '').strip().lower()
+        if normalized == GLMOCR_MODE_SERVER:
+            normalized = GLMOCR_MODE_SDK_SERVER
+        if normalized not in {
+            GLMOCR_MODE_MAAS,
+            GLMOCR_MODE_OLLAMA,
+            GLMOCR_MODE_SDK_SERVER,
+        }:
+            normalized = GLMOCR_MODE_MAAS
+        self.settings.setValue('glmocrMode', normalized)
+
+    def get_glmocr_ollama_host(self) -> str:
+        """Get the configured Ollama host."""
+        value = str(
+            self.settings.value(
+                'glmocrOllamaHost',
+                DEFAULT_GLMOCR_OLLAMA_HOST,
+                type=str,
+            )
+        ).strip()
+        return value or DEFAULT_GLMOCR_OLLAMA_HOST
+
+    def set_glmocr_ollama_host(self, host: str) -> None:
+        """Set the Ollama host."""
+        normalized = (host or '').strip() or DEFAULT_GLMOCR_OLLAMA_HOST
+        self.settings.setValue('glmocrOllamaHost', normalized)
+
+    def get_glmocr_ollama_port(self) -> int:
+        """Get the configured Ollama port."""
+        port = int(
+            self.settings.value(
+                'glmocrOllamaPort',
+                DEFAULT_GLMOCR_OLLAMA_PORT,
+                type=int,
+            )
+        )
+        return port if 1 <= port <= 65535 else DEFAULT_GLMOCR_OLLAMA_PORT
+
+    def set_glmocr_ollama_port(self, port: int) -> None:
+        """Set the Ollama port."""
+        normalized = max(1, min(65535, int(port)))
+        self.settings.setValue('glmocrOllamaPort', normalized)
+
+    def get_glmocr_ollama_model(self) -> str:
+        """Get the configured Ollama model name."""
+        value = str(
+            self.settings.value(
+                'glmocrOllamaModel',
+                DEFAULT_GLMOCR_OLLAMA_MODEL,
+                type=str,
+            )
+        ).strip()
+        return value or DEFAULT_GLMOCR_OLLAMA_MODEL
+
+    def set_glmocr_ollama_model(self, model: str) -> None:
+        """Set the Ollama model name."""
+        normalized = (model or '').strip() or DEFAULT_GLMOCR_OLLAMA_MODEL
+        self.settings.setValue('glmocrOllamaModel', normalized)
+
+    def get_glmocr_sdk_server_url(self) -> str:
+        """Get the configured GLM-OCR SDK server parse endpoint."""
+        value = str(
+            self.settings.value(
+                'glmocrSdkServerUrl',
+                '',
+                type=str,
+            )
+        ).strip()
+        if not value:
+            value = str(
+                self.settings.value(
+                    'glmocrServerUrl',
+                    DEFAULT_GLMOCR_SDK_SERVER_URL,
+                    type=str,
+                )
+            ).strip()
+        return value or DEFAULT_GLMOCR_SDK_SERVER_URL
+
+    def set_glmocr_sdk_server_url(self, url: str) -> None:
+        """Set the GLM-OCR SDK server parse endpoint."""
+        normalized = (url or '').strip() or DEFAULT_GLMOCR_SDK_SERVER_URL
+        self.settings.setValue('glmocrSdkServerUrl', normalized)
 
     def get_docintel_endpoint(self) -> str:
         """Get the configured Azure Document Intelligence endpoint."""
