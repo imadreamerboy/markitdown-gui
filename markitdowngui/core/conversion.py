@@ -397,12 +397,6 @@ def _convert_pdf_with_preserved_images(
     file_path: str,
     options: ConversionOptions,
 ) -> ConversionOutcome:
-    if options.normalized_ocr_provider == OCR_PROVIDER_GLMOCR:
-        raise RuntimeError(
-            "Preserve PDF images is not available with GLM-OCR. "
-            "Switch the OCR provider to Azure/Tesseract OCR or disable Preserve PDF images."
-        )
-
     artifacts_dir = options.normalized_pdf_artifacts_dir
     if not artifacts_dir:
         raise RuntimeError(

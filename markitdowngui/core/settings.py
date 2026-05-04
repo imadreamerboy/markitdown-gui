@@ -108,6 +108,14 @@ class SettingsManager:
         """Set default output folder path."""
         self.settings.setValue('defaultOutputFolder', folder_path or '')
 
+    def get_save_to_source_folder(self) -> bool:
+        """Get whether file outputs should default to the source folder."""
+        return bool(self.settings.value('saveToSourceFolder', False, type=bool))
+
+    def set_save_to_source_folder(self, enabled: bool) -> None:
+        """Set whether file outputs should default to the source folder."""
+        self.settings.setValue('saveToSourceFolder', enabled)
+
     def get_batch_size(self) -> int:
         """Get default conversion batch size."""
         return int(self.settings.value('batchSize', 3, type=int))

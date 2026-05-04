@@ -1,6 +1,7 @@
 from markitdowngui.core.input_sources import (
     is_web_url,
     source_display_name,
+    source_output_dir,
     source_output_stem,
 )
 
@@ -26,3 +27,11 @@ def test_source_display_name_preserves_full_url():
 def test_source_output_stem_sanitizes_urls():
     stem = source_output_stem("https://example.com/posts/hello-world?ref=test")
     assert stem == "example.com-hello-world"
+
+
+def test_source_output_dir_returns_file_parent():
+    assert source_output_dir(r"C:\docs\article.html") == r"C:\docs"
+
+
+def test_source_output_dir_is_empty_for_urls():
+    assert source_output_dir("https://example.com/posts/hello-world") == ""
