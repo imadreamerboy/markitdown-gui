@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import tempfile
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QKeySequence, QResizeEvent, QShortcut, QTextDocument
@@ -934,11 +935,27 @@ class HomeInterface(QWidget):
 
     @staticmethod
     def _is_writable_output_dir(output_dir: str) -> bool:
-        return bool(
-            output_dir
-            and os.path.isdir(output_dir)
-            and os.access(output_dir, os.W_OK)
-        )
+        if not output_dir or not os.path.isdir(output_dir):
+            return False
+
+        probe_path = ""
+        try:
+            with tempfile.NamedTemporaryFile(
+                dir=output_dir,
+                prefix=".markitdown-gui-",
+                suffix=".tmp",
+                delete=False,
+            ) as probe:
+                probe_path = probe.name
+            return True
+        except OSError:
+            return False
+        finally:
+            if probe_path:
+                try:
+                    os.unlink(probe_path)
+                except OSError:
+                    pass
 
     def _reset_progress_display(self) -> None:
         self.progress.setValue(0)
