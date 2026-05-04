@@ -924,13 +924,21 @@ class HomeInterface(QWidget):
     def _source_output_dir(self, source: str) -> str:
         if self.settings_manager.get_save_to_source_folder():
             output_dir = source_output_dir(source)
-            if output_dir and os.path.isdir(output_dir):
+            if self._is_writable_output_dir(output_dir):
                 return output_dir
         return self._get_default_output_dir()
 
     def _get_default_output_dir(self) -> str:
         output_dir = self.settings_manager.get_default_output_folder()
-        return output_dir if output_dir and os.path.isdir(output_dir) else ""
+        return output_dir if self._is_writable_output_dir(output_dir) else ""
+
+    @staticmethod
+    def _is_writable_output_dir(output_dir: str) -> bool:
+        return bool(
+            output_dir
+            and os.path.isdir(output_dir)
+            and os.access(output_dir, os.W_OK)
+        )
 
     def _reset_progress_display(self) -> None:
         self.progress.setValue(0)
