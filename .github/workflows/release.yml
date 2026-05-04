@@ -21,14 +21,21 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10'  # Match your Python version
 
-      - name: Install dependencies
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
         run: |
-          python -m pip install --upgrade pip
-          pip install ".[dev]"
+          sudo apt-get update
+          sudo apt-get install -y libgl1 libegl1 libxkbcommon-x11-0
+
+      - name: Install dependencies
+        run: uv sync --extra dev --locked
 
       - name: Update version in __init__.py
         run: |
@@ -48,7 +55,7 @@ jobs:
         shell: bash
 
       - name: Build executable
-        run: pyinstaller MarkItDown.spec --clean --noconfirm
+        run: uv run pyinstaller MarkItDown.spec --clean --noconfirm
         shell: bash
 
       - name: Package artifact
@@ -56,8 +63,9 @@ jobs:
           TAG_NAME="${GITHUB_REF#refs/tags/}"
           VERSION="${TAG_NAME#v}"
           ARTIFACT_NAME="MarkItDown-${{ runner.os }}-${VERSION}.zip"
-          mkdir dist_output
-          python -m zipfile -c "dist_output/${ARTIFACT_NAME}" dist/MarkItDown
+          mkdir -p dist_output
+          cd dist
+          python -m zipfile -c "../dist_output/${ARTIFACT_NAME}" MarkItDown
         shell: bash
 
       - name: Upload artifact
