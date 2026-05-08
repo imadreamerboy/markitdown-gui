@@ -21,14 +21,21 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10'  # Match your Python version
 
-      - name: Install dependencies
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
         run: |
-          python -m pip install --upgrade pip
-          pip install ".[dev]"
+          sudo apt-get update
+          sudo apt-get install -y libgl1 libegl1 libxkbcommon-x11-0
+
+      - name: Install dependencies
+        run: uv sync --extra dev --locked
 
       - name: Update version in __init__.py
         run: |
@@ -39,6 +46,7 @@ jobs:
 
           tag_name = os.environ["GITHUB_REF"].split("/")[-1]
           version = tag_name[1:] if tag_name.startswith("v") else tag_name
+          version = version[1:] if version.startswith(".") else version
           init_path = pathlib.Path("markitdowngui/__init__.py")
           content = init_path.read_text(encoding="utf-8")
           updated = re.sub(r'__version__\s*=\s*".*?"', f'__version__ = "{version}"', content)
@@ -48,16 +56,18 @@ jobs:
         shell: bash
 
       - name: Build executable
-        run: pyinstaller MarkItDown.spec --clean --noconfirm
+        run: uv run pyinstaller MarkItDown.spec --clean --noconfirm
         shell: bash
 
       - name: Package artifact
         run: |
           TAG_NAME="${GITHUB_REF#refs/tags/}"
           VERSION="${TAG_NAME#v}"
+          VERSION="${VERSION#.}"
           ARTIFACT_NAME="MarkItDown-${{ runner.os }}-${VERSION}.zip"
-          mkdir dist_output
-          python -m zipfile -c "dist_output/${ARTIFACT_NAME}" dist/MarkItDown
+          mkdir -p dist_output
+          cd dist
+          python -m zipfile -c "../dist_output/${ARTIFACT_NAME}" MarkItDown
         shell: bash
 
       - name: Upload artifact
