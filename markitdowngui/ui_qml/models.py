@@ -85,7 +85,12 @@ class QueueModel(QAbstractListModel):
 
     def add_sources(self, sources: list[str]) -> int:
         existing = {item.source for item in self._items}
-        new_items = [QueueItem(source) for source in sources if source not in existing]
+        new_items: list[QueueItem] = []
+        for source in sources:
+            if source in existing:
+                continue
+            existing.add(source)
+            new_items.append(QueueItem(source))
         if not new_items:
             return 0
 
@@ -182,4 +187,3 @@ class ResultModel(QAbstractListModel):
 
     def items(self) -> list[ResultItem]:
         return list(self._items)
-
