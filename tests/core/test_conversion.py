@@ -1,4 +1,5 @@
 import importlib
+import io
 import sys
 import types
 
@@ -50,6 +51,47 @@ def _install_fake_pdf_images(monkeypatch, convert_pdf):
     package = types.ModuleType("markitdown_pdf_images")
     package.convert_pdf = convert_pdf
     monkeypatch.setitem(sys.modules, "markitdown_pdf_images", package)
+
+
+def _install_fake_docx_dependencies(
+    monkeypatch,
+    *,
+    convert_to_html,
+    markdownify=lambda html: html,
+    pre_process_docx=lambda stream: stream,
+):
+    mammoth_module = types.ModuleType("mammoth")
+    mammoth_images_module = types.SimpleNamespace(
+        img_element=lambda convert_image: convert_image
+    )
+    mammoth_module.images = mammoth_images_module
+    mammoth_module.convert_to_html = convert_to_html
+
+    markdownify_module = types.ModuleType("markdownify")
+    markdownify_module.markdownify = markdownify
+
+    markitdown_package = types.ModuleType("markitdown")
+    converter_utils_module = types.ModuleType("markitdown.converter_utils")
+    docx_module = types.ModuleType("markitdown.converter_utils.docx")
+    pre_process_module = types.ModuleType("markitdown.converter_utils.docx.pre_process")
+    pre_process_module.pre_process_docx = pre_process_docx
+    markitdown_package.__path__ = []
+    converter_utils_module.__path__ = []
+    docx_module.__path__ = []
+    markitdown_package.converter_utils = converter_utils_module
+    converter_utils_module.docx = docx_module
+    docx_module.pre_process = pre_process_module
+
+    monkeypatch.setitem(sys.modules, "mammoth", mammoth_module)
+    monkeypatch.setitem(sys.modules, "markdownify", markdownify_module)
+    monkeypatch.setitem(sys.modules, "markitdown", markitdown_package)
+    monkeypatch.setitem(sys.modules, "markitdown.converter_utils", converter_utils_module)
+    monkeypatch.setitem(sys.modules, "markitdown.converter_utils.docx", docx_module)
+    monkeypatch.setitem(
+        sys.modules,
+        "markitdown.converter_utils.docx.pre_process",
+        pre_process_module,
+    )
 
 
 def test_convert_file_uses_markitdown_when_ocr_disabled(monkeypatch, conversion):
@@ -462,6 +504,113 @@ def test_convert_pdf_with_preserved_images_and_glmocr_uses_plugin(
     assert outcome.backend == conversion.BACKEND_PDF_IMAGES
     assert captured["ocr_enabled"] is True
     assert captured["tesseract_path"] == "/usr/bin/tesseract"
+
+
+def test_convert_docx_without_preserve_images_keeps_native_path(monkeypatch, conversion):
+    calls = []
+
+    def fake_convert(file_path, options, use_docintel=False):
+        calls.append((file_path, use_docintel))
+        return "native docx text"
+
+    monkeypatch.setattr(conversion, "_convert_with_markitdown", fake_convert)
+
+    result = conversion.convert_file(
+        "report.docx",
+        conversion.ConversionOptions(ocr_enabled=False, preserve_docx_images=False),
+    )
+
+    assert result == "native docx text"
+    assert calls == [("report.docx", False)]
+
+
+def test_convert_docx_with_preserved_images_uses_existing_dependencies(
+    monkeypatch,
+    conversion,
+    tmp_path,
+):
+    captured = {}
+    source_docx = tmp_path / "report.docx"
+    source_docx.write_bytes(b"docx")
+
+    class FakeImage:
+        content_type = "image/png"
+
+        def open(self):
+            return io.BytesIO(b"png")
+
+    def fake_convert_to_html(stream, **kwargs):
+        captured["stream"] = stream
+        captured["kwargs"] = kwargs
+        image_attrs = kwargs["convert_image"](FakeImage())
+        captured["image_src"] = image_attrs["src"]
+        return types.SimpleNamespace(
+            value=f'<p><img src="{image_attrs["src"]}" /></p><p>Text</p>'
+        )
+
+    def fake_markdownify(_html):
+        return f'![image]({captured["image_src"]})\n\nText'
+
+    preprocessed_stream = io.BytesIO(b"preprocessed")
+    _install_fake_docx_dependencies(
+        monkeypatch,
+        convert_to_html=fake_convert_to_html,
+        markdownify=fake_markdownify,
+        pre_process_docx=lambda _stream: preprocessed_stream,
+    )
+    monkeypatch.setattr(
+        conversion,
+        "_convert_with_markitdown",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("native MarkItDown should not run")
+        ),
+    )
+
+    outcome = conversion.convert_file_with_details(
+        str(source_docx),
+        conversion.ConversionOptions(
+            preserve_docx_images=True,
+            docx_artifacts_dir=str(tmp_path / "artifacts"),
+        ),
+    )
+
+    assert outcome.backend == conversion.BACKEND_DOCX_IMAGES
+    assert outcome.markdown == f'![image]({captured["image_src"]})\n\nText'
+    assert captured["stream"] is preprocessed_stream
+    assert captured["kwargs"]["ignore_empty_paragraphs"] is False
+    assert outcome.assets == [
+        conversion.ConversionAsset(
+            filename="image-001.png",
+            source_path=outcome.assets[0].source_path,
+            preview_markdown_path=captured["image_src"],
+            page_number=None,
+            kind="docx-image",
+        )
+    ]
+    assert outcome.assets[0].source_path is not None
+    assert captured["image_src"] == outcome.assets[0].preview_markdown_path
+    assert captured["image_src"].endswith("/image-001.png")
+    assert (tmp_path / "artifacts").is_dir()
+    assert io.open(outcome.assets[0].source_path, "rb").read() == b"png"
+
+
+def test_convert_docx_with_preserved_images_requires_artifact_dir(conversion):
+    with pytest.raises(RuntimeError) as exc_info:
+        conversion.convert_file_with_details(
+            "report.docx",
+            conversion.ConversionOptions(preserve_docx_images=True),
+        )
+
+    assert "writable temporary asset directory" in str(exc_info.value)
+
+
+def test_extract_images_from_single_cell_tables(conversion):
+    html = '<table><tr><td><img src="image.png"/></td></tr></table>'
+
+    converted = conversion._extract_images_from_single_cell_tables(html)
+
+    assert "<table" not in converted
+    assert '<img src="image.png"/>' in converted
 
 
 def test_map_pdf_assets_uses_app_owned_asset_model(conversion, tmp_path):

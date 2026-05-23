@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from itertools import islice
 import base64
 import os
+import tempfile
 from io import BytesIO
 from pathlib import Path
 from urllib.parse import quote
@@ -16,7 +17,20 @@ from markitdowngui.core.input_sources import is_web_url
 
 IMAGE_EXTENSIONS = {".bmp", ".gif", ".jpeg", ".jpg", ".png", ".tiff", ".webp"}
 DOCINTEL_IMAGE_EXTENSIONS = {".bmp", ".jpeg", ".jpg", ".png", ".tiff"}
+DOCX_EXTENSION = ".docx"
 PDF_EXTENSION = ".pdf"
+DOCX_IMAGE_EXTENSIONS_BY_CONTENT_TYPE = {
+    "image/bmp": ".bmp",
+    "image/gif": ".gif",
+    "image/jpeg": ".jpg",
+    "image/jpg": ".jpg",
+    "image/png": ".png",
+    "image/svg+xml": ".svg",
+    "image/tiff": ".tiff",
+    "image/webp": ".webp",
+    "image/x-emf": ".emf",
+    "image/x-wmf": ".wmf",
+}
 PDF_RENDER_SCALE = 3.0
 LOCAL_OCR_TIMEOUT_SECONDS = 60
 DEFUDDLE_REQUEST_TIMEOUT_SECONDS = 30
@@ -28,6 +42,7 @@ BACKEND_DEFUDDLE = "defuddle"
 BACKEND_GLMOCR = "glmocr"
 BACKEND_LOCAL = "local"
 BACKEND_NATIVE = "native"
+BACKEND_DOCX_IMAGES = "docx-images"
 BACKEND_PDF_IMAGES = "pdf-images"
 OCR_PROVIDER_GLMOCR = "glmocr"
 OCR_PROVIDER_LEGACY = "legacy"
@@ -58,12 +73,14 @@ class ConversionOptions:
 
     ocr_enabled: bool = False
     preserve_pdf_images: bool = False
+    preserve_docx_images: bool = False
     ocr_provider: str = OCR_PROVIDER_LEGACY
     ocr_fallback_enabled: bool = True
     docintel_endpoint: str = ""
     ocr_languages: str = ""
     tesseract_path: str = ""
     pdf_artifacts_dir: str = ""
+    docx_artifacts_dir: str = ""
     glmocr_mode: str = GLMOCR_MODE_MAAS
     glmocr_ollama_host: str = DEFAULT_GLMOCR_OLLAMA_HOST
     glmocr_ollama_port: int = DEFAULT_GLMOCR_OLLAMA_PORT
@@ -82,6 +99,10 @@ class ConversionOptions:
         return bool(self.preserve_pdf_images)
 
     @property
+    def normalized_preserve_docx_images(self) -> bool:
+        return bool(self.preserve_docx_images)
+
+    @property
     def normalized_docintel_endpoint(self) -> str:
         return self.docintel_endpoint.strip()
 
@@ -96,6 +117,10 @@ class ConversionOptions:
     @property
     def normalized_pdf_artifacts_dir(self) -> str:
         return self.pdf_artifacts_dir.strip()
+
+    @property
+    def normalized_docx_artifacts_dir(self) -> str:
+        return self.docx_artifacts_dir.strip()
 
     @property
     def normalized_glmocr_mode(self) -> str:
@@ -285,6 +310,9 @@ def convert_file_with_details(
     if extension == PDF_EXTENSION and effective_options.normalized_preserve_pdf_images:
         return _convert_pdf_with_preserved_images(file_path, effective_options)
 
+    if extension == DOCX_EXTENSION and effective_options.normalized_preserve_docx_images:
+        return _convert_docx_with_preserved_images(file_path, effective_options)
+
     if not effective_options.ocr_enabled:
         return ConversionOutcome(
             markdown=_convert_with_markitdown(file_path, effective_options),
@@ -425,6 +453,111 @@ def _convert_pdf_with_preserved_images(
         backend=BACKEND_PDF_IMAGES,
         assets=_map_pdf_assets(getattr(result, "assets", [])),
     )
+
+
+def _convert_docx_with_preserved_images(
+    file_path: str,
+    options: ConversionOptions,
+) -> ConversionOutcome:
+    artifacts_dir = options.normalized_docx_artifacts_dir
+    if not artifacts_dir:
+        raise RuntimeError(
+            "Preserve DOCX images requires a writable temporary asset directory."
+        )
+
+    try:
+        import mammoth
+        from markdownify import markdownify
+        from markitdown.converter_utils.docx.pre_process import pre_process_docx
+    except ImportError as exc:
+        raise RuntimeError(
+            "Preserve DOCX images requires MarkItDown's DOCX dependencies to be installed."
+        ) from exc
+
+    artifact_root = Path(artifacts_dir)
+    artifact_root.mkdir(parents=True, exist_ok=True)
+    document_asset_dir = Path(
+        tempfile.mkdtemp(prefix="docx-images-", dir=artifact_root)
+    ).resolve()
+    assets: list[ConversionAsset] = []
+    image_count = 0
+
+    def convert_image(image) -> dict[str, str]:
+        nonlocal image_count
+        image_count += 1
+
+        with image.open() as image_file:
+            image_bytes = image_file.read()
+        if not image_bytes:
+            return {}
+
+        extension = _docx_image_extension(getattr(image, "content_type", ""))
+        filename = f"image-{image_count:03d}{extension}"
+        image_path = (document_asset_dir / filename).resolve()
+        image_path.write_bytes(image_bytes)
+
+        markdown_path = image_path.as_posix()
+        assets.append(
+            ConversionAsset(
+                filename=filename,
+                source_path=str(image_path),
+                preview_markdown_path=markdown_path,
+                page_number=None,
+                kind="docx-image",
+            )
+        )
+        return {"src": markdown_path}
+
+    with Path(file_path).open("rb") as file_stream:
+        preprocessed_stream = pre_process_docx(file_stream)
+        result = mammoth.convert_to_html(
+            preprocessed_stream,
+            convert_image=mammoth.images.img_element(convert_image),
+            ignore_empty_paragraphs=False,
+        )
+
+    html_content = _extract_images_from_single_cell_tables(result.value)
+    markdown = markdownify(html_content)
+
+    return ConversionOutcome(
+        markdown=markdown,
+        backend=BACKEND_DOCX_IMAGES,
+        assets=assets,
+    )
+
+
+def _docx_image_extension(content_type: str) -> str:
+    normalized = content_type.split(";", 1)[0].strip().lower()
+    return DOCX_IMAGE_EXTENSIONS_BY_CONTENT_TYPE.get(normalized, ".bin")
+
+
+def _extract_images_from_single_cell_tables(html_content: str) -> str:
+    from bs4 import BeautifulSoup
+
+    soup = BeautifulSoup(html_content, "html.parser")
+    changed = False
+
+    for table in soup.find_all("table"):
+        rows = table.find_all("tr")
+        if len(rows) != 1:
+            continue
+
+        cells = rows[0].find_all(["td", "th"])
+        if len(cells) != 1:
+            continue
+
+        cell = cells[0]
+        images = cell.find_all("img")
+        if not images or cell.get_text(strip=True):
+            continue
+
+        paragraph = soup.new_tag("p")
+        for image in images:
+            paragraph.append(image.extract())
+        table.replace_with(paragraph)
+        changed = True
+
+    return str(soup) if changed else html_content
 
 
 def _convert_pdf_with_glmocr(

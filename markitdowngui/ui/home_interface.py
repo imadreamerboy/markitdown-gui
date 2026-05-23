@@ -40,6 +40,7 @@ from markitdowngui.core.conversion import (
     BACKEND_GLMOCR,
     BACKEND_LOCAL,
     BACKEND_NATIVE,
+    BACKEND_DOCX_IMAGES,
     BACKEND_PDF_IMAGES,
     ConversionOptions,
     ConversionOutcome,
@@ -199,12 +200,22 @@ class HomeInterface(QWidget):
         self.preserve_pdf_images_check.toggled.connect(
             self._save_preserve_pdf_images_setting
         )
+        self.preserve_docx_images_check = CheckBox(
+            self.translate("home_preserve_docx_images_label")
+        )
+        self.preserve_docx_images_check.setToolTip(
+            self.translate("home_preserve_docx_images_tooltip")
+        )
+        self.preserve_docx_images_check.toggled.connect(
+            self._save_preserve_docx_images_setting
+        )
         self.ocr_enabled_check = CheckBox(self.translate("home_queue_ocr_label"))
         self.ocr_enabled_check.setToolTip(
             self.translate("home_queue_ocr_tooltip")
         )
         self.ocr_enabled_check.toggled.connect(self._save_queue_ocr_enabled)
         queue_options.addWidget(self.preserve_pdf_images_check)
+        queue_options.addWidget(self.preserve_docx_images_check)
         queue_options.addWidget(self.ocr_enabled_check)
         queue_options.addStretch(1)
         queue_layout.addLayout(queue_options)
@@ -594,19 +605,24 @@ class HomeInterface(QWidget):
 
     def _build_conversion_options(self) -> ConversionOptions:
         artifacts_dir = ""
-        if self.preserve_pdf_images_check.isChecked():
+        if (
+            self.preserve_pdf_images_check.isChecked()
+            or self.preserve_docx_images_check.isChecked()
+        ):
             self._cleanup_temp_asset_root()
             self._temp_asset_root = str(create_temp_asset_root())
             artifacts_dir = self._temp_asset_root
         return ConversionOptions(
             ocr_enabled=self.ocr_enabled_check.isChecked(),
             preserve_pdf_images=self.preserve_pdf_images_check.isChecked(),
+            preserve_docx_images=self.preserve_docx_images_check.isChecked(),
             ocr_provider=self.settings_manager.get_ocr_provider(),
             ocr_fallback_enabled=self.settings_manager.get_ocr_fallback_enabled(),
             docintel_endpoint=self.settings_manager.get_docintel_endpoint(),
             ocr_languages=self.settings_manager.get_ocr_languages(),
             tesseract_path=self.settings_manager.get_tesseract_path(),
             pdf_artifacts_dir=artifacts_dir,
+            docx_artifacts_dir=artifacts_dir,
             glmocr_mode=self.settings_manager.get_glmocr_mode(),
             glmocr_ollama_host=self.settings_manager.get_glmocr_ollama_host(),
             glmocr_ollama_port=self.settings_manager.get_glmocr_ollama_port(),
@@ -669,6 +685,7 @@ class HomeInterface(QWidget):
             BACKEND_GLMOCR: 0,
             BACKEND_LOCAL: 0,
             BACKEND_NATIVE: 0,
+            BACKEND_DOCX_IMAGES: 0,
             BACKEND_PDF_IMAGES: 0,
         }
 
@@ -685,6 +702,7 @@ class HomeInterface(QWidget):
             (BACKEND_GLMOCR, "conversion_backend_glmocr"),
             (BACKEND_LOCAL, "conversion_backend_local"),
             (BACKEND_NATIVE, "conversion_backend_native"),
+            (BACKEND_DOCX_IMAGES, "conversion_backend_docx_images"),
             (BACKEND_PDF_IMAGES, "conversion_backend_pdf_images"),
         ):
             count = counts[backend]
@@ -1064,6 +1082,9 @@ class HomeInterface(QWidget):
     def _save_preserve_pdf_images_setting(self, enabled: bool) -> None:
         self.settings_manager.set_preserve_pdf_images(enabled)
 
+    def _save_preserve_docx_images_setting(self, enabled: bool) -> None:
+        self.settings_manager.set_preserve_docx_images(enabled)
+
     def _sync_conversion_toggle_state(self) -> None:
         self.ocr_enabled_check.blockSignals(True)
         self.ocr_enabled_check.setChecked(self.settings_manager.get_ocr_enabled())
@@ -1074,11 +1095,18 @@ class HomeInterface(QWidget):
             self.settings_manager.get_preserve_pdf_images()
         )
         self.preserve_pdf_images_check.blockSignals(False)
-        self._update_preserve_pdf_images_state()
 
-    def _update_preserve_pdf_images_state(self) -> None:
+        self.preserve_docx_images_check.blockSignals(True)
+        self.preserve_docx_images_check.setChecked(
+            self.settings_manager.get_preserve_docx_images()
+        )
+        self.preserve_docx_images_check.blockSignals(False)
+        self._update_preserve_images_state()
+
+    def _update_preserve_images_state(self) -> None:
         self.preserve_pdf_images_check.setEnabled(True)
-        self.queue_options_note.setText(self.translate("home_preserve_pdf_images_note"))
+        self.preserve_docx_images_check.setEnabled(True)
+        self.queue_options_note.setText(self.translate("home_preserve_images_note"))
 
     def _cleanup_temp_asset_root(self) -> None:
         cleanup_temp_asset_root(self._temp_asset_root)
