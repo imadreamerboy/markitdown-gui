@@ -75,6 +75,48 @@ ApplicationWindow {
         }
     }
 
+    Shortcut {
+        sequence: "Ctrl+O"
+        context: Qt.ApplicationShortcut
+        onActivated: openFileDialog.open()
+    }
+
+    Shortcut {
+        sequence: "Ctrl+B"
+        context: Qt.ApplicationShortcut
+        onActivated: app.convert()
+    }
+
+    Shortcut {
+        sequence: "Ctrl+P"
+        context: Qt.ApplicationShortcut
+        onActivated: app.togglePause()
+    }
+
+    Shortcut {
+        sequence: "Esc"
+        context: Qt.ApplicationShortcut
+        onActivated: app.cancel()
+    }
+
+    Shortcut {
+        sequence: "Ctrl+S"
+        context: Qt.ApplicationShortcut
+        onActivated: app.saveCombined ? saveCombinedDialog.open() : saveSeparateDialog.open()
+    }
+
+    Shortcut {
+        sequence: "Ctrl+L"
+        context: Qt.ApplicationShortcut
+        onActivated: app.clearQueue()
+    }
+
+    Shortcut {
+        sequence: "Ctrl+K"
+        context: Qt.ApplicationShortcut
+        onActivated: root.pageIndex = 2
+    }
+
     RowLayout {
         anchors.fill: parent
         spacing: 0
@@ -986,7 +1028,7 @@ ApplicationWindow {
 
             SectionPanel {
                 title: "Shortcuts"
-                subtitle: "The QML migration keeps the main workflow mouse-first for now."
+                subtitle: "Common conversion actions stay available from the keyboard."
                 surfaceColor: colors.surface
                 borderColor: colors.border
                 textColor: colors.text
@@ -994,7 +1036,7 @@ ApplicationWindow {
                 Layout.fillWidth: true
 
                 Label {
-                    text: "Next pass should add command shortcuts for open, convert, pause, cancel, copy, and save."
+                    text: "Ctrl+O open files, Ctrl+B convert, Ctrl+P pause or resume, Ctrl+S save, Ctrl+L clear queue, Ctrl+K help, Esc cancel."
                     color: colors.muted
                     font.pixelSize: 13
                     wrapMode: Text.WordWrap
