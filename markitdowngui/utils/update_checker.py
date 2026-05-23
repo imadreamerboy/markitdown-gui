@@ -1,14 +1,10 @@
-"""Handles application update checks."""
-
-import requests
 import json
 
-from PySide6.QtWidgets import QApplication, QWidget
+import requests
 from PySide6.QtCore import QThread, Signal
 from packaging.version import parse
 
 from markitdowngui import __version__ as app_version
-from markitdowngui.ui.dialogs.update_dialog import UpdateDialog
 
 
 GITHUB_API_URL = "https://api.github.com/repos/imadreamerboy/markitdown-gui/releases/latest"
@@ -68,30 +64,16 @@ class UpdateChecker(QThread):
             self.update_error.emit(f"An unexpected error occurred during update check: {e}")
 
 def check_for_updates():
-    """Checks for application updates using GitHub releases."""
+    """Check for application updates using GitHub releases.
 
-
-    try:
-        from markitdowngui.ui.main_window import MainWindow
-        MAIN_WINDOW_CLASS_LOADED = True
-    except ImportError:
-        print("Warning: MainWindow class could not be imported for update_checker. Update dialog may lack optimal parent or translations.")
-        MainWindow = None 
-        MAIN_WINDOW_CLASS_LOADED = False
-
+    The desktop UI uses ``UpdateChecker`` for async signals. This synchronous
+    helper is kept for tests and direct CLI-style checks.
+    """
     print("Checking for updates...")
     current_version = get_current_version()
     if not current_version:
         print("Could not determine current application version. Skipping update check.")
-        return
-
-    try:
-        from markitdowngui.ui.main_window import MainWindow
-        MAIN_WINDOW_CLASS_LOADED = True
-    except ImportError:
-        print("Warning: MainWindow class could not be imported for update_checker. Update dialog may lack optimal parent or translations.")
-        MainWindow = None 
-        MAIN_WINDOW_CLASS_LOADED = False
+        return None
 
     try:
         response = requests.get(GITHUB_API_URL)
@@ -107,31 +89,13 @@ def check_for_updates():
 
             if parse(normalized_latest) > parse(normalized_current):
                 print(f"A new version ({latest_version}) is available!")
-                
-                main_window_for_dialog: QWidget | None = None
-                translate_func_for_dialog = lambda key: key
-
-                if MAIN_WINDOW_CLASS_LOADED and MainWindow is not None:
-                    for widget in QApplication.topLevelWidgets():
-                        if isinstance(widget, MainWindow):
-                            if widget.is_main_window:
-                                main_window_for_dialog = widget
-                                if hasattr(widget, 'translate'):
-                                    translate_func_for_dialog = widget.translate
-                                else:
-                                    print("Warning: MainWindow instance found, but 'translate' method is unexpectedly missing.")
-                                break 
-                
-                if not main_window_for_dialog:
-                    print("Info: MainWindow instance not found via specific type check. Update dialog may be parentless and use default translations.")
-
-
-                dialog = UpdateDialog(latest_version, translate_func_for_dialog, parent=main_window_for_dialog)
-                dialog.exec()
+                return latest_version
             else:
                 print("Application is up to date.")
+                return None
         else:
             print("Could not retrieve latest version information from GitHub.")
+            return None
 
     except requests.exceptions.RequestException as e:
         print(f"Error checking for updates: {e}")
@@ -139,6 +103,7 @@ def check_for_updates():
         print("Error parsing GitHub API response.")
     except Exception as e:
         print(f"An unexpected error occurred during update check: {e}")
+    return None
 
 if __name__ == '__main__':
     # For testing the update checker directly

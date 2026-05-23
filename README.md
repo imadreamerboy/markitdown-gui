@@ -3,8 +3,8 @@
 
 # MarkItDown GUI Wrapper
 
-A desktop GUI for `MarkItDown`, built with `PySide6` and `QFluentWidgets`.
-It focuses on fast multi-file conversion to Markdown with a modern Fluent-style interface.
+A desktop GUI for `MarkItDown`, built with `PySide6` and official Qt Quick Controls/QML.
+It focuses on fast multi-file conversion to Markdown with a modern, native-styled desktop interface.
 
 ![Current UI screenshot](image.png)
 
@@ -171,10 +171,9 @@ That build intentionally excludes the GLM-OCR self-hosted runtime stack; local h
 
 ## License
 
-Licensed under **GPLv3 for non-commercial use**.
+Licensed under the **MIT License**.
 
-Commercial use requires a separate commercial license.
-This follows the non-commercial licensing requirements of `PySide6-Fluent-Widgets` (`qfluentwidgets`).
+The app uses `PySide6`/Qt under Qt's LGPL/commercial licensing model. The previous `PySide6-Fluent-Widgets` dependency has been removed.
 
 ## Contributing
 
@@ -198,5 +197,5 @@ uv run pytest -q
 
 - MarkItDown ([MIT License](https://opensource.org/licenses/MIT))
 - PySide6 ([LGPLv3 License](https://www.gnu.org/licenses/lgpl-3.0.html))
-- PySide6-Fluent-Widgets / QFluentWidgets ([Project site](https://qfluentwidgets.com))
+- Qt Quick Controls ([Qt documentation](https://doc.qt.io/qt-6/qtquickcontrols-index.html))
 

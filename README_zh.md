@@ -1,7 +1,7 @@
 # MarkItDown GUI 封装
 
-这是一个基于 `PySide6` 和 `QFluentWidgets` 的 `MarkItDown` 桌面 GUI。
-目标是用更直观的界面完成多文件到 Markdown 的转换。
+这是一个基于 `PySide6` 和官方 Qt Quick Controls/QML 的 `MarkItDown` 桌面 GUI。
+目标是用现代、接近原生体验的桌面界面完成多文件到 Markdown 的转换。
 
 ![当前界面截图](image.png)
 
@@ -141,10 +141,9 @@ pyinstaller MarkItDown.spec --clean --noconfirm
 
 ## 许可证
 
-本项目采用 **GPLv3（仅限非商业用途）**。
+本项目采用 **MIT License**。
 
-商业用途需要单独的商业授权。
-该策略与 `PySide6-Fluent-Widgets`（`qfluentwidgets`）的非商业许可要求保持一致。
+应用使用 `PySide6`/Qt，需遵守 Qt 的 LGPL/商业许可模式。此前的 `PySide6-Fluent-Widgets` 依赖已移除。
 
 ## 贡献
 
@@ -168,4 +167,4 @@ uv run pytest -q
 
 - MarkItDown ([MIT 许可证](https://opensource.org/licenses/MIT))
 - PySide6 ([LGPLv3 许可证](https://www.gnu.org/licenses/lgpl-3.0.html))
-- PySide6-Fluent-Widgets / QFluentWidgets ([项目主页](https://qfluentwidgets.com))
+- Qt Quick Controls ([Qt 文档](https://doc.qt.io/qt-6/qtquickcontrols-index.html))

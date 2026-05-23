@@ -451,6 +451,16 @@ ApplicationWindow {
                     Layout.fillWidth: true
                 }
 
+                ToggleRow {
+                    title: "Preserve DOCX images"
+                    detail: "Extract embedded document images and keep relative asset links on export."
+                    checked: app.preserveDocxImages
+                    textColor: colors.text
+                    mutedTextColor: colors.muted
+                    onToggled: checked => app.setPreserveDocxImages(checked)
+                    Layout.fillWidth: true
+                }
+
                 Rectangle {
                     height: 1
                     color: colors.border

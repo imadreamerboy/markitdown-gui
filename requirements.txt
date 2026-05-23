@@ -45,8 +45,6 @@ cryptography==46.0.7
     #   msal
     #   pdfminer-six
     #   pyjwt
-darkdetect==0.8.0
-    # via pyside6-fluent-widgets
 defusedxml==0.7.1
     # via
     #   docling-core
@@ -164,19 +162,13 @@ pypdfium2==5.6.0
 pyreadline3==3.5.4
     # via humanfriendly
 pyside6==6.9.1
-    # via
-    #   markitdowngui (pyproject.toml)
-    #   pyside6-fluent-widgets
+    # via markitdowngui (pyproject.toml)
 pyside6-addons==6.9.1
     # via pyside6
 pyside6-essentials==6.9.1
     # via
     #   pyside6
     #   pyside6-addons
-pyside6-fluent-widgets==1.11.0
-    # via markitdowngui (pyproject.toml)
-pysidesix-frameless-window==0.7.7
-    # via pyside6-fluent-widgets
 pytesseract==0.3.13
     # via
     #   markitdowngui (pyproject.toml)
@@ -195,7 +187,6 @@ pywin32==311
     # via
     #   docling-parse
     #   portalocker
-    #   pysidesix-frameless-window
 pyyaml==6.0.3
     # via
     #   docling-core

@@ -39,6 +39,7 @@ class ResultItem:
             "glmocr": "GLM-OCR",
             "local": "Tesseract",
             "native": "Native",
+            "docx-images": "DOCX assets",
             "pdf-images": "PDF assets",
         }
         return labels.get(self.outcome.backend, self.outcome.backend or "Native")

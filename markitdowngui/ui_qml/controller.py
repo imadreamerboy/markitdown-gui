@@ -152,6 +152,10 @@ class AppController(QObject):
     def preservePdfImages(self) -> bool:
         return self.settings.get_preserve_pdf_images()
 
+    @Property(bool, notify=settingsChanged)
+    def preserveDocxImages(self) -> bool:
+        return self.settings.get_preserve_docx_images()
+
     @Property(str, notify=settingsChanged)
     def ocrProvider(self) -> str:
         return self.settings.get_ocr_provider()
@@ -403,6 +407,11 @@ class AppController(QObject):
         self.settings.set_preserve_pdf_images(enabled)
         self.settingsChanged.emit()
 
+    @Slot(bool)
+    def setPreserveDocxImages(self, enabled: bool) -> None:
+        self.settings.set_preserve_docx_images(enabled)
+        self.settingsChanged.emit()
+
     @Slot(str)
     def setOcrProvider(self, provider: str) -> None:
         self.settings.set_ocr_provider(provider)
@@ -466,20 +475,24 @@ class AppController(QObject):
 
     def _build_conversion_options(self) -> ConversionOptions:
         artifacts_dir = ""
-        if self.settings.get_preserve_pdf_images():
+        preserve_pdf_images = self.settings.get_preserve_pdf_images()
+        preserve_docx_images = self.settings.get_preserve_docx_images()
+        if preserve_pdf_images or preserve_docx_images:
             self._cleanup_temp_assets()
             self._temp_asset_root = str(create_temp_asset_root())
             artifacts_dir = self._temp_asset_root
 
         return ConversionOptions(
             ocr_enabled=self.settings.get_ocr_enabled(),
-            preserve_pdf_images=self.settings.get_preserve_pdf_images(),
+            preserve_pdf_images=preserve_pdf_images,
+            preserve_docx_images=preserve_docx_images,
             ocr_provider=self.settings.get_ocr_provider(),
             ocr_fallback_enabled=self.settings.get_ocr_fallback_enabled(),
             docintel_endpoint=self.settings.get_docintel_endpoint(),
             ocr_languages=self.settings.get_ocr_languages(),
             tesseract_path=self.settings.get_tesseract_path(),
             pdf_artifacts_dir=artifacts_dir,
+            docx_artifacts_dir=artifacts_dir,
             glmocr_mode=self.settings.get_glmocr_mode(),
             glmocr_ollama_host=self.settings.get_glmocr_ollama_host(),
             glmocr_ollama_port=self.settings.get_glmocr_ollama_port(),

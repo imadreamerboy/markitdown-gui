@@ -13,7 +13,7 @@ def mock_requests_get(monkeypatch):
 
 def test_check_for_updates_new_version_available(mock_requests_get, monkeypatch):
     """
-    Test that the update dialog is shown when a newer version is available on GitHub.
+    Test that the latest version is returned when a newer release is available.
     """
     # Mock the current version and GitHub API response
     monkeypatch.setattr(update_checker, 'get_current_version', lambda: 'v1.0.0')
@@ -21,16 +21,9 @@ def test_check_for_updates_new_version_available(mock_requests_get, monkeypatch)
     mock_response.json.return_value = {'tag_name': 'v1.1.0'}
     mock_requests_get.return_value = mock_response
 
-    # Mock the UI dialog to prevent it from actually running
-    mock_dialog = MagicMock()
-    monkeypatch.setattr(update_checker, 'UpdateDialog', mock_dialog)
-    
-    # Run the checker
-    update_checker.check_for_updates()
+    latest_version = update_checker.check_for_updates()
 
-    # Assert that the dialog was created and shown
-    mock_dialog.assert_called_once()
-    mock_dialog.return_value.exec.assert_called_once()
+    assert latest_version == 'v1.1.0'
 
 def test_check_for_updates_up_to_date(mock_requests_get, monkeypatch):
     """
@@ -41,12 +34,7 @@ def test_check_for_updates_up_to_date(mock_requests_get, monkeypatch):
     mock_response.json.return_value = {'tag_name': 'v1.1.0'}
     mock_requests_get.return_value = mock_response
     
-    mock_dialog = MagicMock()
-    monkeypatch.setattr(update_checker, 'UpdateDialog', mock_dialog)
-
-    update_checker.check_for_updates()
-
-    mock_dialog.assert_not_called()
+    assert update_checker.check_for_updates() is None
 
 def test_check_for_updates_request_exception(mock_requests_get, monkeypatch):
     """
@@ -56,10 +44,5 @@ def test_check_for_updates_request_exception(mock_requests_get, monkeypatch):
     monkeypatch.setattr(update_checker, 'get_current_version', lambda: 'v1.0.0')
     mock_requests_get.side_effect = update_checker.requests.exceptions.RequestException
     
-    mock_dialog = MagicMock()
-    monkeypatch.setattr(update_checker, 'UpdateDialog', mock_dialog)
-
     # This should run without raising an exception
-    update_checker.check_for_updates()
-    
-    mock_dialog.assert_not_called() 
+    assert update_checker.check_for_updates() is None
