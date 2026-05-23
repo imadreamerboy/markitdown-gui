@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 
 from PySide6.QtCore import QCoreApplication, Qt, QUrl
-from PySide6.QtGui import QGuiApplication, QIcon
+from PySide6.QtGui import QFont, QGuiApplication, QIcon
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuickControls2 import QQuickStyle
 
@@ -24,6 +23,7 @@ def main() -> int:
     QCoreApplication.setApplicationName("MarkItDown GUI")
 
     app = QGuiApplication(sys.argv)
+    app.setFont(_platform_font())
     icon_path = Path(__file__).resolve().parents[1] / "resources" / "markitdown-gui.png"
     if icon_path.is_file():
         app.setWindowIcon(QIcon(str(icon_path)))
@@ -49,5 +49,9 @@ def _configure_style() -> None:
     else:
         QQuickStyle.setStyle("Fusion")
 
-    os.environ.setdefault("QT_QUICK_CONTROLS_CONF", "")
-
+def _platform_font() -> QFont:
+    if sys.platform == "win32":
+        return QFont("Segoe UI", 10)
+    if sys.platform == "darwin":
+        return QFont(".AppleSystemUIFont", 13)
+    return QFont("Noto Sans", 10)

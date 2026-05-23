@@ -14,6 +14,7 @@ ApplicationWindow {
     visible: true
     title: "MarkItDown GUI"
     color: colors.window
+    font.family: Qt.platform.os === "windows" ? "Segoe UI" : Qt.platform.os === "osx" ? ".AppleSystemUIFont" : "Noto Sans"
     onClosing: app.shutdown()
 
     property int pageIndex: 0
