@@ -141,6 +141,14 @@ class SettingsManager:
         """Set whether PDF image preservation is enabled by default."""
         self.settings.setValue('preservePdfImages', enabled)
 
+    def get_preserve_docx_images(self) -> bool:
+        """Get whether DOCX image preservation is enabled by default."""
+        return bool(self.settings.value('preserveDocxImages', False, type=bool))
+
+    def set_preserve_docx_images(self, enabled: bool) -> None:
+        """Set whether DOCX image preservation is enabled by default."""
+        self.settings.setValue('preserveDocxImages', enabled)
+
     def get_ocr_provider(self) -> str:
         """Get the configured OCR provider."""
         value = str(
