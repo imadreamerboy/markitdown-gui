@@ -22,7 +22,7 @@ beautifulsoup4==4.13.4
     #   markitdown
 certifi==2025.6.15
     # via requests
-cffi==1.17.1
+cffi==2.0.0
     # via cryptography
 charset-normalizer==3.4.2
     # via
@@ -39,7 +39,7 @@ colorama==0.4.6
     # via click
 coloredlogs==15.0.1
     # via onnxruntime
-cryptography==45.0.4
+cryptography==46.0.5
     # via
     #   azure-identity
     #   msal
@@ -89,7 +89,7 @@ markdown-it-py==4.0.0
     # via rich
 markdownify==1.1.0
     # via markitdown
-markitdown==0.1.5
+markitdown==0.1.6
     # via
     #   markitdowngui (pyproject.toml)
     #   markitdown-pdf-images
@@ -243,6 +243,7 @@ typing-extensions==4.15.0
     #   azure-core
     #   azure-identity
     #   beautifulsoup4
+    #   cryptography
     #   docling-core
     #   pydantic
     #   pydantic-core
