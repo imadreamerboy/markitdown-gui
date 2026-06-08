@@ -1,4 +1,4 @@
-[阅读中文版本](README_zh.md)
+[English](README.md) | [简体中文](README_zh.md) | [繁體中文](README_zh_TW.md)
 
 
 # MarkItDown GUI Wrapper

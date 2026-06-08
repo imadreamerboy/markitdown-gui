@@ -36,6 +36,7 @@ from markitdowngui.core.settings import (
     OCR_PROVIDER_LEGACY,
     SettingsManager,
 )
+from markitdowngui.utils.translations import get_available_languages
 
 
 class AzureConnectionTestWorker(QThread):
@@ -59,6 +60,7 @@ class SettingsInterface(QWidget):
     """Settings page shown inside the Fluent navigation."""
 
     theme_mode_changed = Signal(str)
+    language_changed = Signal(str)
 
     def __init__(self, settings_manager: SettingsManager, translate, parent=None):
         super().__init__(parent=parent)
@@ -67,6 +69,9 @@ class SettingsInterface(QWidget):
         self.translate = translate
         self._azure_test_worker: AzureConnectionTestWorker | None = None
         self._ocr_provider_values = [OCR_PROVIDER_LEGACY, OCR_PROVIDER_GLMOCR]
+        available_langs = get_available_languages()
+        self._language_codes = list(available_langs.keys())
+        self._language_names = list(available_langs.values())
         self._glmocr_mode_values = [
             GLMOCR_MODE_MAAS,
             GLMOCR_MODE_OLLAMA,
@@ -396,6 +401,19 @@ class SettingsInterface(QWidget):
         appearance_layout.addWidget(self.theme_light)
         appearance_layout.addWidget(self.theme_dark)
         appearance_layout.addWidget(self.theme_system)
+
+        appearance_layout.addWidget(BodyLabel(self.translate("menu_language")))
+        self.language_combo = ComboBox()
+        self.language_combo.addItems(self._language_names)
+        self.language_combo.currentIndexChanged.connect(self._save_language)
+        appearance_layout.addWidget(self.language_combo)
+        self.language_restart_note = CaptionLabel(
+            self.translate("settings_language_restart_note")
+        )
+        self.language_restart_note.setWordWrap(True)
+        self.language_restart_note.setVisible(False)
+        appearance_layout.addWidget(self.language_restart_note)
+
         layout.addWidget(self.appearance_group)
 
         layout.addStretch(1)
@@ -458,6 +476,15 @@ class SettingsInterface(QWidget):
         self.theme_light.setChecked(theme_mode == "light")
         self.theme_dark.setChecked(theme_mode == "dark")
         self.theme_system.setChecked(theme_mode == "system")
+
+        current_lang = self.settings_manager.get_current_language()
+        try:
+            lang_index = self._language_codes.index(current_lang)
+        except ValueError:
+            lang_index = 0
+        self.language_combo.blockSignals(True)
+        self.language_combo.setCurrentIndex(lang_index)
+        self.language_combo.blockSignals(False)
 
     def _set_combo_value(self, combo: ComboBox, values: list[str], value: str) -> None:
         try:
@@ -594,6 +621,13 @@ class SettingsInterface(QWidget):
         if file_path:
             self.tesseract_path_edit.setText(file_path)
             self.settings_manager.set_tesseract_path(file_path)
+
+    def _save_language(self, index: int) -> None:
+        if 0 <= index < len(self._language_codes):
+            lang_code = self._language_codes[index]
+            self.settings_manager.set_current_language(lang_code)
+            self.language_restart_note.setVisible(True)
+            self.language_changed.emit(lang_code)
 
     def _save_theme(self, mode: str, checked: bool) -> None:
         if not checked:
