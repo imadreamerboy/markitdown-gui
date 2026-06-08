@@ -364,9 +364,9 @@ TRANSLATIONS = {
         "menu_dark_mode": "深色模式(&D)",
         "menu_settings": "设置(&S)",
         "menu_language": "语言(&L)",
-        "menu_lang_en": "英語(&E)",
-        "menu_lang_zh_CN": "簡體中文(&S)",
-        "menu_lang_zh_TW": "繁體中文(&T)",
+        "menu_lang_en": "英文(&E)",         # Changed from "英語(&E)"
+        "menu_lang_zh_CN": "简体中文(&S)",   # Ensure all characters are simplified
+        "menu_lang_zh_TW": "繁體中文(&T)",   # Keep traditional for the TW label
         "menu_format_settings": "格式设置(&F)...",
         "menu_help": "帮助(&H)",
         "menu_keyboard_shortcuts": "键盘快捷键(&K)...",
