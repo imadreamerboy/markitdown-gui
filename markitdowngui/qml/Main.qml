@@ -303,7 +303,9 @@ ApplicationWindow {
             anchors.bottomMargin: root.pageMargin
             spacing: 14
 
-            UrlBar {}
+            UrlBar {
+                compact: app.hasQueue || app.hasResults
+            }
 
             Loader {
                 Layout.fillWidth: true
@@ -313,47 +315,101 @@ ApplicationWindow {
         }
     }
 
-    component UrlBar: SectionPanel {
-        title: "Add a webpage"
-        subtitle: "Paste a URL when the source is already online."
-        surfaceColor: colors.surface
-        borderColor: colors.border
-        textColor: colors.text
-        mutedTextColor: colors.muted
+    component UrlBar: Item {
+        id: urlBar
+
+        property bool compact: false
+
         Layout.fillWidth: true
-        implicitHeight: 104
+        implicitHeight: compact ? 44 : 104
 
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: 10
+        Loader {
+            anchors.fill: parent
+            sourceComponent: urlBar.compact ? compactUrlBar : expandedUrlBar
+        }
 
-            AppTextField {
-                id: urlInput
-                placeholderText: "https://example.com/article"
-                surfaceColor: colors.input
-                borderColor: colors.border
-                accentColor: colors.accent
-                textColor: colors.text
-                placeholderColor: colors.subtle
-                Layout.fillWidth: true
-                onAccepted: {
-                    app.addUrl(text)
-                    text = ""
+        Component {
+            id: compactUrlBar
+
+            RowLayout {
+                spacing: 10
+
+                AppTextField {
+                    id: compactUrlInput
+                    placeholderText: "Add webpage URL"
+                    surfaceColor: colors.input
+                    borderColor: colors.border
+                    accentColor: colors.accent
+                    textColor: colors.text
+                    placeholderColor: colors.subtle
+                    Layout.fillWidth: true
+                    onAccepted: {
+                        app.addUrl(text)
+                        text = ""
+                    }
+                }
+
+                AppButton {
+                    text: "Add webpage"
+                    primary: true
+                    iconName: "link"
+                    accentColor: colors.action
+                    primaryTextColor: colors.onAction
+                    surfaceColor: colors.surfaceAlt
+                    borderColor: colors.border
+                    textColor: colors.text
+                    onClicked: {
+                        app.addUrl(compactUrlInput.text)
+                        compactUrlInput.text = ""
+                    }
                 }
             }
+        }
 
-            AppButton {
-                text: "Add webpage"
-                primary: true
-                iconName: "link"
-                accentColor: colors.action
-                primaryTextColor: colors.onAction
-                surfaceColor: colors.surfaceAlt
+        Component {
+            id: expandedUrlBar
+
+            SectionPanel {
+                title: "Add a webpage"
+                subtitle: "Paste a URL when the source is already online."
+                surfaceColor: colors.surface
                 borderColor: colors.border
                 textColor: colors.text
-                onClicked: {
-                    app.addUrl(urlInput.text)
-                    urlInput.text = ""
+                mutedTextColor: colors.muted
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 10
+
+                    AppTextField {
+                        id: expandedUrlInput
+                        placeholderText: "https://example.com/article"
+                        surfaceColor: colors.input
+                        borderColor: colors.border
+                        accentColor: colors.accent
+                        textColor: colors.text
+                        placeholderColor: colors.subtle
+                        Layout.fillWidth: true
+                        onAccepted: {
+                            app.addUrl(text)
+                            text = ""
+                        }
+                    }
+
+                    AppButton {
+                        text: "Add webpage"
+                        primary: true
+                        iconName: "link"
+                        accentColor: colors.action
+                        primaryTextColor: colors.onAction
+                        surfaceColor: colors.surfaceAlt
+                        borderColor: colors.border
+                        textColor: colors.text
+                        onClicked: {
+                            app.addUrl(expandedUrlInput.text)
+                            expandedUrlInput.text = ""
+                        }
+                    }
                 }
             }
         }
@@ -595,128 +651,136 @@ ApplicationWindow {
                 Layout.minimumWidth: 330
                 Layout.fillHeight: true
 
-                WorkspaceStats {
+                ScrollView {
+                    id: conversionRailScroll
+                    clip: true
                     Layout.fillWidth: true
-                }
+                    Layout.fillHeight: true
 
-                Rectangle {
-                    height: 1
-                    color: colors.border
-                    Layout.fillWidth: true
-                }
+                    ColumnLayout {
+                        width: conversionRailScroll.availableWidth
+                        spacing: 12
 
-                ToggleRow {
-                    title: "OCR"
-                    detail: "Provider: " + app.ocrProvider + ". Use for scanned or image-heavy inputs."
-                    checked: app.ocrEnabled
-                    textColor: colors.text
-                    mutedTextColor: colors.muted
-                    onToggled: checked => app.setOcrEnabled(checked)
-                    Layout.fillWidth: true
-                }
+                        WorkspaceStats {
+                            Layout.fillWidth: true
+                        }
 
-                ToggleRow {
-                    title: "Preserve PDF images"
-                    detail: "Extract PDF page images and keep relative asset links on export."
-                    checked: app.preservePdfImages
-                    textColor: colors.text
-                    mutedTextColor: colors.muted
-                    onToggled: checked => app.setPreservePdfImages(checked)
-                    Layout.fillWidth: true
-                }
+                        Rectangle {
+                            height: 1
+                            color: colors.border
+                            Layout.fillWidth: true
+                        }
 
-                ToggleRow {
-                    title: "Preserve DOCX images"
-                    detail: "Extract embedded document images and keep relative asset links on export."
-                    checked: app.preserveDocxImages
-                    textColor: colors.text
-                    mutedTextColor: colors.muted
-                    onToggled: checked => app.setPreserveDocxImages(checked)
-                    Layout.fillWidth: true
-                }
+                        ToggleRow {
+                            title: "OCR"
+                            detail: "Provider: " + app.ocrProvider + ". Use for scanned or image-heavy inputs."
+                            checked: app.ocrEnabled
+                            textColor: colors.text
+                            mutedTextColor: colors.muted
+                            onToggled: checked => app.setOcrEnabled(checked)
+                            Layout.fillWidth: true
+                        }
 
-                Rectangle {
-                    height: 1
-                    color: colors.border
-                    Layout.fillWidth: true
-                }
+                        ToggleRow {
+                            title: "Preserve PDF images"
+                            detail: "Extract PDF page images and keep relative asset links on export."
+                            checked: app.preservePdfImages
+                            textColor: colors.text
+                            mutedTextColor: colors.muted
+                            onToggled: checked => app.setPreservePdfImages(checked)
+                            Layout.fillWidth: true
+                        }
 
-                ColumnLayout {
-                    spacing: 6
-                    Layout.fillWidth: true
+                        ToggleRow {
+                            title: "Preserve DOCX images"
+                            detail: "Extract embedded document images and keep relative asset links on export."
+                            checked: app.preserveDocxImages
+                            textColor: colors.text
+                            mutedTextColor: colors.muted
+                            onToggled: checked => app.setPreserveDocxImages(checked)
+                            Layout.fillWidth: true
+                        }
 
-                    Label {
-                        text: "Output"
-                        color: colors.text
-                        font.pixelSize: 13
-                        font.weight: Font.Medium
-                        Layout.fillWidth: true
-                    }
+                        Rectangle {
+                            height: 1
+                            color: colors.border
+                            Layout.fillWidth: true
+                        }
 
-                    RowLayout {
-                        spacing: 8
-                        Layout.fillWidth: true
+                        ColumnLayout {
+                            spacing: 6
+                            Layout.fillWidth: true
 
-                        Icon {
-                            name: "save"
-                            size: 15
-                            color: colors.muted
+                            Label {
+                                text: "Output"
+                                color: colors.text
+                                font.pixelSize: 13
+                                font.weight: Font.Medium
+                                Layout.fillWidth: true
+                            }
+
+                            RowLayout {
+                                spacing: 8
+                                Layout.fillWidth: true
+
+                                Icon {
+                                    name: "save"
+                                    size: 15
+                                    color: colors.muted
+                                }
+
+                                Label {
+                                    text: app.saveCombined ? "Combined Markdown file" : "Separate Markdown files"
+                                    color: colors.muted
+                                    font.pixelSize: 12
+                                    elide: Text.ElideRight
+                                    Layout.fillWidth: true
+                                }
+                            }
+
+                            Label {
+                                text: app.saveToSourceFolder
+                                    ? "Default: source folders"
+                                    : (app.outputFolder.length > 0 ? app.outputFolder : "Choose location when saving")
+                                color: colors.subtle
+                                font.pixelSize: 11
+                                elide: Text.ElideMiddle
+                                Layout.fillWidth: true
+                            }
+
+                            AppButton {
+                                text: "Set folder"
+                                subtle: true
+                                iconName: "folder-plus"
+                                surfaceColor: colors.surfaceAlt
+                                borderColor: colors.border
+                                textColor: colors.text
+                                onClicked: outputFolderDialog.open()
+                            }
+                        }
+
+                        Rectangle {
+                            height: 1
+                            color: colors.border
+                            Layout.fillWidth: true
+                        }
+
+                        ProgressBar {
+                            visible: app.converting || app.progress > 0
+                            from: 0
+                            to: 100
+                            value: app.progress
+                            Layout.fillWidth: true
                         }
 
                         Label {
-                            text: app.saveCombined ? "Combined Markdown file" : "Separate Markdown files"
+                            text: app.statusText
                             color: colors.muted
                             font.pixelSize: 12
                             elide: Text.ElideRight
                             Layout.fillWidth: true
                         }
                     }
-
-                    Label {
-                        text: app.saveToSourceFolder
-                            ? "Default: source folders"
-                            : (app.outputFolder.length > 0 ? app.outputFolder : "Choose location when saving")
-                        color: colors.subtle
-                        font.pixelSize: 11
-                        elide: Text.ElideMiddle
-                        Layout.fillWidth: true
-                    }
-
-                    AppButton {
-                        text: "Set folder"
-                        subtle: true
-                        iconName: "folder-plus"
-                        surfaceColor: colors.surfaceAlt
-                        borderColor: colors.border
-                        textColor: colors.text
-                        onClicked: outputFolderDialog.open()
-                    }
-                }
-
-                Rectangle {
-                    height: 1
-                    color: colors.border
-                    Layout.fillWidth: true
-                }
-
-                ProgressBar {
-                    visible: app.converting || app.progress > 0
-                    from: 0
-                    to: 100
-                    value: app.progress
-                    Layout.fillWidth: true
-                }
-
-                Label {
-                    text: app.statusText
-                    color: colors.muted
-                    font.pixelSize: 12
-                    elide: Text.ElideRight
-                    Layout.fillWidth: true
-                }
-
-                Item {
-                    Layout.fillHeight: true
                 }
 
                 RowLayout {
@@ -785,6 +849,7 @@ ApplicationWindow {
                     AppButton {
                         text: "Back to queue"
                         subtle: true
+                        iconName: "rotate-ccw"
                         textColor: colors.text
                         onClicked: app.clearResults()
                     }
@@ -792,6 +857,7 @@ ApplicationWindow {
                     AppButton {
                         text: "New"
                         subtle: true
+                        iconName: "file-text"
                         textColor: colors.muted
                         onClicked: {
                             app.clearResults()
@@ -831,34 +897,58 @@ ApplicationWindow {
                             onClicked: app.selectResult(index)
                         }
 
-                        ColumnLayout {
+                        RowLayout {
                             anchors.fill: parent
                             anchors.margins: 10
-                            spacing: 3
+                            spacing: 10
 
-                            Label {
-                                text: name
-                                color: colors.text
-                                font.pixelSize: 13
-                                font.weight: Font.Medium
-                                elide: Text.ElideMiddle
-                                Layout.fillWidth: true
+                            Rectangle {
+                                width: 36
+                                height: 36
+                                radius: 8
+                                color: failed
+                                    ? Qt.rgba(colors.danger.r, colors.danger.g, colors.danger.b, 0.12)
+                                    : Qt.rgba(colors.success.r, colors.success.g, colors.success.b, 0.14)
+                                border.color: failed
+                                    ? Qt.rgba(colors.danger.r, colors.danger.g, colors.danger.b, 0.28)
+                                    : Qt.rgba(colors.success.r, colors.success.g, colors.success.b, 0.26)
+
+                                Icon {
+                                    anchors.centerIn: parent
+                                    name: failed ? "file-x" : "file-check"
+                                    size: 17
+                                    color: failed ? colors.danger : colors.success
+                                }
                             }
 
-                            RowLayout {
+                            ColumnLayout {
+                                spacing: 3
                                 Layout.fillWidth: true
-                                spacing: 8
 
                                 Label {
-                                    text: failed ? "Failed" : backend
-                                    color: failed ? colors.danger : colors.muted
-                                    font.pixelSize: 11
+                                    text: name
+                                    color: colors.text
+                                    font.pixelSize: 13
+                                    font.weight: Font.Medium
+                                    elide: Text.ElideMiddle
+                                    Layout.fillWidth: true
                                 }
 
-                                Label {
-                                    text: wordCount + " words"
-                                    color: colors.muted
-                                    font.pixelSize: 11
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 8
+
+                                    Label {
+                                        text: failed ? "Failed" : backend
+                                        color: failed ? colors.danger : colors.muted
+                                        font.pixelSize: 11
+                                    }
+
+                                    Label {
+                                        text: wordCount + " words"
+                                        color: colors.muted
+                                        font.pixelSize: 11
+                                    }
                                 }
                             }
                         }
