@@ -42,12 +42,8 @@ def main() -> int:
 
 
 def _configure_style() -> None:
-    if sys.platform == "win32":
-        QQuickStyle.setStyle("FluentWinUI3")
-    elif sys.platform == "darwin":
-        QQuickStyle.setStyle("macOS")
-    else:
-        QQuickStyle.setStyle("Fusion")
+    QQuickStyle.setStyle("Basic")
+
 
 def _platform_font() -> QFont:
     if sys.platform == "win32":

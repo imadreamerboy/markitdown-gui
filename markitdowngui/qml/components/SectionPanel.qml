@@ -21,7 +21,7 @@ Item {
         anchors.fill: parent
         implicitWidth: layout.implicitWidth + 32
         implicitHeight: layout.implicitHeight + 32
-        radius: 10
+        radius: 8
         color: root.surfaceColor
         border.color: root.borderColor
         border.width: 1

@@ -11,9 +11,12 @@ Item {
     property color textColor: "#18212B"
     property color mutedTextColor: "#647283"
     property color accentColor: "#138A87"
+    property color borderColor: "#D8E1E8"
+    property color utilityHoverColor: Qt.rgba(0.5, 0.6, 0.7, 0.12)
+    property color accentTextColor: "#FFFFFF"
     signal pageRequested(int index)
 
-    implicitWidth: 220
+    implicitWidth: 224
 
     Rectangle {
         anchors.fill: parent
@@ -22,23 +25,23 @@ Item {
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 14
-        spacing: 14
+        anchors.margins: 16
+        spacing: 18
 
         RowLayout {
             spacing: 10
             Layout.fillWidth: true
 
             Rectangle {
-                width: 34
-                height: 34
-                radius: 9
+                width: 36
+                height: 36
+                radius: 8
                 color: root.accentColor
 
                 Label {
                     anchors.centerIn: parent
                     text: "M"
-                    color: "#FFFFFF"
+                    color: root.accentTextColor
                     font.pixelSize: 16
                     font.weight: Font.Bold
                 }
@@ -58,7 +61,7 @@ Item {
                 }
 
                 Label {
-                    text: "Desktop"
+                    text: "Document studio"
                     color: root.mutedTextColor
                     font.pixelSize: 11
                     elide: Text.ElideRight
@@ -67,68 +70,188 @@ Item {
             }
         }
 
-        ColumnLayout {
-            spacing: 6
+        Button {
+            id: workspaceButton
             Layout.fillWidth: true
+            implicitHeight: 56
+            flat: true
+            onClicked: root.pageRequested(0)
+            ToolTip.visible: hovered
+            ToolTip.delay: 550
+            ToolTip.text: "Convert documents and webpages"
 
-            Repeater {
-                model: [
-                    { label: "Convert", detail: "Queue and preview" },
-                    { label: "Settings", detail: "Output and OCR" },
-                    { label: "Help", detail: "References" }
-                ]
+            contentItem: RowLayout {
+                spacing: 10
 
-                delegate: Button {
-                    id: itemButton
+                Rectangle {
+                    width: 30
+                    height: 30
+                    radius: 7
+                    color: root.currentIndex === 0 ? root.accentColor : root.activeColor
+                    border.color: root.currentIndex === 0 ? root.accentColor : root.borderColor
+
+                    Label {
+                        anchors.centerIn: parent
+                        text: "MD"
+                        color: root.currentIndex === 0 ? root.accentTextColor : root.mutedTextColor
+                        font.pixelSize: 11
+                        font.weight: Font.Bold
+                    }
+                }
+
+                ColumnLayout {
+                    spacing: 1
                     Layout.fillWidth: true
-                    implicitHeight: 50
-                    flat: true
-                    onClicked: root.pageRequested(index)
 
-                    contentItem: ColumnLayout {
-                        spacing: 1
-
-                        Label {
-                            text: modelData.label
-                            color: root.textColor
-                            font.pixelSize: 13
-                            font.weight: index === root.currentIndex ? Font.DemiBold : Font.Medium
-                            elide: Text.ElideRight
-                            Layout.fillWidth: true
-                        }
-
-                        Label {
-                            text: modelData.detail
-                            color: root.mutedTextColor
-                            font.pixelSize: 11
-                            elide: Text.ElideRight
-                            Layout.fillWidth: true
-                        }
+                    Label {
+                        text: "Workspace"
+                        color: root.textColor
+                        font.pixelSize: 13
+                        font.weight: root.currentIndex === 0 ? Font.DemiBold : Font.Medium
+                        elide: Text.ElideRight
+                        Layout.fillWidth: true
                     }
 
-                    background: Rectangle {
-                        radius: 8
-                        color: index === root.currentIndex
-                            ? root.activeColor
-                            : (itemButton.hovered ? Qt.rgba(0.5, 0.6, 0.7, 0.12) : "transparent")
-
-                        Rectangle {
-                            visible: index === root.currentIndex
-                            width: 3
-                            height: 24
-                            radius: 2
-                            color: root.accentColor
-                            anchors.left: parent.left
-                            anchors.verticalCenter: parent.verticalCenter
-                        }
+                    Label {
+                        text: "Convert to Markdown"
+                        color: root.mutedTextColor
+                        font.pixelSize: 11
+                        elide: Text.ElideRight
+                        Layout.fillWidth: true
                     }
                 }
             }
+
+            background: Rectangle {
+                radius: 8
+                color: root.currentIndex === 0
+                    ? root.activeColor
+                    : (workspaceButton.hovered ? root.utilityHoverColor : "transparent")
+                border.color: root.currentIndex === 0 ? root.borderColor : "transparent"
+                border.width: 1
+            }
+        }
+
+        Rectangle {
+            height: 1
+            color: root.borderColor
+            Layout.fillWidth: true
+        }
+
+        Label {
+            text: "Add files, paste a URL, review Markdown, then export."
+            color: root.mutedTextColor
+            font.pixelSize: 12
+            lineHeight: 1.15
+            wrapMode: Text.WordWrap
+            Layout.fillWidth: true
         }
 
         Item {
             Layout.fillHeight: true
         }
+
+        ColumnLayout {
+            spacing: 6
+            Layout.fillWidth: true
+
+            Button {
+                id: helpButton
+                Layout.fillWidth: true
+                implicitHeight: 40
+                flat: true
+                onClicked: root.pageRequested(2)
+                ToolTip.visible: hovered
+                ToolTip.delay: 550
+                ToolTip.text: "Help"
+
+                contentItem: RowLayout {
+                    spacing: 10
+
+                    Rectangle {
+                        width: 28
+                        height: 28
+                        radius: 14
+                        color: root.currentIndex === 2 ? root.accentColor : root.activeColor
+                        border.color: root.currentIndex === 2 ? root.accentColor : root.borderColor
+
+                        Label {
+                            anchors.centerIn: parent
+                            text: "?"
+                            color: root.currentIndex === 2 ? root.accentTextColor : root.textColor
+                            font.pixelSize: 15
+                            font.weight: Font.DemiBold
+                        }
+                    }
+
+                    Label {
+                        text: "Help"
+                        color: root.textColor
+                        font.pixelSize: 13
+                        font.weight: root.currentIndex === 2 ? Font.DemiBold : Font.Medium
+                        elide: Text.ElideRight
+                        Layout.fillWidth: true
+                    }
+                }
+
+                background: Rectangle {
+                    radius: 8
+                    color: root.currentIndex === 2
+                        ? root.activeColor
+                        : (helpButton.hovered ? root.utilityHoverColor : "transparent")
+                    border.color: root.currentIndex === 2 ? root.borderColor : "transparent"
+                    border.width: 1
+                }
+            }
+
+            Button {
+                id: settingsButton
+                Layout.fillWidth: true
+                implicitHeight: 40
+                flat: true
+                onClicked: root.pageRequested(1)
+                ToolTip.visible: hovered
+                ToolTip.delay: 550
+                ToolTip.text: "Settings"
+
+                contentItem: RowLayout {
+                    spacing: 10
+
+                    Rectangle {
+                        width: 28
+                        height: 28
+                        radius: 7
+                        color: root.currentIndex === 1 ? root.accentColor : root.activeColor
+                        border.color: root.currentIndex === 1 ? root.accentColor : root.borderColor
+
+                        Label {
+                            anchors.centerIn: parent
+                            text: "S"
+                            color: root.currentIndex === 1 ? root.accentTextColor : root.textColor
+                            font.pixelSize: 13
+                            font.weight: Font.DemiBold
+                        }
+                    }
+
+                    Label {
+                        text: "Settings"
+                        color: root.textColor
+                        font.pixelSize: 13
+                        font.weight: root.currentIndex === 1 ? Font.DemiBold : Font.Medium
+                        elide: Text.ElideRight
+                        Layout.fillWidth: true
+                    }
+                }
+
+                background: Rectangle {
+                    radius: 8
+                    color: root.currentIndex === 1
+                        ? root.activeColor
+                        : (settingsButton.hovered ? root.utilityHoverColor : "transparent")
+                    border.color: root.currentIndex === 1 ? root.borderColor : "transparent"
+                    border.width: 1
+                }
+            }
+        }
     }
 }
-

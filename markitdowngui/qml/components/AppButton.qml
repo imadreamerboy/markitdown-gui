@@ -10,6 +10,7 @@ Button {
     property color surfaceColor: "#FFFFFF"
     property color borderColor: "#D8E1E8"
     property color textColor: "#18212B"
+    property color primaryTextColor: "#FFFFFF"
     property color disabledTextColor: "#8A96A3"
 
     implicitHeight: 36
@@ -21,7 +22,7 @@ Button {
     contentItem: Text {
         text: control.text
         color: control.enabled
-            ? (control.primary ? "#FFFFFF" : control.textColor)
+            ? (control.primary ? control.primaryTextColor : control.textColor)
             : control.disabledTextColor
         font.pixelSize: 13
         font.weight: control.primary ? Font.DemiBold : Font.Medium

@@ -590,18 +590,18 @@ class AppController(QObject):
     def _preview_css(self) -> str:
         if self.darkMode:
             return (
-                "body{background:#12161c;color:#e8edf3;font-family:Segoe UI,Arial,sans-serif;"
+                "body{background:#2e3440;color:#eceff4;font-family:Segoe UI,Arial,sans-serif;"
                 "font-size:14px;line-height:1.65;margin:0;} "
-                "a{color:#6bc7c4;} code,pre{background:#1f2630;border-radius:6px;} "
-                "pre{padding:10px;border:1px solid #303946;} blockquote{border-left:3px solid #3d4858;"
-                "margin:8px 0;padding-left:10px;color:#b5c0cc;}"
+                "a{color:#88c0d0;} code,pre{background:#3b4252;border-radius:6px;} "
+                "pre{padding:10px;border:1px solid #4c566a;} blockquote{border-left:3px solid #88c0d0;"
+                "margin:8px 0;padding-left:10px;color:#d8dee9;}"
             )
         return (
-            "body{background:#fbfcfd;color:#20262e;font-family:Segoe UI,Arial,sans-serif;"
+            "body{background:#fdf6e3;color:#073642;font-family:Segoe UI,Arial,sans-serif;"
             "font-size:14px;line-height:1.65;margin:0;} "
-            "a{color:#007a78;} code,pre{background:#edf2f5;border-radius:6px;} "
-            "pre{padding:10px;border:1px solid #d9e1e7;} blockquote{border-left:3px solid #c8d4dd;"
-            "margin:8px 0;padding-left:10px;color:#5f6b76;}"
+            "a{color:#268bd2;} code,pre{background:#eee8d5;border-radius:6px;} "
+            "pre{padding:10px;border:1px solid #d6ccb2;} blockquote{border-left:3px solid #2aa198;"
+            "margin:8px 0;padding-left:10px;color:#586e75;}"
         )
 
     def translate(self, key: str) -> str:

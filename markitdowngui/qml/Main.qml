@@ -20,22 +20,35 @@ ApplicationWindow {
     property int pageIndex: 0
     property bool dark: app.darkMode
     property int pageMargin: 22
-    property int panelRadius: 10
+    property int panelRadius: 8
     property int controlRadius: 8
     property var colors: ({
-        window: dark ? Qt.color("#101419") : Qt.color("#F4F7FA"),
-        nav: dark ? Qt.color("#151B22") : Qt.color("#EAF0F5"),
-        surface: dark ? Qt.color("#171E26") : Qt.color("#FFFFFF"),
-        surfaceAlt: dark ? Qt.color("#1D2630") : Qt.color("#F8FAFC"),
-        input: dark ? Qt.color("#121820") : Qt.color("#FBFCFD"),
-        border: dark ? Qt.color("#2A3542") : Qt.color("#D8E1E8"),
-        text: dark ? Qt.color("#E8EDF3") : Qt.color("#18212B"),
-        muted: dark ? Qt.color("#AAB6C3") : Qt.color("#647283"),
-        subtle: dark ? Qt.color("#7D8C9D") : Qt.color("#8593A3"),
-        accent: dark ? Qt.color("#66C8C4") : Qt.color("#138A87"),
-        danger: dark ? Qt.color("#FF8A8A") : Qt.color("#B42318"),
-        success: dark ? Qt.color("#7BD89F") : Qt.color("#197A43")
+        window: dark ? Qt.color("#2E3440") : Qt.color("#FDF6E3"),
+        nav: dark ? Qt.color("#242A34") : Qt.color("#EEE8D5"),
+        surface: dark ? Qt.color("#343B48") : Qt.color("#FFFDF3"),
+        surfaceAlt: dark ? Qt.color("#3B4252") : Qt.color("#F6EFD8"),
+        input: dark ? Qt.color("#2E3440") : Qt.color("#FBF3DC"),
+        border: dark ? Qt.color("#4C566A") : Qt.color("#D6CCB2"),
+        text: dark ? Qt.color("#ECEFF4") : Qt.color("#073642"),
+        muted: dark ? Qt.color("#D8DEE9") : Qt.color("#586E75"),
+        subtle: dark ? Qt.color("#AEB8C8") : Qt.color("#839496"),
+        accent: dark ? Qt.color("#88C0D0") : Qt.color("#2AA198"),
+        accentAlt: dark ? Qt.color("#8FBCBB") : Qt.color("#268BD2"),
+        onAccent: dark ? Qt.color("#2E3440") : Qt.color("#073642"),
+        danger: dark ? Qt.color("#BF616A") : Qt.color("#DC322F"),
+        success: dark ? Qt.color("#A3BE8C") : Qt.color("#859900"),
+        warning: dark ? Qt.color("#EBCB8B") : Qt.color("#B58900")
     })
+
+    palette.window: colors.window
+    palette.windowText: colors.text
+    palette.base: colors.input
+    palette.alternateBase: colors.surfaceAlt
+    palette.text: colors.text
+    palette.button: colors.surfaceAlt
+    palette.buttonText: colors.text
+    palette.highlight: colors.accent
+    palette.highlightedText: colors.onAccent
 
     FileDialog {
         id: openFileDialog
@@ -132,6 +145,9 @@ ApplicationWindow {
             textColor: colors.text
             mutedTextColor: colors.muted
             accentColor: colors.accent
+            borderColor: colors.border
+            utilityHoverColor: Qt.rgba(colors.accent.r, colors.accent.g, colors.accent.b, dark ? 0.16 : 0.10)
+            accentTextColor: colors.onAccent
             Layout.fillHeight: true
             onPageRequested: index => root.pageIndex = index
         }
@@ -217,12 +233,12 @@ ApplicationWindow {
             spacing: 16
 
             HeaderTitle {
-                title: root.pageIndex === 0 ? "Convert" : root.pageIndex === 1 ? "Settings" : "Help"
+                title: root.pageIndex === 0 ? "Convert to Markdown" : root.pageIndex === 1 ? "Settings" : "Help"
                 detail: root.pageIndex === 0
-                    ? "Drop files, convert URLs, inspect Markdown, and export clean output."
+                    ? "Add documents or a webpage, review the Markdown, then save clean output."
                     : root.pageIndex === 1
-                        ? "Tune output defaults and OCR behavior."
-                        : "Project links and release actions."
+                        ? "Set export, theme, and OCR defaults."
+                        : "Project links, OCR references, and shortcuts."
                 Layout.fillWidth: true
             }
 
@@ -237,7 +253,7 @@ ApplicationWindow {
         spacing: 8
 
         MetricPill {
-            label: "QUEUE"
+            label: "FILES"
             value: app.hasQueue ? "Ready" : "Empty"
             backgroundColor: colors.surfaceAlt
             borderColor: colors.border
@@ -246,7 +262,7 @@ ApplicationWindow {
         }
 
         MetricPill {
-            label: "PROGRESS"
+            label: "DONE"
             value: app.progress + "%"
             backgroundColor: colors.surfaceAlt
             borderColor: colors.border
@@ -255,7 +271,7 @@ ApplicationWindow {
         }
 
         MetricPill {
-            label: "OUTPUT"
+            label: "SAVE"
             value: app.saveCombined ? "Combined" : "Separate"
             backgroundColor: colors.surfaceAlt
             borderColor: colors.border
@@ -295,8 +311,8 @@ ApplicationWindow {
     }
 
     component UrlBar: SectionPanel {
-        title: "Website URL"
-        subtitle: "Convert readable article content through the configured web conversion path."
+        title: "Add a webpage"
+        subtitle: "Paste a URL when the source is already online."
         surfaceColor: colors.surface
         borderColor: colors.border
         textColor: colors.text
@@ -324,9 +340,10 @@ ApplicationWindow {
             }
 
             AppButton {
-                text: "Add URL"
+                text: "Add webpage"
                 primary: true
                 accentColor: colors.accent
+                primaryTextColor: colors.onAccent
                 surfaceColor: colors.surfaceAlt
                 borderColor: colors.border
                 textColor: colors.text
@@ -342,8 +359,8 @@ ApplicationWindow {
         id: emptyView
 
         SectionPanel {
-            title: "Queue inputs"
-            subtitle: "Drop documents here or choose files from your system."
+            title: "Add documents"
+            subtitle: "Drop files into the window, choose files, or add a webpage above."
             surfaceColor: colors.surface
             borderColor: colors.border
             textColor: colors.text
@@ -363,7 +380,7 @@ ApplicationWindow {
                     Rectangle {
                         width: 54
                         height: 54
-                        radius: 16
+                        radius: 8
                         color: Qt.rgba(colors.accent.r, colors.accent.g, colors.accent.b, 0.12)
                         border.color: Qt.rgba(colors.accent.r, colors.accent.g, colors.accent.b, 0.35)
                         Layout.alignment: Qt.AlignHCenter
@@ -378,7 +395,7 @@ ApplicationWindow {
                     }
 
                     Label {
-                        text: "Start with files or a URL"
+                        text: "Start with documents or a webpage"
                         color: colors.text
                         font.pixelSize: 18
                         font.weight: Font.DemiBold
@@ -387,7 +404,7 @@ ApplicationWindow {
                     }
 
                     Label {
-                        text: "Supported inputs include Office documents, PDFs, images, archives, text formats, and website URLs."
+                        text: "Office files, PDFs, images, archives, text formats, and webpages can all become Markdown."
                         color: colors.muted
                         font.pixelSize: 13
                         wrapMode: Text.WordWrap
@@ -396,9 +413,10 @@ ApplicationWindow {
                     }
 
                     AppButton {
-                        text: "Choose Files"
+                        text: "Choose files"
                         primary: true
                         accentColor: colors.accent
+                        primaryTextColor: colors.onAccent
                         Layout.alignment: Qt.AlignHCenter
                         onClicked: openFileDialog.open()
                     }
@@ -416,8 +434,8 @@ ApplicationWindow {
             Layout.fillHeight: true
 
             SectionPanel {
-                title: "Input queue"
-                subtitle: "Files and URLs are processed in order."
+                title: "Documents"
+                subtitle: "Files and webpages are converted in order."
                 surfaceColor: colors.surface
                 borderColor: colors.border
                 textColor: colors.text
@@ -429,9 +447,10 @@ ApplicationWindow {
                     Layout.fillWidth: true
 
                     AppButton {
-                        text: "Add Files"
+                        text: "Add files"
                         primary: true
                         accentColor: colors.accent
+                        primaryTextColor: colors.onAccent
                         onClicked: openFileDialog.open()
                     }
 
@@ -511,13 +530,13 @@ ApplicationWindow {
             }
 
             SectionPanel {
-                title: "Conversion"
-                subtitle: "Keep defaults lean; enable OCR only when needed."
+                title: "Conversion settings"
+                subtitle: "Start with defaults; switch on OCR or asset extraction only when needed."
                 surfaceColor: colors.surface
                 borderColor: colors.border
                 textColor: colors.text
                 mutedTextColor: colors.muted
-                Layout.preferredWidth: 330
+                Layout.preferredWidth: 360
                 Layout.fillHeight: true
 
                 WorkspaceStats {
@@ -603,10 +622,11 @@ ApplicationWindow {
                 }
 
                 AppButton {
-                    text: app.converting ? "Converting" : "Convert Queue"
+                    text: app.converting ? "Converting" : "Convert"
                     enabled: !app.converting
                     primary: true
                     accentColor: colors.accent
+                    primaryTextColor: colors.onAccent
                     Layout.fillWidth: true
                     onClicked: app.convert()
                 }
@@ -623,8 +643,8 @@ ApplicationWindow {
             Layout.fillHeight: true
 
             SectionPanel {
-                title: "Results"
-                subtitle: "Select a converted input to inspect output."
+                title: "Converted files"
+                subtitle: "Select an item to inspect the generated Markdown."
                 surfaceColor: colors.surface
                 borderColor: colors.border
                 textColor: colors.text
@@ -636,7 +656,7 @@ ApplicationWindow {
                     Layout.fillWidth: true
 
                     AppButton {
-                        text: "Back to Queue"
+                        text: "Back to queue"
                         subtle: true
                         textColor: colors.text
                         onClicked: app.clearResults()
@@ -721,7 +741,7 @@ ApplicationWindow {
 
             SectionPanel {
                 title: "Markdown preview"
-                subtitle: "Review rendered output or raw Markdown before export."
+                subtitle: "Check the rendered view or raw Markdown before export."
                 surfaceColor: colors.surface
                 borderColor: colors.border
                 textColor: colors.text
@@ -737,6 +757,7 @@ ApplicationWindow {
                         primary: app.previewMode === "rendered"
                         subtle: app.previewMode !== "rendered"
                         accentColor: colors.accent
+                        primaryTextColor: colors.onAccent
                         textColor: colors.text
                         onClicked: app.setPreviewMode("rendered")
                     }
@@ -746,6 +767,7 @@ ApplicationWindow {
                         primary: app.previewMode === "raw"
                         subtle: app.previewMode !== "raw"
                         accentColor: colors.accent
+                        primaryTextColor: colors.onAccent
                         textColor: colors.text
                         onClicked: app.setPreviewMode("raw")
                     }
@@ -763,9 +785,10 @@ ApplicationWindow {
                     }
 
                     AppButton {
-                        text: app.saveCombined ? "Save Combined" : "Save Separate"
+                        text: app.saveCombined ? "Save as one file" : "Save files"
                         primary: true
                         accentColor: colors.accent
+                        primaryTextColor: colors.onAccent
                         onClicked: app.saveCombined ? saveCombinedDialog.open() : saveSeparateDialog.open()
                     }
                 }
@@ -809,7 +832,7 @@ ApplicationWindow {
 
             SectionPanel {
                 title: "Output"
-                subtitle: "Set defaults that keep exports predictable."
+                subtitle: "Set where Markdown is saved and how batches are written."
                 surfaceColor: colors.surface
                 borderColor: colors.border
                 textColor: colors.text
@@ -882,7 +905,7 @@ ApplicationWindow {
 
             SectionPanel {
                 title: "Appearance"
-                subtitle: "Use the platform window chrome and a restrained app palette."
+                subtitle: "Solarized Light for daytime work, Nord Dark for low-light sessions."
                 surfaceColor: colors.surface
                 borderColor: colors.border
                 textColor: colors.text
@@ -890,7 +913,7 @@ ApplicationWindow {
                 Layout.fillWidth: true
 
                 ComboBox {
-                    model: ["Light", "Dark", "System"]
+                    model: ["Solarized Light", "Nord Dark", "System"]
                     currentIndex: app.themeMode === "dark" ? 1 : app.themeMode === "system" ? 2 : 0
                     onActivated: index => app.setThemeMode(index === 1 ? "dark" : index === 2 ? "system" : "light")
                     Layout.fillWidth: true
@@ -899,7 +922,7 @@ ApplicationWindow {
 
             SectionPanel {
                 title: "OCR"
-                subtitle: "Keep OCR disabled unless the input requires it."
+                subtitle: "Use OCR only for scanned PDFs, screenshots, or image-heavy files."
                 surfaceColor: colors.surface
                 borderColor: colors.border
                 textColor: colors.text
@@ -962,7 +985,7 @@ ApplicationWindow {
 
             SectionPanel {
                 title: "GLM-OCR"
-                subtitle: "Configure local or hosted GLM-OCR connectivity."
+                subtitle: "Connect to the hosted API, Ollama, or an SDK server."
                 surfaceColor: colors.surface
                 borderColor: colors.border
                 textColor: colors.text
@@ -1051,7 +1074,7 @@ ApplicationWindow {
             spacing: 16
 
             SectionPanel {
-                title: "Resources"
+                title: "Help and links"
                 subtitle: "Open project, release, OCR, and conversion references."
                 surfaceColor: colors.surface
                 borderColor: colors.border
@@ -1089,7 +1112,7 @@ ApplicationWindow {
 
             SectionPanel {
                 title: "Shortcuts"
-                subtitle: "Common conversion actions stay available from the keyboard."
+                subtitle: "Keyboard actions for the main workspace."
                 surfaceColor: colors.surface
                 borderColor: colors.border
                 textColor: colors.text

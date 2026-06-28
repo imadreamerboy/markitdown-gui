@@ -14,7 +14,7 @@ Rectangle {
 
     implicitWidth: Math.max(96, content.implicitWidth + 20)
     implicitHeight: 48
-    radius: 9
+    radius: 8
     color: backgroundColor
     border.color: borderColor
     border.width: 1
@@ -44,4 +44,3 @@ Rectangle {
         }
     }
 }
-
