@@ -291,6 +291,26 @@ ApplicationWindow {
         focusColor: colors.accent
     }
 
+    component ThemeComboBox: AppComboBox {
+        surfaceColor: colors.input
+        popupColor: colors.surface
+        hoverColor: colors.surfaceAlt
+        borderColor: colors.border
+        accentColor: colors.accent
+        textColor: colors.text
+        mutedTextColor: colors.muted
+    }
+
+    component ThemeSpinBox: AppSpinBox {
+        surfaceColor: colors.input
+        stepColor: colors.surfaceAlt
+        hoverColor: colors.actionSoft
+        borderColor: colors.border
+        accentColor: colors.accent
+        textColor: colors.text
+        mutedTextColor: colors.muted
+    }
+
     component WorkspacePage: Item {
         Layout.fillWidth: true
         Layout.fillHeight: true
@@ -1122,7 +1142,7 @@ ApplicationWindow {
                         Layout.fillWidth: true
                     }
 
-                    SpinBox {
+                    ThemeSpinBox {
                         from: 1
                         to: 10
                         value: app.batchSize
@@ -1140,7 +1160,7 @@ ApplicationWindow {
                 mutedTextColor: colors.muted
                 Layout.fillWidth: true
 
-                ComboBox {
+                ThemeComboBox {
                     model: ["Solarized Light", "Nord Dark", "System"]
                     currentIndex: app.themeMode === "dark" ? 1 : app.themeMode === "system" ? 2 : 0
                     onActivated: index => app.setThemeMode(index === 1 ? "dark" : index === 2 ? "system" : "light")
@@ -1167,7 +1187,7 @@ ApplicationWindow {
                     Layout.fillWidth: true
                 }
 
-                ComboBox {
+                ThemeComboBox {
                     model: ["Azure/Tesseract", "GLM-OCR"]
                     currentIndex: app.ocrProvider === "glmocr" ? 1 : 0
                     onActivated: index => app.setOcrProvider(index === 1 ? "glmocr" : "legacy")
@@ -1230,7 +1250,7 @@ ApplicationWindow {
                     Layout.fillWidth: true
                 }
 
-                ComboBox {
+                ThemeComboBox {
                     model: ["Official API", "Ollama", "SDK Server"]
                     currentIndex: app.glmocrMode === "ollama" ? 1 : app.glmocrMode === "sdk_server" ? 2 : 0
                     onActivated: index => app.setGlmocrMode(index === 1 ? "ollama" : index === 2 ? "sdk_server" : "maas")
