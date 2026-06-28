@@ -19,6 +19,9 @@ ApplicationWindow {
 
     property int pageIndex: 0
     property bool dark: app.darkMode
+    property int pageMargin: 22
+    property int panelRadius: 10
+    property int controlRadius: 8
     property var colors: ({
         window: dark ? Qt.color("#101419") : Qt.color("#F4F7FA"),
         nav: dark ? Qt.color("#151B22") : Qt.color("#EAF0F5"),
@@ -204,13 +207,13 @@ ApplicationWindow {
 
     component HeaderBar: Rectangle {
         color: colors.window
-        implicitHeight: 76
+        implicitHeight: 72
         Layout.fillWidth: true
 
         RowLayout {
             anchors.fill: parent
-            anchors.leftMargin: 24
-            anchors.rightMargin: 24
+            anchors.leftMargin: root.pageMargin
+            anchors.rightMargin: root.pageMargin
             spacing: 16
 
             HeaderTitle {
@@ -230,6 +233,37 @@ ApplicationWindow {
         }
     }
 
+    component WorkspaceStats: RowLayout {
+        spacing: 8
+
+        MetricPill {
+            label: "QUEUE"
+            value: app.hasQueue ? "Ready" : "Empty"
+            backgroundColor: colors.surfaceAlt
+            borderColor: colors.border
+            textColor: colors.text
+            mutedTextColor: colors.muted
+        }
+
+        MetricPill {
+            label: "PROGRESS"
+            value: app.progress + "%"
+            backgroundColor: colors.surfaceAlt
+            borderColor: colors.border
+            textColor: colors.text
+            mutedTextColor: colors.muted
+        }
+
+        MetricPill {
+            label: "OUTPUT"
+            value: app.saveCombined ? "Combined" : "Separate"
+            backgroundColor: colors.surfaceAlt
+            borderColor: colors.border
+            textColor: colors.text
+            mutedTextColor: colors.muted
+        }
+    }
+
     component WorkspacePage: Item {
         Layout.fillWidth: true
         Layout.fillHeight: true
@@ -244,8 +278,11 @@ ApplicationWindow {
 
         ColumnLayout {
             anchors.fill: parent
-            anchors.margins: 24
-            spacing: 16
+            anchors.leftMargin: root.pageMargin
+            anchors.rightMargin: root.pageMargin
+            anchors.topMargin: 10
+            anchors.bottomMargin: root.pageMargin
+            spacing: 14
 
             UrlBar {}
 
@@ -265,7 +302,7 @@ ApplicationWindow {
         textColor: colors.text
         mutedTextColor: colors.muted
         Layout.fillWidth: true
-        implicitHeight: 108
+        implicitHeight: 104
 
         RowLayout {
             Layout.fillWidth: true
@@ -318,43 +355,52 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
 
-                Rectangle {
-                    anchors.fill: parent
-                    radius: 14
-                    color: colors.surfaceAlt
-                    border.color: colors.border
-                    border.width: 1
+                ColumnLayout {
+                    anchors.centerIn: parent
+                    width: Math.min(parent.width - 80, 560)
+                    spacing: 14
 
-                    ColumnLayout {
-                        anchors.centerIn: parent
-                        width: Math.min(parent.width - 80, 520)
-                        spacing: 12
-
-                        Label {
-                            text: "Start with files or a URL"
-                            color: colors.text
-                            font.pixelSize: 18
-                            font.weight: Font.DemiBold
-                            horizontalAlignment: Text.AlignHCenter
-                            Layout.fillWidth: true
-                        }
+                    Rectangle {
+                        width: 54
+                        height: 54
+                        radius: 16
+                        color: Qt.rgba(colors.accent.r, colors.accent.g, colors.accent.b, 0.12)
+                        border.color: Qt.rgba(colors.accent.r, colors.accent.g, colors.accent.b, 0.35)
+                        Layout.alignment: Qt.AlignHCenter
 
                         Label {
-                            text: "Supported inputs include Office documents, PDFs, images, archives, text formats, and website URLs."
-                            color: colors.muted
-                            font.pixelSize: 13
-                            wrapMode: Text.WordWrap
-                            horizontalAlignment: Text.AlignHCenter
-                            Layout.fillWidth: true
+                            anchors.centerIn: parent
+                            text: "MD"
+                            color: colors.accent
+                            font.pixelSize: 15
+                            font.weight: Font.Bold
                         }
+                    }
 
-                        AppButton {
-                            text: "Choose Files"
-                            primary: true
-                            accentColor: colors.accent
-                            Layout.alignment: Qt.AlignHCenter
-                            onClicked: openFileDialog.open()
-                        }
+                    Label {
+                        text: "Start with files or a URL"
+                        color: colors.text
+                        font.pixelSize: 18
+                        font.weight: Font.DemiBold
+                        horizontalAlignment: Text.AlignHCenter
+                        Layout.fillWidth: true
+                    }
+
+                    Label {
+                        text: "Supported inputs include Office documents, PDFs, images, archives, text formats, and website URLs."
+                        color: colors.muted
+                        font.pixelSize: 13
+                        wrapMode: Text.WordWrap
+                        horizontalAlignment: Text.AlignHCenter
+                        Layout.fillWidth: true
+                    }
+
+                    AppButton {
+                        text: "Choose Files"
+                        primary: true
+                        accentColor: colors.accent
+                        Layout.alignment: Qt.AlignHCenter
+                        onClicked: openFileDialog.open()
                     }
                 }
             }
@@ -371,7 +417,7 @@ ApplicationWindow {
 
             SectionPanel {
                 title: "Input queue"
-                subtitle: "Items are processed in order."
+                subtitle: "Files and URLs are processed in order."
                 surfaceColor: colors.surface
                 borderColor: colors.border
                 textColor: colors.text
@@ -473,6 +519,10 @@ ApplicationWindow {
                 mutedTextColor: colors.muted
                 Layout.preferredWidth: 330
                 Layout.fillHeight: true
+
+                WorkspaceStats {
+                    Layout.fillWidth: true
+                }
 
                 ToggleRow {
                     title: "OCR"
@@ -592,6 +642,16 @@ ApplicationWindow {
                         onClicked: app.clearResults()
                     }
 
+                    AppButton {
+                        text: "New"
+                        subtle: true
+                        textColor: colors.muted
+                        onClicked: {
+                            app.clearResults()
+                            app.clearQueue()
+                        }
+                    }
+
                     Item {
                         Layout.fillWidth: true
                     }
@@ -661,7 +721,7 @@ ApplicationWindow {
 
             SectionPanel {
                 title: "Markdown preview"
-                subtitle: "Rendered output and raw Markdown stay side by side in one workflow."
+                subtitle: "Review rendered output or raw Markdown before export."
                 surfaceColor: colors.surface
                 borderColor: colors.border
                 textColor: colors.text
