@@ -283,6 +283,14 @@ ApplicationWindow {
         }
     }
 
+    component ThemeToggleRow: ToggleRow {
+        accentColor: colors.accent
+        trackColor: colors.surfaceAlt
+        handleColor: colors.surface
+        borderColor: colors.border
+        focusColor: colors.accent
+    }
+
     component WorkspacePage: Item {
         Layout.fillWidth: true
         Layout.fillHeight: true
@@ -671,7 +679,7 @@ ApplicationWindow {
                             Layout.fillWidth: true
                         }
 
-                        ToggleRow {
+                        ThemeToggleRow {
                             title: "OCR"
                             detail: "Provider: " + app.ocrProvider + ". Use for scanned or image-heavy inputs."
                             checked: app.ocrEnabled
@@ -681,7 +689,7 @@ ApplicationWindow {
                             Layout.fillWidth: true
                         }
 
-                        ToggleRow {
+                        ThemeToggleRow {
                             title: "Preserve PDF images"
                             detail: "Extract PDF page images and keep relative asset links on export."
                             checked: app.preservePdfImages
@@ -691,7 +699,7 @@ ApplicationWindow {
                             Layout.fillWidth: true
                         }
 
-                        ToggleRow {
+                        ThemeToggleRow {
                             title: "Preserve DOCX images"
                             detail: "Extract embedded document images and keep relative asset links on export."
                             checked: app.preserveDocxImages
@@ -1084,7 +1092,7 @@ ApplicationWindow {
                     }
                 }
 
-                ToggleRow {
+                ThemeToggleRow {
                     title: "Combined save mode"
                     detail: "Save one Markdown document by default instead of one file per input."
                     checked: app.saveCombined
@@ -1094,7 +1102,7 @@ ApplicationWindow {
                     Layout.fillWidth: true
                 }
 
-                ToggleRow {
+                ThemeToggleRow {
                     title: "Prefer source folder"
                     detail: "Use each input file folder when separate exports are saved."
                     checked: app.saveToSourceFolder
@@ -1149,7 +1157,7 @@ ApplicationWindow {
                 mutedTextColor: colors.muted
                 Layout.fillWidth: true
 
-                ToggleRow {
+                ThemeToggleRow {
                     title: "OCR enabled"
                     detail: "Use OCR for scanned PDFs and images."
                     checked: app.ocrEnabled
@@ -1212,7 +1220,7 @@ ApplicationWindow {
                 mutedTextColor: colors.muted
                 Layout.fillWidth: true
 
-                ToggleRow {
+                ThemeToggleRow {
                     title: "Fallback to Azure/Tesseract"
                     detail: "Use the legacy OCR path if GLM-OCR fails."
                     checked: app.ocrFallbackEnabled
