@@ -30,6 +30,9 @@ include = ["markitdowngui*"]
 markitdowngui = [
     "qml/**/*.qml",
     "resources/*",
+    "resources/icons/*.svg",
+    "resources/icons/light/*.svg",
+    "resources/icons/LICENSE.lucide.txt",
 ]
 
 [project.optional-dependencies]

@@ -34,7 +34,10 @@ ApplicationWindow {
         subtle: dark ? Qt.color("#AEB8C8") : Qt.color("#839496"),
         accent: dark ? Qt.color("#88C0D0") : Qt.color("#2AA198"),
         accentAlt: dark ? Qt.color("#8FBCBB") : Qt.color("#268BD2"),
+        action: dark ? Qt.color("#88C0D0") : Qt.color("#8C6D00"),
+        actionSoft: dark ? Qt.color("#415867") : Qt.color("#EFE3BC"),
         onAccent: dark ? Qt.color("#2E3440") : Qt.color("#073642"),
+        onAction: dark ? Qt.color("#2E3440") : Qt.color("#FDF6E3"),
         danger: dark ? Qt.color("#BF616A") : Qt.color("#DC322F"),
         success: dark ? Qt.color("#A3BE8C") : Qt.color("#859900"),
         warning: dark ? Qt.color("#EBCB8B") : Qt.color("#B58900")
@@ -254,7 +257,7 @@ ApplicationWindow {
 
         MetricPill {
             label: "FILES"
-            value: app.hasQueue ? "Ready" : "Empty"
+            value: app.queueCount.toString()
             backgroundColor: colors.surfaceAlt
             borderColor: colors.border
             textColor: colors.text
@@ -342,8 +345,9 @@ ApplicationWindow {
             AppButton {
                 text: "Add webpage"
                 primary: true
-                accentColor: colors.accent
-                primaryTextColor: colors.onAccent
+                iconName: "link"
+                accentColor: colors.action
+                primaryTextColor: colors.onAction
                 surfaceColor: colors.surfaceAlt
                 borderColor: colors.border
                 textColor: colors.text
@@ -359,8 +363,8 @@ ApplicationWindow {
         id: emptyView
 
         SectionPanel {
-            title: "Add documents"
-            subtitle: "Drop files into the window, choose files, or add a webpage above."
+            title: "Drop or choose documents"
+            subtitle: "Drop files anywhere in this window, choose from your system, or add a webpage above."
             surfaceColor: colors.surface
             borderColor: colors.border
             textColor: colors.text
@@ -378,24 +382,23 @@ ApplicationWindow {
                     spacing: 14
 
                     Rectangle {
-                        width: 54
-                        height: 54
+                        width: 64
+                        height: 64
                         radius: 8
-                        color: Qt.rgba(colors.accent.r, colors.accent.g, colors.accent.b, 0.12)
-                        border.color: Qt.rgba(colors.accent.r, colors.accent.g, colors.accent.b, 0.35)
+                        color: colors.actionSoft
+                        border.color: Qt.rgba(colors.action.r, colors.action.g, colors.action.b, 0.35)
                         Layout.alignment: Qt.AlignHCenter
 
-                        Label {
+                        Icon {
                             anchors.centerIn: parent
-                            text: "MD"
-                            color: colors.accent
-                            font.pixelSize: 15
-                            font.weight: Font.Bold
+                            name: "folder-plus"
+                            size: 26
+                            color: colors.action
                         }
                     }
 
                     Label {
-                        text: "Start with documents or a webpage"
+                        text: "Drop files here to start"
                         color: colors.text
                         font.pixelSize: 18
                         font.weight: Font.DemiBold
@@ -415,8 +418,9 @@ ApplicationWindow {
                     AppButton {
                         text: "Choose files"
                         primary: true
-                        accentColor: colors.accent
-                        primaryTextColor: colors.onAccent
+                        iconName: "folder-plus"
+                        accentColor: colors.action
+                        primaryTextColor: colors.onAction
                         Layout.alignment: Qt.AlignHCenter
                         onClicked: openFileDialog.open()
                     }
@@ -429,123 +433,181 @@ ApplicationWindow {
         id: queueView
 
         RowLayout {
-            spacing: 16
+            spacing: 14
             Layout.fillWidth: true
             Layout.fillHeight: true
 
-            SectionPanel {
-                title: "Documents"
-                subtitle: "Files and webpages are converted in order."
-                surfaceColor: colors.surface
-                borderColor: colors.border
-                textColor: colors.text
-                mutedTextColor: colors.muted
+            ColumnLayout {
+                spacing: 14
                 Layout.fillWidth: true
                 Layout.fillHeight: true
 
-                RowLayout {
-                    Layout.fillWidth: true
-
-                    AppButton {
-                        text: "Add files"
-                        primary: true
-                        accentColor: colors.accent
-                        primaryTextColor: colors.onAccent
-                        onClicked: openFileDialog.open()
-                    }
-
-                    AppButton {
-                        text: "Clear"
-                        subtle: true
-                        textColor: colors.muted
-                        onClicked: app.clearQueue()
-                    }
-
-                    Item {
-                        Layout.fillWidth: true
-                    }
-                }
-
-                ListView {
-                    id: queueList
-                    clip: true
-                    spacing: 8
-                    model: app.queueModel
+                SectionPanel {
+                    title: "Documents"
+                    subtitle: "Files and webpages are converted in order."
+                    surfaceColor: colors.surface
+                    borderColor: colors.border
+                    textColor: colors.text
+                    mutedTextColor: colors.muted
                     Layout.fillWidth: true
                     Layout.fillHeight: true
 
-                    delegate: Rectangle {
-                        required property int index
-                        required property string name
-                        required property string source
-                        required property string kind
+                    RowLayout {
+                        Layout.fillWidth: true
 
-                        width: queueList.width
-                        height: 58
-                        radius: 9
-                        color: colors.surfaceAlt
-                        border.color: colors.border
+                        AppButton {
+                            text: "Add files"
+                            primary: true
+                            iconName: "folder-plus"
+                            accentColor: colors.action
+                            primaryTextColor: colors.onAction
+                            onClicked: openFileDialog.open()
+                        }
 
-                        RowLayout {
-                            anchors.fill: parent
-                            anchors.margins: 10
-                            spacing: 10
+                        AppButton {
+                            text: "Clear"
+                            subtle: true
+                            iconName: "x"
+                            textColor: colors.muted
+                            onClicked: app.clearQueue()
+                        }
 
-                            Pill {
-                                text: kind
-                                tint: kind === "URL" ? colors.accent : colors.muted
-                            }
+                        Item {
+                            Layout.fillWidth: true
+                        }
+                    }
 
-                            ColumnLayout {
-                                spacing: 2
-                                Layout.fillWidth: true
+                    ListView {
+                        id: queueList
+                        clip: true
+                        spacing: 8
+                        model: app.queueModel
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
 
-                                Label {
-                                    text: name
-                                    color: colors.text
-                                    font.pixelSize: 13
-                                    font.weight: Font.Medium
-                                    elide: Text.ElideMiddle
-                                    Layout.fillWidth: true
+                        delegate: Rectangle {
+                            required property int index
+                            required property string name
+                            required property string source
+                            required property string kind
+
+                            width: queueList.width
+                            height: 58
+                            radius: 9
+                            color: colors.surfaceAlt
+                            border.color: colors.border
+
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.margins: 10
+                                spacing: 10
+
+                                Rectangle {
+                                    width: 36
+                                    height: 36
+                                    radius: 8
+                                    color: kind === "URL"
+                                        ? Qt.rgba(colors.accent.r, colors.accent.g, colors.accent.b, 0.12)
+                                        : Qt.rgba(colors.muted.r, colors.muted.g, colors.muted.b, 0.12)
+                                    border.color: kind === "URL"
+                                        ? Qt.rgba(colors.accent.r, colors.accent.g, colors.accent.b, 0.28)
+                                        : Qt.rgba(colors.muted.r, colors.muted.g, colors.muted.b, 0.22)
+
+                                    Icon {
+                                        anchors.centerIn: parent
+                                        name: kind === "URL" ? "link" : "file-text"
+                                        size: 17
+                                        color: kind === "URL" ? colors.accent : colors.muted
+                                    }
                                 }
 
-                                Label {
-                                    text: source
-                                    color: colors.muted
-                                    font.pixelSize: 11
-                                    elide: Text.ElideMiddle
+                                ColumnLayout {
+                                    spacing: 2
                                     Layout.fillWidth: true
+
+                                    Label {
+                                        text: name
+                                        color: colors.text
+                                        font.pixelSize: 13
+                                        font.weight: Font.Medium
+                                        elide: Text.ElideMiddle
+                                        Layout.fillWidth: true
+                                    }
+
+                                    Label {
+                                        text: source
+                                        color: colors.muted
+                                        font.pixelSize: 11
+                                        elide: Text.ElideMiddle
+                                        Layout.fillWidth: true
+                                    }
+                                }
+
+                                AppButton {
+                                    text: "Remove"
+                                    subtle: true
+                                    iconName: "trash-2"
+                                    textColor: colors.muted
+                                    onClicked: app.removeQueued(index)
                                 }
                             }
+                        }
+                    }
+                }
 
-                            AppButton {
-                                text: "Remove"
-                                subtle: true
-                                textColor: colors.muted
-                                onClicked: app.removeQueued(index)
-                            }
+                SectionPanel {
+                    title: "Markdown review"
+                    subtitle: "Converted output opens here before export."
+                    surfaceColor: colors.surface
+                    borderColor: colors.border
+                    textColor: colors.text
+                    mutedTextColor: colors.muted
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 178
+
+                    TextArea {
+                        text: "# Preview after conversion\n\nSelect a converted file to inspect rendered Markdown or raw text, then save a combined file or separate outputs."
+                        readOnly: true
+                        wrapMode: TextEdit.Wrap
+                        selectByMouse: false
+                        color: colors.muted
+                        font.pixelSize: 12
+                        padding: 12
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        background: Rectangle {
+                            color: colors.input
+                            radius: 8
+                            border.color: colors.border
                         }
                     }
                 }
             }
 
-            SectionPanel {
-                title: "Conversion settings"
-                subtitle: "Start with defaults; switch on OCR or asset extraction only when needed."
-                surfaceColor: colors.surface
+            InspectorRail {
+                title: app.converting ? "Converting" : "Convert"
+                subtitle: app.queueCount + " item" + (app.queueCount === 1 ? "" : "s") + " queued"
+                surfaceColor: colors.window
                 borderColor: colors.border
                 textColor: colors.text
                 mutedTextColor: colors.muted
                 Layout.preferredWidth: 360
+                Layout.minimumWidth: 330
                 Layout.fillHeight: true
 
                 WorkspaceStats {
                     Layout.fillWidth: true
                 }
 
+                Rectangle {
+                    height: 1
+                    color: colors.border
+                    Layout.fillWidth: true
+                }
+
                 ToggleRow {
                     title: "OCR"
-                    detail: "Use configured OCR providers for scanned or image-heavy inputs."
+                    detail: "Provider: " + app.ocrProvider + ". Use for scanned or image-heavy inputs."
                     checked: app.ocrEnabled
                     textColor: colors.text
                     mutedTextColor: colors.muted
@@ -579,7 +641,66 @@ ApplicationWindow {
                     Layout.fillWidth: true
                 }
 
+                ColumnLayout {
+                    spacing: 6
+                    Layout.fillWidth: true
+
+                    Label {
+                        text: "Output"
+                        color: colors.text
+                        font.pixelSize: 13
+                        font.weight: Font.Medium
+                        Layout.fillWidth: true
+                    }
+
+                    RowLayout {
+                        spacing: 8
+                        Layout.fillWidth: true
+
+                        Icon {
+                            name: "save"
+                            size: 15
+                            color: colors.muted
+                        }
+
+                        Label {
+                            text: app.saveCombined ? "Combined Markdown file" : "Separate Markdown files"
+                            color: colors.muted
+                            font.pixelSize: 12
+                            elide: Text.ElideRight
+                            Layout.fillWidth: true
+                        }
+                    }
+
+                    Label {
+                        text: app.saveToSourceFolder
+                            ? "Default: source folders"
+                            : (app.outputFolder.length > 0 ? app.outputFolder : "Choose location when saving")
+                        color: colors.subtle
+                        font.pixelSize: 11
+                        elide: Text.ElideMiddle
+                        Layout.fillWidth: true
+                    }
+
+                    AppButton {
+                        text: "Set folder"
+                        subtle: true
+                        iconName: "folder-plus"
+                        surfaceColor: colors.surfaceAlt
+                        borderColor: colors.border
+                        textColor: colors.text
+                        onClicked: outputFolderDialog.open()
+                    }
+                }
+
+                Rectangle {
+                    height: 1
+                    color: colors.border
+                    Layout.fillWidth: true
+                }
+
                 ProgressBar {
+                    visible: app.converting || app.progress > 0
                     from: 0
                     to: 100
                     value: app.progress
@@ -599,12 +720,14 @@ ApplicationWindow {
                 }
 
                 RowLayout {
+                    visible: app.converting
                     Layout.fillWidth: true
                     spacing: 8
 
                     AppButton {
                         text: app.paused ? "Resume" : "Pause"
                         enabled: app.converting
+                        iconName: app.paused ? "play" : "pause"
                         surfaceColor: colors.surfaceAlt
                         borderColor: colors.border
                         textColor: colors.text
@@ -614,6 +737,7 @@ ApplicationWindow {
                     AppButton {
                         text: "Cancel"
                         enabled: app.converting
+                        iconName: "x"
                         surfaceColor: colors.surfaceAlt
                         borderColor: colors.border
                         textColor: colors.text
@@ -622,11 +746,14 @@ ApplicationWindow {
                 }
 
                 AppButton {
-                    text: app.converting ? "Converting" : "Convert"
+                    text: app.converting
+                        ? "Converting"
+                        : "Convert " + app.queueCount + " item" + (app.queueCount === 1 ? "" : "s")
                     enabled: !app.converting
                     primary: true
-                    accentColor: colors.accent
-                    primaryTextColor: colors.onAccent
+                    iconName: "play"
+                    accentColor: colors.action
+                    primaryTextColor: colors.onAction
                     Layout.fillWidth: true
                     onClicked: app.convert()
                 }
@@ -778,6 +905,7 @@ ApplicationWindow {
 
                     AppButton {
                         text: "Copy"
+                        iconName: "copy"
                         surfaceColor: colors.surfaceAlt
                         borderColor: colors.border
                         textColor: colors.text
@@ -787,8 +915,9 @@ ApplicationWindow {
                     AppButton {
                         text: app.saveCombined ? "Save as one file" : "Save files"
                         primary: true
-                        accentColor: colors.accent
-                        primaryTextColor: colors.onAccent
+                        iconName: "save"
+                        accentColor: colors.action
+                        primaryTextColor: colors.onAction
                         onClicked: app.saveCombined ? saveCombinedDialog.open() : saveSeparateDialog.open()
                     }
                 }
@@ -821,12 +950,13 @@ ApplicationWindow {
     }
 
     component SettingsPage: ScrollView {
+        id: settingsPage
         Layout.fillWidth: true
         Layout.fillHeight: true
         clip: true
 
         ColumnLayout {
-            width: Math.min(parent.width - 48, 900)
+            width: Math.min(settingsPage.width - 48, 760)
             x: 24
             spacing: 16
 
@@ -1064,17 +1194,80 @@ ApplicationWindow {
         }
     }
 
-    component HelpPage: Item {
+    component HelpPage: ScrollView {
+        id: helpPage
         Layout.fillWidth: true
         Layout.fillHeight: true
+        clip: true
 
         ColumnLayout {
-            anchors.fill: parent
-            anchors.margins: 24
+            width: Math.min(helpPage.width - 48, 920)
+            x: 24
+            y: 24
             spacing: 16
 
             SectionPanel {
-                title: "Help and links"
+                title: "Common tasks"
+                subtitle: "Quick guidance for the conversion workflow."
+                surfaceColor: colors.surface
+                borderColor: colors.border
+                textColor: colors.text
+                mutedTextColor: colors.muted
+                Layout.fillWidth: true
+
+                Repeater {
+                    model: [
+                        { icon: "folder-plus", title: "Add documents", detail: "Drop files into the window or choose files from your system." },
+                        { icon: "link", title: "Convert a webpage", detail: "Paste an http:// or https:// URL in the bar at the top of the workspace." },
+                        { icon: "file-text", title: "Use OCR only when needed", detail: "Enable OCR for scanned PDFs, screenshots, and image-heavy files." },
+                        { icon: "save", title: "Save Markdown", detail: "Use combined mode for one document, or separate mode for one Markdown file per input." }
+                    ]
+
+                    delegate: RowLayout {
+                        spacing: 10
+                        Layout.fillWidth: true
+
+                        Rectangle {
+                            width: 34
+                            height: 34
+                            radius: 8
+                            color: Qt.rgba(colors.accent.r, colors.accent.g, colors.accent.b, 0.12)
+                            border.color: Qt.rgba(colors.accent.r, colors.accent.g, colors.accent.b, 0.24)
+
+                            Icon {
+                                anchors.centerIn: parent
+                                name: modelData.icon
+                                size: 17
+                                color: colors.accent
+                            }
+                        }
+
+                        ColumnLayout {
+                            spacing: 2
+                            Layout.fillWidth: true
+
+                            Label {
+                                text: modelData.title
+                                color: colors.text
+                                font.pixelSize: 13
+                                font.weight: Font.Medium
+                                Layout.fillWidth: true
+                            }
+
+                            Label {
+                                text: modelData.detail
+                                color: colors.muted
+                                font.pixelSize: 12
+                                wrapMode: Text.WordWrap
+                                Layout.fillWidth: true
+                            }
+                        }
+                    }
+                }
+            }
+
+            SectionPanel {
+                title: "Reference links"
                 subtitle: "Open project, release, OCR, and conversion references."
                 surfaceColor: colors.surface
                 borderColor: colors.border
@@ -1100,6 +1293,7 @@ ApplicationWindow {
 
                         delegate: AppButton {
                             text: modelData.label
+                            iconName: "external-link"
                             surfaceColor: colors.surfaceAlt
                             borderColor: colors.border
                             textColor: colors.text
@@ -1129,7 +1323,7 @@ ApplicationWindow {
             }
 
             Item {
-                Layout.fillHeight: true
+                height: 24
             }
         }
     }

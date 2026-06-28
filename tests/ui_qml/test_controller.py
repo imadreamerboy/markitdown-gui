@@ -19,4 +19,5 @@ def test_controller_add_url_queues_valid_url():
 
     assert controller.queue_model.sources() == ["https://example.com/article"]
     assert controller.hasQueue is True
+    assert controller.queueCount == 1
 

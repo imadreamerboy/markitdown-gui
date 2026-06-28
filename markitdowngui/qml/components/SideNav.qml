@@ -38,12 +38,11 @@ Item {
                 radius: 8
                 color: root.accentColor
 
-                Label {
+                Icon {
                     anchors.centerIn: parent
-                    text: "M"
+                    name: "file-text"
+                    size: 18
                     color: root.accentTextColor
-                    font.pixelSize: 16
-                    font.weight: Font.Bold
                 }
             }
 
@@ -90,12 +89,11 @@ Item {
                     color: root.currentIndex === 0 ? root.accentColor : root.activeColor
                     border.color: root.currentIndex === 0 ? root.accentColor : root.borderColor
 
-                    Label {
+                    Icon {
                         anchors.centerIn: parent
-                        text: "MD"
+                        name: "file-text"
+                        size: 16
                         color: root.currentIndex === 0 ? root.accentTextColor : root.mutedTextColor
-                        font.pixelSize: 11
-                        font.weight: Font.Bold
                     }
                 }
 
@@ -175,12 +173,11 @@ Item {
                         color: root.currentIndex === 2 ? root.accentColor : root.activeColor
                         border.color: root.currentIndex === 2 ? root.accentColor : root.borderColor
 
-                        Label {
+                        Icon {
                             anchors.centerIn: parent
-                            text: "?"
+                            name: "circle-question-mark"
+                            size: 16
                             color: root.currentIndex === 2 ? root.accentTextColor : root.textColor
-                            font.pixelSize: 15
-                            font.weight: Font.DemiBold
                         }
                     }
 
@@ -224,12 +221,11 @@ Item {
                         color: root.currentIndex === 1 ? root.accentColor : root.activeColor
                         border.color: root.currentIndex === 1 ? root.accentColor : root.borderColor
 
-                        Label {
+                        Icon {
                             anchors.centerIn: parent
-                            text: "S"
+                            name: "settings"
+                            size: 15
                             color: root.currentIndex === 1 ? root.accentTextColor : root.textColor
-                            font.pixelSize: 13
-                            font.weight: Font.DemiBold
                         }
                     }
 

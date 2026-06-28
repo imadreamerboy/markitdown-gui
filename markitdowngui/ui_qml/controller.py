@@ -81,6 +81,10 @@ class AppController(QObject):
     def hasQueue(self) -> bool:
         return bool(self.queue_model.sources())
 
+    @Property(int, notify=queueChanged)
+    def queueCount(self) -> int:
+        return self.queue_model.rowCount()
+
     @Property(bool, notify=resultsChanged)
     def hasResults(self) -> bool:
         return self.result_model.rowCount() > 0
