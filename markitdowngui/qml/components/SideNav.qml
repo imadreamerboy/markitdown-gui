@@ -10,7 +10,7 @@ Item {
     property color activeColor: "#FFFFFF"
     property color textColor: "#18212B"
     property color mutedTextColor: "#647283"
-    property color accentColor: "#138A87"
+    property color accentColor: "#687700"
     property color borderColor: "#D8E1E8"
     property color focusColor: accentColor
     property color utilityHoverColor: Qt.rgba(0.5, 0.6, 0.7, 0.12)

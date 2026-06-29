@@ -795,14 +795,14 @@ class AppController(QObject):
             "h1{font-size:18px;line-height:1.28;margin:0 0 14px;font-weight:700;color:#073642;} "
             "h2{font-size:15px;line-height:1.36;margin:18px 0 8px;font-weight:700;color:#073642;} "
             "h3{font-size:14px;margin:18px 0 8px;color:#073642;} p{margin:0 0 14px;} "
-            "a{color:#268bd2;} strong{color:#073642;} "
+            "a{color:#687700;} strong{color:#073642;} "
             "code{background:#eee8d5;border-radius:5px;padding:2px 5px;font-family:Cascadia Mono,Consolas,monospace;"
             "font-size:13px;color:#073642;} pre{background:#eee8d5;border:1px solid #d6ccb2;border-radius:8px;"
             "padding:12px 14px;margin:14px 0;color:#073642;} "
             "table{border-collapse:collapse;margin:12px 0 16px;font-size:13px;} "
             "th{background:#eee8d5;color:#073642;font-weight:700;} "
             "td,th{border:1px solid #cfc4a8;padding:7px 10px;} "
-            "blockquote{border-left:3px solid #2aa198;background:#f6efd8;margin:14px 0;padding:10px 14px;"
+            "blockquote{border-left:3px solid #687700;background:#f6efd8;margin:14px 0;padding:10px 14px;"
             "border-radius:6px;color:#586e75;} ul,ol{margin:0 0 14px 22px;} hr{border:0;border-top:1px solid #d6ccb2;}"
         )
 

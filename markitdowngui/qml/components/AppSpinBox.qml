@@ -8,7 +8,7 @@ SpinBox {
     property color stepColor: "#F6EFD8"
     property color hoverColor: "#EFE3BC"
     property color borderColor: "#D8E1E8"
-    property color accentColor: "#2AA198"
+    property color accentColor: "#687700"
     property color textColor: "#18212B"
     property color mutedTextColor: "#647283"
 
