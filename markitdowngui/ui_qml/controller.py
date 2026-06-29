@@ -161,6 +161,10 @@ class AppController(QObject):
     def suggestedSeparateOutputFolderUrl(self) -> str:
         return self._folder_url(self._dialog_output_dir())
 
+    @Property(bool, notify=saveDefaultsChanged)
+    def canSaveSeparateWithoutDialog(self) -> bool:
+        return self._can_save_separate_without_dialog()
+
     @Property(bool, notify=settingsChanged)
     def saveCombined(self) -> bool:
         return self.settings.get_save_mode()
@@ -382,19 +386,24 @@ class AppController(QObject):
     @Slot("QVariant")
     def saveSeparateOutputs(self, folder_url: Any) -> None:
         fallback_dir = self._path_from_url(folder_url)
-        if not fallback_dir:
-            return
-
         items = self.result_model.items()
         if not items:
             self.toastRequested.emit("error", "No output to save.")
             return
 
-        Path(fallback_dir).mkdir(parents=True, exist_ok=True)
+        if not fallback_dir and not self._can_save_separate_without_dialog(items):
+            self.toastRequested.emit("error", "Choose an output folder before saving.")
+            return
+
+        if fallback_dir:
+            Path(fallback_dir).mkdir(parents=True, exist_ok=True)
 
         saved_paths: list[str] = []
         for item in items:
             output_dir = self._separate_output_dir(fallback_dir, item.source)
+            if not output_dir:
+                AppLogger.error(f"No output folder available for {item.source}")
+                continue
             Path(output_dir).mkdir(parents=True, exist_ok=True)
             output_path = self._unique_output_path(output_dir, item.source)
             try:
@@ -637,6 +646,16 @@ class AppController(QObject):
             if source_dir and self._is_writable_output_dir(source_dir):
                 return source_dir
         return fallback_dir
+
+    def _can_save_separate_without_dialog(self, items: list[Any] | None = None) -> bool:
+        if not self.settings.get_save_to_source_folder():
+            return False
+
+        items = self.result_model.items() if items is None else items
+        if not items:
+            return False
+
+        return all(self._separate_output_dir("", item.source) for item in items)
 
     def _dialog_output_dir(self) -> str:
         output_dir = self.settings.get_default_output_folder()

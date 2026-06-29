@@ -52,6 +52,8 @@ ApplicationWindow {
 
         if (app.saveCombined)
             saveCombinedDialog.open()
+        else if (app.canSaveSeparateWithoutDialog)
+            app.saveSeparateOutputs("")
         else
             saveSeparateDialog.open()
     }

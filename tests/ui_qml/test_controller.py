@@ -77,6 +77,44 @@ def test_controller_separate_save_prefers_source_folder_for_local_files(
     ) == "# Web\n\nBody"
 
 
+def test_controller_separate_save_can_skip_dialog_for_local_source_folders(
+    controller,
+    tmp_path,
+):
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    source_file = source_dir / "report.pdf"
+    source_file.write_text("input", encoding="utf-8")
+
+    controller.settings.set_save_to_source_folder(True)
+    controller.result_model.set_results(
+        {str(source_file): ConversionOutcome("# Local\n\nBody", backend="native")}
+    )
+
+    assert controller.canSaveSeparateWithoutDialog is True
+
+    controller.saveSeparateOutputs("")
+
+    assert (source_dir / "report.md").read_text(encoding="utf-8") == "# Local\n\nBody"
+
+
+def test_controller_separate_save_requires_fallback_for_web_sources(
+    controller,
+):
+    messages: list[tuple[str, str]] = []
+    controller.toastRequested.connect(lambda kind, message: messages.append((kind, message)))
+    controller.settings.set_save_to_source_folder(True)
+    controller.result_model.set_results(
+        {"https://example.com/docs": ConversionOutcome("# Web\n\nBody", backend="defuddle")}
+    )
+
+    assert controller.canSaveSeparateWithoutDialog is False
+
+    controller.saveSeparateOutputs("")
+
+    assert messages == [("error", "Choose an output folder before saving.")]
+
+
 def test_controller_separate_save_falls_back_when_source_folder_is_not_writable(
     controller,
     monkeypatch,
