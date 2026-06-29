@@ -256,6 +256,25 @@ ApplicationWindow {
         }
     }
 
+    component Keycap: Rectangle {
+        property string text: ""
+
+        implicitWidth: Math.max(64, keyLabel.implicitWidth + 18)
+        implicitHeight: 28
+        radius: 6
+        color: colors.surfaceAlt
+        border.color: colors.border
+
+        Label {
+            id: keyLabel
+            anchors.centerIn: parent
+            text: parent.text
+            color: colors.text
+            font.pixelSize: 12
+            font.weight: Font.DemiBold
+        }
+    }
+
     component HeaderBar: Rectangle {
         color: colors.window
         implicitHeight: 72
@@ -1802,12 +1821,41 @@ ApplicationWindow {
                 mutedTextColor: colors.muted
                 Layout.fillWidth: true
 
-                Label {
-                    text: "Ctrl+O add files, Ctrl+B convert, Ctrl+P pause or resume, Ctrl+S save, Ctrl+C copy Markdown, Ctrl+L clear queue, Ctrl+K open Help, Esc cancel."
-                    color: colors.muted
-                    font.pixelSize: 13
-                    wrapMode: Text.WordWrap
+                GridLayout {
+                    columns: helpPage.width < 760 ? 1 : 2
+                    columnSpacing: 18
+                    rowSpacing: 10
                     Layout.fillWidth: true
+
+                    Repeater {
+                        model: [
+                            { key: "Ctrl+O", action: "Add files" },
+                            { key: "Ctrl+B", action: "Convert queue" },
+                            { key: "Ctrl+P", action: "Pause or resume" },
+                            { key: "Ctrl+S", action: "Save Markdown" },
+                            { key: "Ctrl+C", action: "Copy Markdown" },
+                            { key: "Ctrl+L", action: "Clear queue" },
+                            { key: "Ctrl+K", action: "Open Help" },
+                            { key: "Esc", action: "Cancel conversion" }
+                        ]
+
+                        delegate: RowLayout {
+                            spacing: 10
+                            Layout.fillWidth: true
+
+                            Keycap {
+                                text: modelData.key
+                            }
+
+                            Label {
+                                text: modelData.action
+                                color: colors.muted
+                                font.pixelSize: 13
+                                elide: Text.ElideRight
+                                Layout.fillWidth: true
+                            }
+                        }
+                    }
                 }
             }
 
