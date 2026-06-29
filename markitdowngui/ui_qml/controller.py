@@ -50,7 +50,7 @@ class AppController(QObject):
         self.queue_model = QueueModel()
         self.result_model = ResultModel()
         self.worker: ConversionWorker | None = None
-        self._status = "Ready"
+        self._status = "Ready to convert"
         self._progress = 0
         self._converting = False
         self._paused = False

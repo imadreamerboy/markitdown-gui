@@ -898,7 +898,7 @@ ApplicationWindow {
                     }
 
                     AppButton {
-                        text: "New"
+                        text: "Start new"
                         subtle: true
                         iconName: "file-text"
                         textColor: colors.muted
@@ -1045,7 +1045,7 @@ ApplicationWindow {
                     }
 
                     AppButton {
-                        text: "Raw"
+                        text: "Source"
                         primary: app.previewMode === "raw"
                         subtle: app.previewMode !== "raw"
                         accentColor: colors.action
