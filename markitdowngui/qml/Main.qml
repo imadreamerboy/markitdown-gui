@@ -1973,6 +1973,63 @@ ApplicationWindow {
                 }
 
                 FieldGroup {
+                    label: "Setup actions"
+                    detail: "Open provider docs or copy setup snippets for the selected provider."
+                    visible: app.ocrEnabled
+                    Layout.fillWidth: true
+
+                    ColumnLayout {
+                        spacing: 8
+                        Layout.fillWidth: true
+
+                        Repeater {
+                            model: app.ocrSetupActions
+
+                            delegate: RowLayout {
+                                spacing: 10
+                                Layout.fillWidth: true
+
+                                ColumnLayout {
+                                    spacing: 2
+                                    Layout.fillWidth: true
+
+                                    Label {
+                                        text: modelData.label
+                                        color: colors.text
+                                        font.pixelSize: 12
+                                        font.weight: Font.DemiBold
+                                        elide: Text.ElideRight
+                                        Layout.fillWidth: true
+                                    }
+
+                                    Label {
+                                        text: modelData.detail
+                                        color: colors.muted
+                                        font.pixelSize: 11
+                                        wrapMode: Text.WordWrap
+                                        Layout.fillWidth: true
+                                    }
+                                }
+
+                                AppButton {
+                                    text: modelData.action === "open" ? "Open" : "Copy"
+                                    iconName: modelData.action === "open" ? "external-link" : "copy"
+                                    accentColor: colors.action
+                                    surfaceColor: colors.surfaceAlt
+                                    borderColor: colors.border
+                                    textColor: colors.text
+                                    onClicked: app.runOcrSetupAction(
+                                        modelData.action,
+                                        modelData.value,
+                                        modelData.label
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                FieldGroup {
                     label: app.ocrProvider === "glmocr" ? "Fallback Azure endpoint" : "Azure endpoint"
                     detail: app.ocrProvider === "glmocr"
                         ? "Optional fallback endpoint. Uses AZURE_OCR_API_KEY or Azure identity at runtime."

@@ -11,6 +11,12 @@ from PySide6.QtCore import QObject, Property, QProcess, QThread, QUrl, Signal, S
 from PySide6.QtGui import QDesktopServices, QGuiApplication, QPalette, QTextDocument
 
 from markitdowngui.core.conversion import (
+    AZURE_OCR_API_KEY_ENV_VAR,
+    DEFAULT_HTTP_OCR_API_KEY_ENV,
+    GLMOCR_API_KEY_ENV_VAR,
+    OCR_PROVIDER_GLMOCR,
+    OCR_PROVIDER_HTTP,
+    ZHIPU_API_KEY_ENV_VAR,
     ConversionOptions,
     ConversionWorker,
     get_ocr_provider_specs,
@@ -361,6 +367,10 @@ class AppController(QObject):
             }
             for spec in get_ocr_provider_specs()
         ]
+
+    @Property("QVariant", notify=settingsChanged)
+    def ocrSetupActions(self) -> list[dict[str, str]]:
+        return self._build_ocr_setup_actions()
 
     @Property(str, notify=settingsChanged)
     def docintelEndpoint(self) -> str:
@@ -833,6 +843,17 @@ class AppController(QObject):
         result = validate_ocr_setup(self._build_ocr_validation_options())
         self.toastRequested.emit("success" if result.ok else "error", result.message)
 
+    @Slot(str, str, str)
+    def runOcrSetupAction(self, action: str, value: str, label: str) -> None:
+        if action == "open":
+            self.openExternalUrl(value)
+            return
+        if action == "copy":
+            QGuiApplication.clipboard().setText(value)
+            self.toastRequested.emit("success", f"{label} copied.")
+            return
+        self.toastRequested.emit("error", "Unknown OCR setup action.")
+
     @Slot()
     def startAutomaticUpdateCheck(self) -> None:
         if self.settings.get_update_notifications_enabled():
@@ -1269,6 +1290,82 @@ class AppController(QObject):
             if line.startswith(prefix):
                 return line[len(prefix) :].strip()
         return ""
+
+    def _build_ocr_setup_actions(self) -> list[dict[str, str]]:
+        provider = self.settings.get_ocr_provider()
+        if provider == OCR_PROVIDER_GLMOCR:
+            return [
+                {
+                    "label": "Open GLM-OCR docs",
+                    "detail": "Model options, API mode, Ollama, and SDK server setup.",
+                    "action": "open",
+                    "value": "https://github.com/zai-org/GLM-OCR",
+                },
+                {
+                    "label": "Copy API key hint",
+                    "detail": "Use this for Official API mode.",
+                    "action": "copy",
+                    "value": f"{ZHIPU_API_KEY_ENV_VAR}=<key> or {GLMOCR_API_KEY_ENV_VAR}=<key>",
+                },
+                {
+                    "label": "Copy SDK server URL",
+                    "detail": "Use this when running the GLM-OCR SDK server locally.",
+                    "action": "copy",
+                    "value": self.settings.get_glmocr_sdk_server_url(),
+                },
+            ]
+        if provider == OCR_PROVIDER_HTTP:
+            return [
+                {
+                    "label": "Copy endpoint contract",
+                    "detail": "The server receives multipart `file` plus optional `model`.",
+                    "action": "copy",
+                    "value": "POST multipart/form-data: file=<document>, model=<optional>",
+                },
+                {
+                    "label": "Copy curl template",
+                    "detail": "Smoke-test the configured endpoint outside the app.",
+                    "action": "copy",
+                    "value": self._http_ocr_curl_template(),
+                },
+                {
+                    "label": "Copy API key env",
+                    "detail": "Only needed when the endpoint expects bearer auth.",
+                    "action": "copy",
+                    "value": self.settings.get_http_ocr_api_key_env()
+                    or DEFAULT_HTTP_OCR_API_KEY_ENV,
+                },
+            ]
+        return [
+            {
+                "label": "Open Azure OCR docs",
+                "detail": "Document Intelligence resource and endpoint setup.",
+                "action": "open",
+                "value": "https://learn.microsoft.com/azure/ai-services/document-intelligence/",
+            },
+            {
+                "label": "Open Tesseract docs",
+                "detail": "Install the local fallback executable and language packs.",
+                "action": "open",
+                "value": "https://github.com/tesseract-ocr/tesseract",
+            },
+            {
+                "label": "Copy API key env",
+                "detail": "Set this before using Azure OCR.",
+                "action": "copy",
+                "value": f"{AZURE_OCR_API_KEY_ENV_VAR}=<key>",
+            },
+        ]
+
+    def _http_ocr_curl_template(self) -> str:
+        endpoint = self.settings.get_http_ocr_endpoint() or "http://127.0.0.1:8000/ocr"
+        parts = ["curl", "-X", "POST", "-F", '"file=@sample.pdf"']
+        model = self.settings.get_http_ocr_model()
+        if model:
+            parts.extend(["-F", f'"model={model}"'])
+        api_key_env = self.settings.get_http_ocr_api_key_env() or DEFAULT_HTTP_OCR_API_KEY_ENV
+        parts.extend(["-H", f'"Authorization: Bearer ${api_key_env}"', f'"{endpoint}"'])
+        return " ".join(parts)
 
     def _build_preferred_release_asset_preflight_items(self) -> list[dict[str, str]]:
         asset = self._preferred_release_asset

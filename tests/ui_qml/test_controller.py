@@ -571,6 +571,55 @@ def test_controller_exposes_ocr_provider_options_and_http_settings(controller):
     assert controller.httpOcrTimeoutSeconds == 45
 
 
+def test_controller_exposes_provider_specific_ocr_setup_actions(controller):
+    azure_actions = {item["label"]: item for item in controller.ocrSetupActions}
+    assert azure_actions["Open Azure OCR docs"]["action"] == "open"
+    assert azure_actions["Copy API key env"]["value"] == "AZURE_OCR_API_KEY=<key>"
+
+    controller.setOcrProvider("glmocr")
+    glm_actions = {item["label"]: item for item in controller.ocrSetupActions}
+    assert glm_actions["Open GLM-OCR docs"]["value"] == "https://github.com/zai-org/GLM-OCR"
+    assert glm_actions["Copy API key hint"]["value"] == (
+        "ZHIPU_API_KEY=<key> or GLMOCR_API_KEY=<key>"
+    )
+    assert glm_actions["Copy SDK server URL"]["value"] == "http://127.0.0.1:5002/glmocr/parse"
+
+    controller.setOcrProvider("http")
+    controller.setHttpOcrEndpoint("http://localhost:8000/ocr")
+    controller.setHttpOcrModel("surya")
+    controller.setHttpOcrApiKeyEnv("CUSTOM_OCR_KEY")
+    http_actions = {item["label"]: item for item in controller.ocrSetupActions}
+    assert http_actions["Copy endpoint contract"]["value"] == (
+        "POST multipart/form-data: file=<document>, model=<optional>"
+    )
+    assert http_actions["Copy API key env"]["value"] == "CUSTOM_OCR_KEY"
+    assert http_actions["Copy curl template"]["value"] == (
+        'curl -X POST -F "file=@sample.pdf" -F "model=surya" '
+        '-H "Authorization: Bearer $CUSTOM_OCR_KEY" "http://localhost:8000/ocr"'
+    )
+
+
+def test_controller_runs_ocr_setup_actions(controller, monkeypatch):
+    opened: list[str] = []
+    copied: list[str] = []
+    messages: list[tuple[str, str]] = []
+    controller.toastRequested.connect(
+        lambda kind, message: messages.append((kind, message))
+    )
+    monkeypatch.setattr(controller, "openExternalUrl", lambda url: opened.append(url))
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.QGuiApplication.clipboard",
+        lambda: SimpleNamespace(setText=lambda value: copied.append(value)),
+    )
+
+    controller.runOcrSetupAction("open", "https://example.com/docs", "Open docs")
+    controller.runOcrSetupAction("copy", "AZURE_OCR_API_KEY=<key>", "Copy API key env")
+
+    assert opened == ["https://example.com/docs"]
+    assert copied == ["AZURE_OCR_API_KEY=<key>"]
+    assert messages == [("success", "Copy API key env copied.")]
+
+
 def test_controller_validates_ocr_setup(controller, monkeypatch):
     messages: list[tuple[str, str]] = []
     controller.toastRequested.connect(lambda kind, message: messages.append((kind, message)))
