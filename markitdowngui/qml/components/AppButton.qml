@@ -12,6 +12,7 @@ Button {
     property color textColor: "#18212B"
     property color primaryTextColor: "#FFFFFF"
     property color disabledTextColor: "#8A96A3"
+    property color disabledPrimaryColor: Qt.rgba(accentColor.r, accentColor.g, accentColor.b, 0.16)
     property string iconName: ""
     property int iconSize: 16
     property int iconSpacing: 7
@@ -60,7 +61,9 @@ Button {
         radius: 8
         color: {
             if (!control.enabled)
-                return control.subtle ? "transparent" : control.surfaceColor
+                return control.subtle
+                    ? "transparent"
+                    : (control.primary ? control.disabledPrimaryColor : control.surfaceColor)
             if (control.primary)
                 return control.down ? Qt.darker(control.accentColor, 1.12) : control.accentColor
             if (control.subtle)

@@ -333,6 +333,31 @@ ApplicationWindow {
         mutedTextColor: colors.muted
     }
 
+    component ThemeProgressBar: ProgressBar {
+        id: progressControl
+
+        from: 0
+        to: 100
+        implicitHeight: 6
+
+        background: Rectangle {
+            implicitHeight: 6
+            radius: 3
+            color: colors.surfaceAlt
+        }
+
+        contentItem: Item {
+            implicitHeight: 6
+
+            Rectangle {
+                width: progressControl.visualPosition * parent.width
+                height: parent.height
+                radius: 3
+                color: colors.accent
+            }
+        }
+    }
+
     component FieldGroup: ColumnLayout {
         id: fieldGroup
 
@@ -772,12 +797,14 @@ ApplicationWindow {
                         }
 
                         Rectangle {
+                            visible: !app.converting
                             height: 1
                             color: colors.border
                             Layout.fillWidth: true
                         }
 
                         ColumnLayout {
+                            visible: !app.converting
                             spacing: 6
                             Layout.fillWidth: true
 
@@ -835,21 +862,39 @@ ApplicationWindow {
                             Layout.fillWidth: true
                         }
 
-                        ProgressBar {
-                            visible: app.converting || app.progress > 0
-                            from: 0
-                            to: 100
+                        ThemeProgressBar {
+                            visible: !app.converting && app.progress > 0
                             value: app.progress
                             Layout.fillWidth: true
                         }
 
                         Label {
+                            visible: !app.converting
                             text: app.statusText
                             color: colors.muted
                             font.pixelSize: 12
                             elide: Text.ElideRight
                             Layout.fillWidth: true
                         }
+                    }
+                }
+
+                ColumnLayout {
+                    visible: app.converting
+                    Layout.fillWidth: true
+                    spacing: 6
+
+                    ThemeProgressBar {
+                        value: app.progress
+                        Layout.fillWidth: true
+                    }
+
+                    Label {
+                        text: app.statusText
+                        color: colors.muted
+                        font.pixelSize: 12
+                        elide: Text.ElideMiddle
+                        Layout.fillWidth: true
                     }
                 }
 
