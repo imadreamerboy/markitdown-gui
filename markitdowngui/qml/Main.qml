@@ -297,6 +297,18 @@ ApplicationWindow {
         textColor: selected ? colors.text : colors.muted
     }
 
+    component UtilitySectionPanel: SectionPanel {
+        surfaceColor: colors.surface
+        borderColor: colors.border
+        textColor: colors.text
+        mutedTextColor: colors.muted
+        panelPadding: 14
+        contentSpacing: 10
+        bodySpacing: 9
+        borderOpacity: dark ? 0.90 : 0.72
+        Layout.fillWidth: true
+    }
+
     component HeaderBar: Rectangle {
         color: colors.window
         implicitHeight: 72
@@ -1835,19 +1847,14 @@ ApplicationWindow {
         clip: true
 
         ColumnLayout {
-            width: Math.min(helpPage.width - 48, 920)
+            width: Math.min(helpPage.width - 48, 820)
             x: 24
             y: 24
             spacing: 16
 
-            SectionPanel {
+            UtilitySectionPanel {
                 title: "Common tasks"
                 subtitle: "Quick guidance for the conversion workflow."
-                surfaceColor: colors.surface
-                borderColor: colors.border
-                textColor: colors.text
-                mutedTextColor: colors.muted
-                Layout.fillWidth: true
 
                 Repeater {
                     model: [
@@ -1900,14 +1907,9 @@ ApplicationWindow {
                 }
             }
 
-            SectionPanel {
+            UtilitySectionPanel {
                 title: "Reference links"
                 subtitle: "Open project, release, OCR, and conversion references."
-                surfaceColor: colors.surface
-                borderColor: colors.border
-                textColor: colors.text
-                mutedTextColor: colors.muted
-                Layout.fillWidth: true
 
                 GridLayout {
                     columns: 2
@@ -1938,14 +1940,9 @@ ApplicationWindow {
                 }
             }
 
-            SectionPanel {
+            UtilitySectionPanel {
                 title: "Shortcuts"
                 subtitle: "Keyboard actions for the main workspace."
-                surfaceColor: colors.surface
-                borderColor: colors.border
-                textColor: colors.text
-                mutedTextColor: colors.muted
-                Layout.fillWidth: true
 
                 GridLayout {
                     columns: helpPage.width < 760 ? 1 : 2
