@@ -743,7 +743,7 @@ ApplicationWindow {
 
                         ThemeToggleRow {
                             title: "OCR"
-                            detail: "Provider: " + app.ocrProvider + ". Use for scanned or image-heavy inputs."
+                            detail: "Provider: " + (app.ocrProvider === "glmocr" ? "GLM-OCR" : "Azure/Tesseract") + ". Use for scanned or image-heavy inputs."
                             checked: app.ocrEnabled
                             textColor: colors.text
                             mutedTextColor: colors.muted
