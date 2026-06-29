@@ -434,6 +434,51 @@ ApplicationWindow {
         }
     }
 
+    component SettingsField: RowLayout {
+        id: settingsField
+
+        property string label: ""
+        property string detail: ""
+        property int labelColumnWidth: 220
+        default property alias content: settingsFieldBody.data
+
+        spacing: 18
+        Layout.fillWidth: true
+
+        ColumnLayout {
+            spacing: 2
+            Layout.preferredWidth: settingsField.labelColumnWidth
+            Layout.alignment: Qt.AlignTop
+
+            Label {
+                text: settingsField.label
+                visible: settingsField.label.length > 0
+                color: colors.text
+                font.pixelSize: 12
+                font.weight: Font.Medium
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
+            }
+
+            Label {
+                text: settingsField.detail
+                visible: settingsField.detail.length > 0
+                color: colors.muted
+                font.pixelSize: 11
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
+            }
+        }
+
+        ColumnLayout {
+            id: settingsFieldBody
+
+            spacing: 8
+            Layout.fillWidth: true
+            Layout.alignment: Qt.AlignTop
+        }
+    }
+
     component WorkspacePage: Item {
         Layout.fillWidth: true
         Layout.fillHeight: true
@@ -1312,6 +1357,7 @@ ApplicationWindow {
                                             color: colors.text
                                             font.pixelSize: 15
                                             font.weight: Font.DemiBold
+                                            wrapMode: Text.WordWrap
                                             Layout.fillWidth: true
                                         }
 
@@ -1319,6 +1365,7 @@ ApplicationWindow {
                                             text: "The details below can be copied for troubleshooting."
                                             color: colors.muted
                                             font.pixelSize: 12
+                                            wrapMode: Text.WordWrap
                                             Layout.fillWidth: true
                                         }
                                     }
@@ -1423,9 +1470,13 @@ ApplicationWindow {
                 borderColor: colors.border
                 textColor: colors.text
                 mutedTextColor: colors.muted
+                panelPadding: 14
+                contentSpacing: 10
+                bodySpacing: 9
+                borderOpacity: dark ? 0.90 : 0.72
                 Layout.fillWidth: true
 
-                FieldGroup {
+                SettingsField {
                     label: "Default folder"
                     detail: "Leave empty to choose a location when saving."
                     Layout.fillWidth: true
@@ -1476,7 +1527,7 @@ ApplicationWindow {
                     Layout.fillWidth: true
                 }
 
-                FieldGroup {
+                SettingsField {
                     label: "Batch size"
                     detail: "Limit how many sources convert in one worker batch."
                     Layout.fillWidth: true
@@ -1497,9 +1548,13 @@ ApplicationWindow {
                 borderColor: colors.border
                 textColor: colors.text
                 mutedTextColor: colors.muted
+                panelPadding: 14
+                contentSpacing: 10
+                bodySpacing: 9
+                borderOpacity: dark ? 0.90 : 0.72
                 Layout.fillWidth: true
 
-                FieldGroup {
+                SettingsField {
                     label: "Theme"
                     detail: "Use explicit palettes or follow the operating system."
                     Layout.fillWidth: true
@@ -1509,6 +1564,8 @@ ApplicationWindow {
                         currentIndex: app.themeMode === "dark" ? 1 : app.themeMode === "system" ? 2 : 0
                         onActivated: index => app.setThemeMode(index === 1 ? "dark" : index === 2 ? "system" : "light")
                         Layout.fillWidth: true
+                        Layout.maximumWidth: 380
+                        Layout.alignment: Qt.AlignLeft
                     }
                 }
             }
@@ -1520,6 +1577,10 @@ ApplicationWindow {
                 borderColor: colors.border
                 textColor: colors.text
                 mutedTextColor: colors.muted
+                panelPadding: 14
+                contentSpacing: 10
+                bodySpacing: 9
+                borderOpacity: dark ? 0.90 : 0.72
                 Layout.fillWidth: true
 
                 ThemeToggleRow {
@@ -1613,6 +1674,10 @@ ApplicationWindow {
                 borderColor: colors.border
                 textColor: colors.text
                 mutedTextColor: colors.muted
+                panelPadding: 14
+                contentSpacing: 10
+                bodySpacing: 9
+                borderOpacity: dark ? 0.90 : 0.72
                 visible: app.ocrEnabled && app.ocrProvider === "glmocr"
                 Layout.fillWidth: true
 
