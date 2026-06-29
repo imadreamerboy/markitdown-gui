@@ -27,7 +27,8 @@ Download prebuilt binaries from [Releases](https://github.com/imadreamerboy/mark
 
 ### Updating
 
-- Packaged desktop builds are updated from [Releases](https://github.com/imadreamerboy/markitdown-gui/releases). The in-app update check reads the latest GitHub release and opens release assets directly when packaged binaries are attached.
+- Packaged desktop builds are updated from [Releases](https://github.com/imadreamerboy/markitdown-gui/releases). The in-app update check reads the latest GitHub release, prefers the asset for the current operating system, and opens release assets directly when packaged binaries are attached.
+- Release builds publish a `markitdown-release-manifest.json` with platform, size, and SHA256 metadata for each package. This is the verification foundation for a future in-app replace-and-restart updater.
 - Source checkouts can update in place:
 
 ```sh
@@ -179,7 +180,7 @@ pyinstaller MarkItDown.spec --clean --noconfirm
 ```
 
 The default spec builds an `onedir` app in `dist/MarkItDown/`.
-Release workflows package this folder into platform-specific `.zip` artifacts.
+Release workflows package Windows and Linux builds into platform-specific `.zip` artifacts and macOS builds into a `.dmg`. Each release also includes `markitdown-release-manifest.json` for update metadata and checksums.
 That build intentionally excludes the GLM-OCR self-hosted runtime stack; local hosting stays external to the GUI.
 
 ## License

@@ -229,13 +229,13 @@ ApplicationWindow {
             }
 
             AppButton {
-                text: app.availableReleaseAssets.length > 0 ? "Download" : "Releases"
+                text: app.preferredReleaseAsset.url ? "Download" : "Releases"
                 primary: true
                 iconName: "external-link"
                 accentColor: colors.action
                 primaryTextColor: colors.onAction
-                onClicked: app.availableReleaseAssets.length > 0
-                    ? app.openReleaseAsset(app.availableReleaseAssets[0].url)
+                onClicked: app.preferredReleaseAsset.url
+                    ? app.openReleaseAsset(app.preferredReleaseAsset.url)
                     : app.openReleases()
             }
 
@@ -2396,6 +2396,44 @@ ApplicationWindow {
                             Layout.fillWidth: true
                             onClicked: app.openExternalUrl(modelData.url)
                         }
+                    }
+                }
+            }
+
+            UtilitySectionPanel {
+                title: "Diagnostics"
+                subtitle: "Useful when an update, OCR provider, or conversion fails."
+
+                RowLayout {
+                    spacing: 10
+                    Layout.fillWidth: true
+
+                    Label {
+                        text: "Open logs or copy a compact system report for issue reports."
+                        color: colors.muted
+                        font.pixelSize: 12
+                        wrapMode: Text.WordWrap
+                        Layout.fillWidth: true
+                    }
+
+                    AppButton {
+                        text: "Open logs"
+                        iconName: "external-link"
+                        accentColor: colors.action
+                        surfaceColor: colors.surfaceAlt
+                        borderColor: colors.border
+                        textColor: colors.text
+                        onClicked: app.openLogFolder()
+                    }
+
+                    AppButton {
+                        text: "Copy diagnostics"
+                        iconName: "copy"
+                        accentColor: colors.action
+                        surfaceColor: colors.surfaceAlt
+                        borderColor: colors.border
+                        textColor: colors.text
+                        onClicked: app.copyDiagnostics()
                     }
                 }
             }

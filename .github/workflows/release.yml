@@ -64,17 +64,21 @@ jobs:
           TAG_NAME="${GITHUB_REF#refs/tags/}"
           VERSION="${TAG_NAME#v}"
           VERSION="${VERSION#.}"
-          ARTIFACT_NAME="MarkItDown-${{ runner.os }}-${VERSION}.zip"
           mkdir -p dist_output
-          cd dist
-          python -m zipfile -c "../dist_output/${ARTIFACT_NAME}" MarkItDown
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            hdiutil create -volname "MarkItDown" -srcfolder "dist/MarkItDown" -ov -format UDZO "dist_output/MarkItDown-macOS-${VERSION}.dmg"
+          else
+            ARTIFACT_NAME="MarkItDown-${{ runner.os }}-${VERSION}.zip"
+            cd dist
+            python -m zipfile -c "../dist_output/${ARTIFACT_NAME}" MarkItDown
+          fi
         shell: bash
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: MarkItDown-${{ runner.os }}
-          path: dist_output/*.zip
+          path: dist_output/*
 
   release:
     name: Create GitHub Release
@@ -89,8 +93,52 @@ jobs:
         with:
           path: artifacts
 
+      - name: Generate release manifest
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+
+          assets = []
+          for path in sorted(
+              candidate
+              for pattern in ("**/*.zip", "**/*.dmg")
+              for candidate in Path("artifacts").glob(pattern)
+          ):
+              name = path.name
+              platform = ""
+              if "-Windows-" in name:
+                  platform = "Windows"
+              elif "-macOS-" in name:
+                  platform = "macOS"
+              elif "-Linux-" in name:
+                  platform = "Linux"
+              assets.append(
+                  {
+                      "name": name,
+                      "platform": platform,
+                      "size": path.stat().st_size,
+                      "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                  }
+              )
+
+          manifest = {
+              "schema": 1,
+              "tag": "${{ github.ref_name }}",
+              "assets": assets,
+          }
+          output = Path("artifacts/markitdown-release-manifest.json")
+          output.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+          print(output.read_text(encoding="utf-8"))
+          PY
+        shell: bash
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: artifacts/**/*.zip
+          files: |
+            artifacts/**/*.zip
+            artifacts/**/*.dmg
+            artifacts/markitdown-release-manifest.json
           token: ${{ secrets.GITHUB_TOKEN }}

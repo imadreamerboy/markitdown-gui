@@ -30,10 +30,10 @@ from markitdowngui.core.markdown_assets import (
 )
 from markitdowngui.core.settings import SettingsManager
 from markitdowngui.ui_qml.models import QueueModel, ResultModel
-from markitdowngui.utils.logger import AppLogger
+from markitdowngui.utils.logger import AppLogger, build_diagnostic_report
 from markitdowngui.utils.source_updater import build_source_update_command
 from markitdowngui.utils.translations import DEFAULT_LANG, get_translation
-from markitdowngui.utils.update_checker import UpdateChecker
+from markitdowngui.utils.update_checker import UpdateChecker, select_release_asset
 
 
 _PREVIEW_HEADING_RE = re.compile(r'<h([1-3]) style="([^"]*)"><span style="([^"]*)">')
@@ -79,6 +79,7 @@ class AppController(QObject):
         self._available_update_version = ""
         self._available_release_url = ""
         self._available_release_assets: list[dict[str, object]] = []
+        self._preferred_release_asset: dict[str, object] = {}
 
     @Property(QObject, constant=True)
     def queueModel(self) -> QueueModel:
@@ -311,6 +312,10 @@ class AppController(QObject):
     @Property("QVariant", notify=updateNotificationChanged)
     def availableReleaseAssets(self) -> list[dict[str, object]]:
         return self._available_release_assets
+
+    @Property("QVariant", notify=updateNotificationChanged)
+    def preferredReleaseAsset(self) -> dict[str, object]:
+        return self._preferred_release_asset
 
     @Property(str, constant=True)
     def sourceUpdateCommand(self) -> str:
@@ -674,6 +679,7 @@ class AppController(QObject):
         self._available_update_version = ""
         self._available_release_url = ""
         self._available_release_assets = []
+        self._preferred_release_asset = {}
         self.updateNotificationChanged.emit()
 
     @Slot()
@@ -710,6 +716,17 @@ class AppController(QObject):
             return
         QGuiApplication.clipboard().setText(command)
         self.toastRequested.emit("success", "Source update command copied.")
+
+    @Slot()
+    def openLogFolder(self) -> None:
+        log_dir = AppLogger.log_dir()
+        Path(log_dir).mkdir(parents=True, exist_ok=True)
+        self.openExternalUrl(QUrl.fromLocalFile(log_dir).toString())
+
+    @Slot()
+    def copyDiagnostics(self) -> None:
+        QGuiApplication.clipboard().setText(build_diagnostic_report())
+        self.toastRequested.emit("success", "Diagnostics copied.")
 
     @Slot(str)
     def openExternalUrl(self, url: str) -> None:
@@ -756,15 +773,29 @@ class AppController(QObject):
     def _on_update_available(self, version: str) -> None:
         self._available_update_version = version
         release = getattr(self._update_checker, "latest_release", None)
+        preferred_asset = select_release_asset(release)
         self._available_release_url = getattr(release, "html_url", "") if release else ""
         self._available_release_assets = [
             {
                 "name": asset.name,
                 "url": asset.browser_download_url,
                 "size": asset.size,
+                "platform": asset.platform,
+                "sha256": asset.sha256,
             }
             for asset in (getattr(release, "assets", ()) if release else ())
         ]
+        self._preferred_release_asset = (
+            {
+                "name": preferred_asset.name,
+                "url": preferred_asset.browser_download_url,
+                "size": preferred_asset.size,
+                "platform": preferred_asset.platform,
+                "sha256": preferred_asset.sha256,
+            }
+            if preferred_asset
+            else {}
+        )
         self.updateNotificationChanged.emit()
         if self._update_check_manual:
             self.toastRequested.emit("success", f"Update {version} is available.")

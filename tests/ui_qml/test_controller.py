@@ -124,9 +124,17 @@ def test_controller_exposes_release_assets_for_packaged_updates(controller, monk
         html_url="https://github.com/example/releases/tag/v1.2.0",
         assets=(
             ReleaseAsset(
-                name="MarkItDown-Windows.exe",
-                browser_download_url="https://example.com/windows.exe",
+                name="MarkItDown-Linux.zip",
+                browser_download_url="https://example.com/linux.zip",
+                size=41,
+                platform="Linux",
+            ),
+            ReleaseAsset(
+                name="MarkItDown-Windows.zip",
+                browser_download_url="https://example.com/windows.zip",
                 size=42,
+                platform="Windows",
+                sha256="abc123",
             ),
         ),
     )
@@ -143,15 +151,29 @@ def test_controller_exposes_release_assets_for_packaged_updates(controller, monk
     assert controller.availableReleaseUrl == release.html_url
     assert controller.availableReleaseAssets == [
         {
-            "name": "MarkItDown-Windows.exe",
-            "url": "https://example.com/windows.exe",
+            "name": "MarkItDown-Linux.zip",
+            "url": "https://example.com/linux.zip",
+            "size": 41,
+            "platform": "Linux",
+            "sha256": "",
+        },
+        {
+            "name": "MarkItDown-Windows.zip",
+            "url": "https://example.com/windows.zip",
             "size": 42,
+            "platform": "Windows",
+            "sha256": "abc123",
         }
     ]
+    if controller.preferredReleaseAsset:
+        assert controller.preferredReleaseAsset["url"] in {
+            "https://example.com/linux.zip",
+            "https://example.com/windows.zip",
+        }
 
-    controller.openReleaseAsset("https://example.com/windows.exe")
+    controller.openReleaseAsset("https://example.com/windows.zip")
 
-    assert opened == ["https://example.com/windows.exe"]
+    assert opened == ["https://example.com/windows.zip"]
     assert controller.hasUpdateNotification is False
 
 
@@ -226,6 +248,39 @@ def test_controller_copies_source_update_command(controller, monkeypatch):
 
     assert copied == ["git -C repo pull --ff-only && uv pip install -e repo"]
     assert messages == [("success", "Source update command copied.")]
+
+
+def test_controller_copies_diagnostics(controller, monkeypatch):
+    messages: list[tuple[str, str]] = []
+    copied: list[str] = []
+    controller.toastRequested.connect(lambda kind, message: messages.append((kind, message)))
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.build_diagnostic_report",
+        lambda: "diagnostic report",
+    )
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.QGuiApplication.clipboard",
+        lambda: SimpleNamespace(setText=lambda value: copied.append(value)),
+    )
+
+    controller.copyDiagnostics()
+
+    assert copied == ["diagnostic report"]
+    assert messages == [("success", "Diagnostics copied.")]
+
+
+def test_controller_opens_log_folder(controller, monkeypatch, tmp_path):
+    opened: list[str] = []
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.AppLogger.log_dir",
+        lambda: str(tmp_path / "logs"),
+    )
+    monkeypatch.setattr(controller, "openExternalUrl", lambda url: opened.append(url))
+
+    controller.openLogFolder()
+
+    assert (tmp_path / "logs").is_dir()
+    assert opened and opened[0].startswith("file:")
 
 
 def test_controller_dismisses_update_notification(controller, monkeypatch):

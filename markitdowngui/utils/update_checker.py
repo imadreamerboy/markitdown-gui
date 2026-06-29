@@ -1,4 +1,5 @@
 import json
+import sys
 from dataclasses import dataclass
 
 import requests
@@ -11,11 +12,20 @@ from markitdowngui import __version__ as app_version
 GITHUB_API_URL = "https://api.github.com/repos/imadreamerboy/markitdown-gui/releases/latest"
 
 
+def _safe_int(value: object) -> int:
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
 @dataclass(frozen=True)
 class ReleaseAsset:
     name: str
     browser_download_url: str
     size: int = 0
+    platform: str = ""
+    sha256: str = ""
 
 
 @dataclass(frozen=True)
@@ -39,11 +49,36 @@ def normalize_version(ver):
     return ver.lstrip('v').lstrip('.')
 
 
-def parse_release_info(payload: dict) -> ReleaseInfo | None:
+def parse_release_manifest(payload: dict) -> dict[str, dict[str, object]]:
+    """Parse optional release metadata keyed by asset name."""
+    entries = payload.get("assets") if isinstance(payload, dict) else None
+    if not isinstance(entries, list):
+        return {}
+
+    manifest_assets: dict[str, dict[str, object]] = {}
+    for item in entries:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name") or "").strip()
+        if not name:
+            continue
+        manifest_assets[name] = {
+            "platform": str(item.get("platform") or "").strip(),
+            "sha256": str(item.get("sha256") or "").strip(),
+            "size": _safe_int(item.get("size")),
+        }
+    return manifest_assets
+
+
+def parse_release_info(
+    payload: dict,
+    manifest_assets: dict[str, dict[str, object]] | None = None,
+) -> ReleaseInfo | None:
     tag_name = str(payload.get("tag_name") or "").strip()
     if not tag_name:
         return None
 
+    manifest_assets = manifest_assets or {}
     assets = []
     for item in payload.get("assets") or []:
         if not isinstance(item, dict):
@@ -52,11 +87,15 @@ def parse_release_info(payload: dict) -> ReleaseInfo | None:
         url = str(item.get("browser_download_url") or "").strip()
         if not name or not url:
             continue
+        manifest_item = manifest_assets.get(name, {})
+        size = _safe_int(manifest_item.get("size") or item.get("size"))
         assets.append(
             ReleaseAsset(
                 name=name,
                 browser_download_url=url,
-                size=int(item.get("size") or 0),
+                size=size,
+                platform=str(manifest_item.get("platform") or "").strip(),
+                sha256=str(manifest_item.get("sha256") or "").strip(),
             )
         )
 
@@ -71,7 +110,66 @@ def get_latest_release_info(timeout: int | None = None) -> ReleaseInfo | None:
     kwargs = {"timeout": timeout} if timeout is not None else {}
     response = requests.get(GITHUB_API_URL, **kwargs)
     response.raise_for_status()
-    return parse_release_info(response.json())
+    payload = response.json()
+    release = parse_release_info(payload)
+    if release is None:
+        return None
+
+    manifest_asset = next(
+        (
+            asset
+            for asset in release.assets
+            if asset.name.lower() == "markitdown-release-manifest.json"
+        ),
+        None,
+    )
+    if manifest_asset is None:
+        return release
+
+    try:
+        manifest_response = requests.get(manifest_asset.browser_download_url, **kwargs)
+        manifest_response.raise_for_status()
+        manifest_assets = parse_release_manifest(manifest_response.json())
+    except (requests.exceptions.RequestException, ValueError, TypeError):
+        return release
+    return parse_release_info(payload, manifest_assets) or release
+
+
+def current_platform_label() -> str:
+    if sys.platform == "win32":
+        return "Windows"
+    if sys.platform == "darwin":
+        return "macOS"
+    if sys.platform.startswith("linux"):
+        return "Linux"
+    return sys.platform
+
+
+def select_release_asset(
+    release: ReleaseInfo | None,
+    platform_label: str | None = None,
+) -> ReleaseAsset | None:
+    if release is None:
+        return None
+
+    platform = (platform_label or current_platform_label()).lower()
+    candidates = [
+        asset
+        for asset in release.assets
+        if not asset.name.lower().endswith((".json", ".sha256", ".txt"))
+    ]
+    if not candidates:
+        return None
+
+    def score(asset: ReleaseAsset) -> tuple[int, int]:
+        asset_platform = asset.platform.lower()
+        name = asset.name.lower()
+        platform_match = int(asset_platform == platform or platform in name)
+        archive_match = int(name.endswith((".zip", ".dmg", ".msi", ".exe", ".appimage")))
+        return platform_match, archive_match
+
+    return max(candidates, key=score)
+
 
 class UpdateChecker(QThread):
     """Thread for checking updates asynchronously."""
