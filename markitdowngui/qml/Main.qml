@@ -707,6 +707,7 @@ ApplicationWindow {
                     borderColor: colors.border
                     textColor: colors.text
                     mutedTextColor: colors.muted
+                    borderOpacity: dark ? 0.88 : 0.68
                     Layout.fillWidth: true
                     Layout.fillHeight: true
 
@@ -825,6 +826,7 @@ ApplicationWindow {
                     borderColor: colors.border
                     textColor: colors.text
                     mutedTextColor: colors.muted
+                    borderOpacity: dark ? 0.88 : 0.68
                     Layout.fillWidth: true
                     Layout.preferredHeight: root.height < 700 ? 112 : 178
 
@@ -1098,6 +1100,7 @@ ApplicationWindow {
                 borderColor: colors.border
                 textColor: colors.text
                 mutedTextColor: colors.muted
+                borderOpacity: dark ? 0.88 : 0.68
                 Layout.preferredWidth: 300
                 Layout.fillHeight: true
 
@@ -1271,6 +1274,7 @@ ApplicationWindow {
                 borderColor: colors.border
                 textColor: colors.text
                 mutedTextColor: colors.muted
+                borderOpacity: dark ? 0.88 : 0.68
                 Layout.fillWidth: true
                 Layout.fillHeight: true
 
