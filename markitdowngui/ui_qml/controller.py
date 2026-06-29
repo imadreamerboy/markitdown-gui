@@ -398,6 +398,10 @@ class AppController(QObject):
     def preferredReleaseAsset(self) -> dict[str, object]:
         return self._preferred_release_asset
 
+    @Property("QVariant", notify=updateNotificationChanged)
+    def preferredReleaseAssetPreflightItems(self) -> list[dict[str, str]]:
+        return self._build_preferred_release_asset_preflight_items()
+
     @Property(bool, notify=updateNotificationChanged)
     def canInstallPreferredUpdate(self) -> bool:
         return bool(
@@ -1265,6 +1269,62 @@ class AppController(QObject):
             if line.startswith(prefix):
                 return line[len(prefix) :].strip()
         return ""
+
+    def _build_preferred_release_asset_preflight_items(self) -> list[dict[str, str]]:
+        asset = self._preferred_release_asset
+        if not asset:
+            return []
+
+        size = self._format_release_asset_size(asset.get("size"))
+        checksum = "SHA256 available" if asset.get("sha256") else "No SHA256 metadata"
+        mode = str(asset.get("installMode") or "").strip()
+        supported = bool(asset.get("installSupported"))
+        reason = str(asset.get("installReason") or "").strip()
+        if supported:
+            action = "In-app install"
+            restart = "Closes, replaces the app folder, then restarts."
+        elif mode == "dmg":
+            action = "Open DMG"
+            restart = "Install from the mounted DMG, then reopen the app."
+        else:
+            action = str(asset.get("installLabel") or "Download")
+            restart = reason or "Open the release asset manually."
+
+        items = [
+            {
+                "label": "Selected asset",
+                "value": str(asset.get("name") or "Unknown asset"),
+            },
+            {
+                "label": "Platform",
+                "value": str(asset.get("platform") or "Not specified"),
+            },
+            {"label": "Size", "value": size},
+            {"label": "Checksum", "value": checksum},
+            {"label": "Action", "value": action},
+            {"label": "Restart", "value": restart},
+        ]
+        if reason and supported:
+            items.append({"label": "Note", "value": reason})
+        return items
+
+    @staticmethod
+    def _format_release_asset_size(value: object) -> str:
+        try:
+            size = int(value or 0)
+        except (TypeError, ValueError):
+            size = 0
+        if size <= 0:
+            return "Unknown"
+        units = ("B", "KB", "MB", "GB")
+        amount = float(size)
+        unit_index = 0
+        while amount >= 1024 and unit_index < len(units) - 1:
+            amount /= 1024
+            unit_index += 1
+        if unit_index == 0:
+            return f"{int(amount)} {units[unit_index]}"
+        return f"{amount:.1f} {units[unit_index]}"
 
     def _build_ocr_validation_options(self) -> ConversionOptions:
         return ConversionOptions(

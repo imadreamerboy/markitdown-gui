@@ -241,12 +241,65 @@ def test_controller_exposes_release_assets_for_packaged_updates(controller, monk
             "https://example.com/linux.zip",
             "https://example.com/windows.zip",
         }
+        assert controller.preferredReleaseAssetPreflightItems
 
     controller.openReleaseAsset("https://example.com/windows.zip")
 
     assert opened == ["https://example.com/windows.zip"]
     assert controller.hasUpdateNotification is False
     assert controller.availableReleaseNotes == ""
+
+
+def test_controller_exposes_preflight_for_supported_packaged_update(controller):
+    controller._preferred_release_asset = {
+        "name": "MarkItDown-Windows.zip",
+        "url": "https://example.com/windows.zip",
+        "size": 42 * 1024 * 1024,
+        "platform": "Windows",
+        "sha256": "abc123",
+        "installSupported": True,
+        "installMode": "zip",
+        "installLabel": "Install update",
+        "installReason": "",
+    }
+
+    rows = {
+        item["label"]: item["value"]
+        for item in controller.preferredReleaseAssetPreflightItems
+    }
+
+    assert rows == {
+        "Selected asset": "MarkItDown-Windows.zip",
+        "Platform": "Windows",
+        "Size": "42.0 MB",
+        "Checksum": "SHA256 available",
+        "Action": "In-app install",
+        "Restart": "Closes, replaces the app folder, then restarts.",
+    }
+
+
+def test_controller_exposes_preflight_for_manual_release_asset(controller):
+    controller._preferred_release_asset = {
+        "name": "MarkItDown-macOS.dmg",
+        "url": "https://example.com/macos.dmg",
+        "size": 0,
+        "platform": "macOS",
+        "sha256": "",
+        "installSupported": False,
+        "installMode": "dmg",
+        "installLabel": "Open DMG",
+        "installReason": "macOS DMG updates are installed outside the running app.",
+    }
+
+    rows = {
+        item["label"]: item["value"]
+        for item in controller.preferredReleaseAssetPreflightItems
+    }
+
+    assert rows["Size"] == "Unknown"
+    assert rows["Checksum"] == "No SHA256 metadata"
+    assert rows["Action"] == "Open DMG"
+    assert rows["Restart"] == "Install from the mounted DMG, then reopen the app."
 
 
 def test_controller_release_notes_excerpt_cleans_markdown_and_caps_length():

@@ -2377,6 +2377,40 @@ ApplicationWindow {
                 }
 
                 GridLayout {
+                    visible: app.preferredReleaseAssetPreflightItems.length > 0
+                    columns: helpPage.width < 760 ? 1 : 2
+                    columnSpacing: 16
+                    rowSpacing: 8
+                    Layout.fillWidth: true
+
+                    Repeater {
+                        model: app.preferredReleaseAssetPreflightItems
+
+                        delegate: RowLayout {
+                            spacing: 10
+                            Layout.fillWidth: true
+
+                            Label {
+                                text: modelData.label
+                                color: colors.text
+                                font.pixelSize: 12
+                                font.weight: Font.DemiBold
+                                Layout.preferredWidth: 104
+                                elide: Text.ElideRight
+                            }
+
+                            Label {
+                                text: modelData.value
+                                color: colors.muted
+                                font.pixelSize: 12
+                                wrapMode: Text.WordWrap
+                                Layout.fillWidth: true
+                            }
+                        }
+                    }
+                }
+
+                GridLayout {
                     visible: app.availableReleaseAssets.length > 0
                     columns: 2
                     columnSpacing: 10
