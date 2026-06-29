@@ -1031,49 +1031,87 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
 
-                RowLayout {
+                ColumnLayout {
+                    id: previewToolbar
+
+                    property bool compactActions: width < 420
+
                     Layout.fillWidth: true
+                    spacing: 8
 
-                    AppButton {
-                        text: "Rendered"
-                        primary: app.previewMode === "rendered"
-                        subtle: app.previewMode !== "rendered"
-                        accentColor: colors.action
-                        primaryTextColor: colors.onAction
-                        textColor: colors.text
-                        onClicked: app.setPreviewMode("rendered")
-                    }
-
-                    AppButton {
-                        text: "Source"
-                        primary: app.previewMode === "raw"
-                        subtle: app.previewMode !== "raw"
-                        accentColor: colors.action
-                        primaryTextColor: colors.onAction
-                        textColor: colors.text
-                        onClicked: app.setPreviewMode("raw")
-                    }
-
-                    Item {
+                    RowLayout {
                         Layout.fillWidth: true
+
+                        AppButton {
+                            text: "Rendered"
+                            primary: app.previewMode === "rendered"
+                            subtle: app.previewMode !== "rendered"
+                            accentColor: colors.action
+                            primaryTextColor: colors.onAction
+                            textColor: colors.text
+                            onClicked: app.setPreviewMode("rendered")
+                        }
+
+                        AppButton {
+                            text: "Source"
+                            primary: app.previewMode === "raw"
+                            subtle: app.previewMode !== "raw"
+                            accentColor: colors.action
+                            primaryTextColor: colors.onAction
+                            textColor: colors.text
+                            onClicked: app.setPreviewMode("raw")
+                        }
+
+                        Item {
+                            Layout.fillWidth: true
+                        }
+
+                        AppButton {
+                            visible: !previewToolbar.compactActions
+                            text: "Copy"
+                            iconName: "copy"
+                            surfaceColor: colors.surfaceAlt
+                            borderColor: colors.border
+                            textColor: colors.text
+                            onClicked: app.copySelectedMarkdown()
+                        }
+
+                        AppButton {
+                            visible: !previewToolbar.compactActions
+                            text: app.saveCombined ? "Save as one file" : "Save files"
+                            primary: true
+                            iconName: "save"
+                            accentColor: colors.action
+                            primaryTextColor: colors.onAction
+                            onClicked: root.requestSave()
+                        }
                     }
 
-                    AppButton {
-                        text: "Copy"
-                        iconName: "copy"
-                        surfaceColor: colors.surfaceAlt
-                        borderColor: colors.border
-                        textColor: colors.text
-                        onClicked: app.copySelectedMarkdown()
-                    }
+                    RowLayout {
+                        visible: previewToolbar.compactActions
+                        Layout.fillWidth: true
 
-                    AppButton {
-                        text: app.saveCombined ? "Save as one file" : "Save files"
-                        primary: true
-                        iconName: "save"
-                        accentColor: colors.action
-                        primaryTextColor: colors.onAction
-                        onClicked: root.requestSave()
+                        Item {
+                            Layout.fillWidth: true
+                        }
+
+                        AppButton {
+                            text: "Copy"
+                            iconName: "copy"
+                            surfaceColor: colors.surfaceAlt
+                            borderColor: colors.border
+                            textColor: colors.text
+                            onClicked: app.copySelectedMarkdown()
+                        }
+
+                        AppButton {
+                            text: "Save"
+                            primary: true
+                            iconName: "save"
+                            accentColor: colors.action
+                            primaryTextColor: colors.onAction
+                            onClicked: root.requestSave()
+                        }
                     }
                 }
 
