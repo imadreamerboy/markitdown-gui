@@ -60,7 +60,8 @@ def test_run_source_update_reports_progress_with_uv(monkeypatch, tmp_path):
     monkeypatch.setattr(
         source_updater.subprocess,
         "run",
-        lambda command, check: calls.append(command),
+        lambda command, **_kwargs: calls.append(command)
+        or subprocess.CompletedProcess(command, 0, stdout=""),
     )
 
     result = source_updater.run_source_update(
@@ -70,14 +71,85 @@ def test_run_source_update_reports_progress_with_uv(monkeypatch, tmp_path):
 
     assert result == 0
     assert calls == [
+        [
+            "git",
+            "-C",
+            str(root),
+            "status",
+            "--porcelain",
+            "--untracked-files=no",
+        ],
         ["git", "-C", str(root), "pull", "--ff-only"],
         ["uv", "pip", "install", "-e", str(root)],
     ]
     assert progress == [
+        ("Checking source checkout", 5),
         ("Pulling latest source", 15),
         ("Reinstalling app", 70),
         ("Source update complete", 100),
     ]
+
+
+def test_run_source_update_stops_when_checkout_has_local_changes(
+    monkeypatch,
+    tmp_path,
+):
+    root = tmp_path / "repo"
+    root.mkdir()
+    calls: list[list[str]] = []
+    progress: list[tuple[str, int]] = []
+
+    def fake_run(command, **_kwargs):
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 0, stdout=" M README.md\n")
+
+    monkeypatch.setattr(source_updater.subprocess, "run", fake_run)
+
+    result = source_updater.run_source_update(
+        root,
+        progress_callback=lambda status, value: progress.append((status, value)),
+    )
+
+    assert result == source_updater.SOURCE_UPDATE_DIRTY
+    assert calls == [
+        [
+            "git",
+            "-C",
+            str(root),
+            "status",
+            "--porcelain",
+            "--untracked-files=no",
+        ]
+    ]
+    assert progress == [("Checking source checkout", 5)]
+
+
+def test_run_source_update_ignores_untracked_files(monkeypatch, tmp_path):
+    root = tmp_path / "repo"
+    root.mkdir()
+    calls: list[list[str]] = []
+
+    def fake_run(command, **_kwargs):
+        calls.append(command)
+        if command[:4] == ["git", "-C", str(root), "status"]:
+            return subprocess.CompletedProcess(command, 0, stdout="")
+        return subprocess.CompletedProcess(command, 0, stdout="")
+
+    monkeypatch.setattr(source_updater.subprocess, "run", fake_run)
+    monkeypatch.setattr(source_updater.shutil, "which", lambda _name: "")
+
+    result = source_updater.run_source_update(root)
+
+    assert result == source_updater.SOURCE_UPDATE_OK
+    assert calls[0] == [
+        "git",
+        "-C",
+        str(root),
+        "status",
+        "--porcelain",
+        "--untracked-files=no",
+    ]
+    assert calls[1] == ["git", "-C", str(root), "pull", "--ff-only"]
 
 
 def test_run_source_update_returns_command_failure(monkeypatch, tmp_path):
@@ -85,7 +157,7 @@ def test_run_source_update_returns_command_failure(monkeypatch, tmp_path):
     root.mkdir()
     progress: list[tuple[str, int]] = []
 
-    def fail(command, check):
+    def fail(command, **_kwargs):
         raise subprocess.CalledProcessError(23, command)
 
     monkeypatch.setattr(source_updater.subprocess, "run", fail)
@@ -96,4 +168,4 @@ def test_run_source_update_returns_command_failure(monkeypatch, tmp_path):
     )
 
     assert result == 23
-    assert progress == [("Pulling latest source", 15)]
+    assert progress == [("Checking source checkout", 5)]

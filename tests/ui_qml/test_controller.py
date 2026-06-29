@@ -12,6 +12,7 @@ from markitdowngui.ui_qml.controller import (
     SourceUpdateInstaller,
 )
 from markitdowngui.utils.packaged_updater import PackagedUpdatePlan
+from markitdowngui.utils.source_updater import SOURCE_UPDATE_DIRTY
 from markitdowngui.utils.update_checker import ReleaseAsset, ReleaseInfo
 
 
@@ -785,6 +786,35 @@ def test_source_update_installer_emits_progress_and_success(monkeypatch):
     assert progress == [("Pulling latest source", 15), ("Source update complete", 100)]
     assert finished == [None]
     assert errors == []
+
+
+def test_source_update_installer_reports_dirty_checkout(monkeypatch):
+    progress: list[tuple[str, int]] = []
+    finished: list[None] = []
+    errors: list[str] = []
+
+    def fake_update(progress_callback):
+        progress_callback("Checking source checkout", 5)
+        return SOURCE_UPDATE_DIRTY
+
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.run_source_update",
+        fake_update,
+    )
+    installer = SourceUpdateInstaller()
+    installer.progressChanged.connect(
+        lambda status, value: progress.append((status, value))
+    )
+    installer.updateFinished.connect(lambda: finished.append(None))
+    installer.updateError.connect(lambda message: errors.append(message))
+
+    installer.run()
+
+    assert progress == [("Checking source checkout", 5)]
+    assert finished == []
+    assert errors == [
+        "Source checkout has local changes. Commit, stash, or discard them before updating."
+    ]
 
 
 def test_controller_runs_source_update_from_help(controller, monkeypatch):

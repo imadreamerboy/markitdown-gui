@@ -7,6 +7,10 @@ from collections.abc import Callable
 from pathlib import Path
 
 ProgressCallback = Callable[[str, int], None]
+SOURCE_UPDATE_OK = 0
+SOURCE_UPDATE_FAILED = 1
+SOURCE_UPDATE_NOT_CHECKOUT = 2
+SOURCE_UPDATE_DIRTY = 3
 
 
 def _emit_progress(callback: ProgressCallback | None, status: str, progress: int) -> None:
@@ -56,6 +60,23 @@ def build_source_update_command(
     return f"{git_command} && {install_command}"
 
 
+def source_checkout_has_local_changes(source_root: Path) -> bool:
+    result = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(source_root),
+            "status",
+            "--porcelain",
+            "--untracked-files=no",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return bool(result.stdout.strip())
+
+
 def run_source_update(
     source_root: Path | None = None,
     *,
@@ -64,9 +85,17 @@ def run_source_update(
     root = source_root or find_source_root()
     if root is None:
         print("No Git source checkout found for this installation.", file=sys.stderr)
-        return 2
+        return SOURCE_UPDATE_NOT_CHECKOUT
 
     try:
+        _emit_progress(progress_callback, "Checking source checkout", 5)
+        if source_checkout_has_local_changes(root):
+            print(
+                "Source checkout has local changes. Commit, stash, or discard them before updating.",
+                file=sys.stderr,
+            )
+            return SOURCE_UPDATE_DIRTY
+
         _emit_progress(progress_callback, "Pulling latest source", 15)
         subprocess.run(["git", "-C", str(root), "pull", "--ff-only"], check=True)
 
@@ -82,11 +111,11 @@ def run_source_update(
     except subprocess.CalledProcessError as exc:
         command = " ".join(str(part) for part in exc.cmd)
         print(f"Source update failed while running: {command}", file=sys.stderr)
-        return exc.returncode or 1
+        return exc.returncode or SOURCE_UPDATE_FAILED
 
     _emit_progress(progress_callback, "Source update complete", 100)
     print("Source update complete. Restart MarkItDown GUI.")
-    return 0
+    return SOURCE_UPDATE_OK
 
 
 def main() -> int:

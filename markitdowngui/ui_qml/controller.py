@@ -49,6 +49,8 @@ from markitdowngui.utils.packaged_updater import (
     read_packaged_update_result,
 )
 from markitdowngui.utils.source_updater import (
+    SOURCE_UPDATE_DIRTY,
+    SOURCE_UPDATE_NOT_CHECKOUT,
     build_source_update_command,
     run_source_update,
 )
@@ -113,8 +115,13 @@ class SourceUpdateInstaller(QThread):
         if result == 0:
             self.updateFinished.emit()
             return
-        if result == 2:
+        if result == SOURCE_UPDATE_NOT_CHECKOUT:
             self.updateError.emit("No Git source checkout found for this installation.")
+            return
+        if result == SOURCE_UPDATE_DIRTY:
+            self.updateError.emit(
+                "Source checkout has local changes. Commit, stash, or discard them before updating."
+            )
             return
         self.updateError.emit(f"Source update failed with exit code {result}.")
 
