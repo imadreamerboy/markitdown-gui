@@ -23,20 +23,20 @@ ApplicationWindow {
     property int panelRadius: 8
     property int controlRadius: 8
     property var colors: ({
-        window: dark ? Qt.color("#2E3440") : Qt.color("#FDF6E3"),
-        nav: dark ? Qt.color("#242A34") : Qt.color("#EEE8D5"),
-        surface: dark ? Qt.color("#343B48") : Qt.color("#FFFDF3"),
-        surfaceAlt: dark ? Qt.color("#3B4252") : Qt.color("#F6EFD8"),
-        document: dark ? Qt.color("#2B313C") : Qt.color("#FFF9E8"),
-        input: dark ? Qt.color("#2E3440") : Qt.color("#FBF3DC"),
-        border: dark ? Qt.color("#4C566A") : Qt.color("#D6CCB2"),
+        window: dark ? Qt.color("#2E3440") : Qt.color("#F8F1DC"),
+        nav: dark ? Qt.color("#242A34") : Qt.color("#EDE4CC"),
+        surface: dark ? Qt.color("#343B48") : Qt.color("#FFFCF0"),
+        surfaceAlt: dark ? Qt.color("#3B4252") : Qt.color("#F2E8CD"),
+        document: dark ? Qt.color("#2B313C") : Qt.color("#FFFEF7"),
+        input: dark ? Qt.color("#2E3440") : Qt.color("#FFF7E4"),
+        border: dark ? Qt.color("#4C566A") : Qt.color("#D3C6A8"),
         text: dark ? Qt.color("#ECEFF4") : Qt.color("#073642"),
         muted: dark ? Qt.color("#D8DEE9") : Qt.color("#586E75"),
         subtle: dark ? Qt.color("#AEB8C8") : Qt.color("#839496"),
         accent: dark ? Qt.color("#88C0D0") : Qt.color("#2AA198"),
         accentAlt: dark ? Qt.color("#8FBCBB") : Qt.color("#268BD2"),
-        action: dark ? Qt.color("#88C0D0") : Qt.color("#8C6D00"),
-        actionSoft: dark ? Qt.color("#415867") : Qt.color("#EFE3BC"),
+        action: dark ? Qt.color("#88C0D0") : Qt.color("#7B6100"),
+        actionSoft: dark ? Qt.color("#415867") : Qt.color("#EEE1B3"),
         onAccent: dark ? Qt.color("#2E3440") : Qt.color("#073642"),
         onAction: dark ? Qt.color("#2E3440") : Qt.color("#FDF6E3"),
         danger: dark ? Qt.color("#BF616A") : Qt.color("#DC322F"),
@@ -70,6 +70,7 @@ ApplicationWindow {
         id: openFileDialog
         title: "Add files"
         fileMode: FileDialog.OpenFiles
+        currentFolder: app.outputFolderUrl
         nameFilters: [
             "Supported files (*.docx *.pptx *.xlsx *.xls *.pdf *.epub *.html *.htm *.txt *.md *.csv *.json *.xml *.png *.jpg *.jpeg *.bmp *.gif *.tiff *.webp *.zip)",
             "All files (*)"
@@ -82,6 +83,8 @@ ApplicationWindow {
         title: "Save combined Markdown"
         fileMode: FileDialog.SaveFile
         defaultSuffix: "md"
+        currentFolder: app.outputFolderUrl
+        selectedFile: app.suggestedCombinedOutputUrl
         nameFilters: ["Markdown files (*.md)"]
         onAccepted: app.saveCombinedOutput(selectedFile)
     }
@@ -89,12 +92,14 @@ ApplicationWindow {
     FolderDialog {
         id: saveSeparateDialog
         title: "Save separate Markdown files"
+        currentFolder: app.suggestedSeparateOutputFolderUrl
         onAccepted: app.saveSeparateOutputs(selectedFolder)
     }
 
     FolderDialog {
         id: outputFolderDialog
         title: "Choose output folder"
+        currentFolder: app.outputFolderUrl
         onAccepted: app.setOutputFolderFromUrl(selectedFolder)
     }
 
@@ -1150,6 +1155,7 @@ ApplicationWindow {
         Layout.fillWidth: true
         Layout.fillHeight: true
         clip: true
+        ScrollBar.vertical.policy: ScrollBar.AsNeeded
 
         ColumnLayout {
             width: Math.min(settingsPage.width - 48, 760)

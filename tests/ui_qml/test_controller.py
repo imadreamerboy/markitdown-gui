@@ -1,5 +1,8 @@
+from pathlib import Path
+from types import SimpleNamespace
+
 import pytest
-from PySide6.QtCore import QSettings
+from PySide6.QtCore import QSettings, QUrl
 
 from markitdowngui.core.conversion import ConversionOutcome
 from markitdowngui.core.settings import SettingsManager
@@ -72,6 +75,61 @@ def test_controller_separate_save_prefers_source_folder_for_local_files(
     assert (fallback_dir / "example.com-page.md").read_text(
         encoding="utf-8"
     ) == "# Web\n\nBody"
+
+
+def test_controller_separate_save_falls_back_when_source_folder_is_not_writable(
+    controller,
+    monkeypatch,
+    tmp_path,
+):
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    source_file = source_dir / "report.pdf"
+    fallback_dir = tmp_path / "chosen"
+    fallback_dir.mkdir()
+
+    controller.settings.set_save_to_source_folder(True)
+    monkeypatch.setattr(
+        AppController,
+        "_is_writable_output_dir",
+        staticmethod(lambda output_dir: output_dir == str(fallback_dir)),
+    )
+
+    output_dir = controller._separate_output_dir(str(fallback_dir), str(source_file))
+
+    assert output_dir == str(fallback_dir)
+
+
+def test_controller_suggests_output_paths_from_settings(controller, tmp_path):
+    output_dir = tmp_path / "exports"
+    source_file = tmp_path / "quarterly report.pdf"
+    controller.settings.set_default_output_folder(str(output_dir))
+    controller.result_model.set_results(
+        {str(source_file): ConversionOutcome("# Local\n\nBody", backend="native")}
+    )
+
+    assert Path(QUrl(controller.outputFolderUrl).toLocalFile()) == output_dir
+    assert Path(QUrl(controller.suggestedSeparateOutputFolderUrl).toLocalFile()) == output_dir
+    assert Path(QUrl(controller.suggestedCombinedOutputUrl).toLocalFile()) == (
+        output_dir / "quarterly report.md"
+    )
+
+
+def test_controller_cancel_unpauses_worker(controller):
+    worker = SimpleNamespace(is_paused=True, is_cancelled=False)
+    controller.worker = worker
+    controller._converting = True
+    controller._paused = True
+    changes: list[None] = []
+    controller.pausedChanged.connect(lambda: changes.append(None))
+
+    controller.cancel()
+
+    assert worker.is_cancelled is True
+    assert worker.is_paused is False
+    assert controller.paused is False
+    assert controller.statusText == "Cancelling"
+    assert changes == [None]
 
 
 def test_controller_theme_change_refreshes_selected_preview(controller):

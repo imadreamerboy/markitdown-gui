@@ -959,8 +959,10 @@ class ConversionWorker(QThread):
             for j, file_path in enumerate(batch):
                 while self.is_paused:
                     if self.is_cancelled:
-                        return
+                        break
                     self.msleep(100)
+                if self.is_cancelled:
+                    break
 
                 try:
                     outcome = convert_file_with_details(file_path, self.options)
@@ -974,5 +976,7 @@ class ConversionWorker(QThread):
 
                 progress = int((i + j + 1) / len(self.files) * 100)
                 self.progress.emit(progress, file_path)
+            if self.is_cancelled:
+                break
 
         self.finished.emit(results)

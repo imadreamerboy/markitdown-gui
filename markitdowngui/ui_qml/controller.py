@@ -40,6 +40,7 @@ class AppController(QObject):
     previewModeChanged = Signal()
     settingsChanged = Signal()
     themeChanged = Signal()
+    saveDefaultsChanged = Signal()
     toastRequested = Signal(str, str)
 
     def __init__(self) -> None:
@@ -56,6 +57,7 @@ class AppController(QObject):
         self._selected_result_index = -1
         self._preview_mode = "rendered"
         self._temp_asset_root: str | None = None
+        self._cancel_requested = False
 
     @Property(QObject, constant=True)
     def queueModel(self) -> QueueModel:
@@ -139,6 +141,25 @@ class AppController(QObject):
     @Property(str, notify=settingsChanged)
     def outputFolder(self) -> str:
         return self.settings.get_default_output_folder()
+
+    @Property(str, notify=saveDefaultsChanged)
+    def outputFolderUrl(self) -> str:
+        return self._folder_url(self.settings.get_default_output_folder())
+
+    @Property(str, notify=saveDefaultsChanged)
+    def suggestedCombinedOutputUrl(self) -> str:
+        output_dir = self.settings.get_default_output_folder()
+        if not output_dir:
+            return ""
+
+        items = self.result_model.items()
+        stem = source_output_stem(items[0].source) if len(items) == 1 else "converted"
+        output_path = Path(output_dir) / f"{stem}{self.settings.get_default_output_format()}"
+        return QUrl.fromLocalFile(str(output_path)).toString()
+
+    @Property(str, notify=saveDefaultsChanged)
+    def suggestedSeparateOutputFolderUrl(self) -> str:
+        return self._folder_url(self._dialog_output_dir())
 
     @Property(bool, notify=settingsChanged)
     def saveCombined(self) -> bool:
@@ -240,6 +261,7 @@ class AppController(QObject):
         self.resultsChanged.emit()
         self.selectedResultChanged.emit()
         self.progressChanged.emit()
+        self.saveDefaultsChanged.emit()
 
     @Slot()
     def convert(self) -> None:
@@ -251,6 +273,7 @@ class AppController(QObject):
             return
 
         self.clearResults()
+        self._cancel_requested = False
         self.worker = ConversionWorker(
             files=sources,
             batch_size=self.settings.get_batch_size(),
@@ -270,7 +293,7 @@ class AppController(QObject):
 
     @Slot()
     def togglePause(self) -> None:
-        if not self.worker:
+        if not self.worker or not self._converting:
             return
         self._paused = not self._paused
         self.worker.is_paused = self._paused
@@ -279,9 +302,14 @@ class AppController(QObject):
 
     @Slot()
     def cancel(self) -> None:
-        if not self.worker:
+        if not self.worker or not self._converting:
             return
+        self._cancel_requested = True
         self.worker.is_cancelled = True
+        self.worker.is_paused = False
+        if self._paused:
+            self._paused = False
+            self.pausedChanged.emit()
         self._set_status("Cancelling")
 
     @Slot(int)
@@ -395,6 +423,7 @@ class AppController(QObject):
     def setOutputFolder(self, folder: str) -> None:
         self.settings.set_default_output_folder(folder)
         self.settingsChanged.emit()
+        self.saveDefaultsChanged.emit()
 
     @Slot(str)
     def setThemeMode(self, mode: str) -> None:
@@ -413,6 +442,7 @@ class AppController(QObject):
     def setSaveToSourceFolder(self, enabled: bool) -> None:
         self.settings.set_save_to_source_folder(enabled)
         self.settingsChanged.emit()
+        self.saveDefaultsChanged.emit()
 
     @Slot(int)
     def setBatchSize(self, value: int) -> None:
@@ -492,6 +522,7 @@ class AppController(QObject):
     def shutdown(self) -> None:
         if self.worker and self.worker.isRunning():
             self.worker.is_cancelled = True
+            self.worker.is_paused = False
             self.worker.wait(1500)
         self._cleanup_temp_assets()
 
@@ -528,19 +559,33 @@ class AppController(QObject):
         self.progressChanged.emit()
 
     def _handle_finished(self, results: dict) -> None:
-        failed = set(self.worker.failed_files) if self.worker else set()
+        worker = self.worker
+        was_cancelled = self._cancel_requested or bool(worker and worker.is_cancelled)
+        failed = set(worker.failed_files) if worker else set()
         self.result_model.set_results(results, failed)
         self._selected_result_index = 0 if results else -1
         self._converting = False
         self._paused = False
-        self._progress = 100 if results else 0
-        self._set_status(f"Converted {len(results)} input{'s' if len(results) != 1 else ''}")
+        self._progress = self._progress if was_cancelled else 100 if results else 0
+        if was_cancelled:
+            self._set_status(
+                f"Cancelled after {len(results)} input{'s' if len(results) != 1 else ''}"
+                if results
+                else "Cancelled"
+            )
+        else:
+            self._set_status(f"Converted {len(results)} input{'s' if len(results) != 1 else ''}")
+        self.worker = None
+        self._cancel_requested = False
         self.resultsChanged.emit()
         self.selectedResultChanged.emit()
         self.convertingChanged.emit()
         self.pausedChanged.emit()
         self.progressChanged.emit()
-        if failed:
+        self.saveDefaultsChanged.emit()
+        if was_cancelled:
+            self.toastRequested.emit("success", "Conversion cancelled.")
+        elif failed:
             self.toastRequested.emit("error", f"{len(failed)} conversion(s) failed.")
         else:
             self.toastRequested.emit("success", "Conversion complete.")
@@ -589,9 +634,23 @@ class AppController(QObject):
     def _separate_output_dir(self, fallback_dir: str, source: str) -> str:
         if self.settings.get_save_to_source_folder():
             source_dir = source_output_dir(source)
-            if source_dir:
+            if source_dir and self._is_writable_output_dir(source_dir):
                 return source_dir
         return fallback_dir
+
+    def _dialog_output_dir(self) -> str:
+        output_dir = self.settings.get_default_output_folder()
+        if output_dir:
+            return output_dir
+
+        items = self.result_model.items()
+        if not items:
+            return ""
+        return self._separate_output_dir("", items[0].source)
+
+    @staticmethod
+    def _folder_url(folder: str) -> str:
+        return QUrl.fromLocalFile(folder).toString() if folder else ""
 
     @staticmethod
     def _is_writable_output_dir(output_dir: str) -> bool:

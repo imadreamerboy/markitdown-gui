@@ -8,13 +8,14 @@ import pytest
 
 class _FakeSignal:
     def __init__(self, *_args, **_kwargs):
-        pass
+        self._callbacks = []
 
-    def connect(self, _callback):
-        pass
+    def connect(self, callback):
+        self._callbacks.append(callback)
 
-    def emit(self, *_args, **_kwargs):
-        pass
+    def emit(self, *args, **kwargs):
+        for callback in self._callbacks:
+            callback(*args, **kwargs)
 
 
 class _FakeQThread:
@@ -1217,6 +1218,18 @@ def test_conversion_worker_tracks_processing_backends(monkeypatch, conversion):
         "scan.pdf": conversion.BACKEND_AZURE,
         "notes.txt": conversion.BACKEND_NATIVE,
     }
+
+
+def test_conversion_worker_emits_finished_when_cancelled_while_paused(conversion):
+    worker = conversion.ConversionWorker(["scan.pdf"], batch_size=1)
+    worker.is_paused = True
+    worker.is_cancelled = True
+    finished: list[dict] = []
+    worker.finished.connect(lambda results: finished.append(results))
+
+    worker.run()
+
+    assert finished == [{}]
 
 
 def test_run_tesseract_ocr_resets_executable_path_when_custom_path_is_cleared(
