@@ -9,6 +9,47 @@ from markitdowngui.core.settings import SettingsManager
 from markitdowngui.ui_qml.controller import AppController
 
 
+class _FakeSignal:
+    def __init__(self):
+        self._callbacks = []
+
+    def connect(self, callback):
+        self._callbacks.append(callback)
+
+    def emit(self, *args):
+        for callback in list(self._callbacks):
+            callback(*args)
+
+
+class _FakeUpdateChecker:
+    def __init__(self, action: tuple[str, str | None]):
+        self.action = action
+        self.update_available = _FakeSignal()
+        self.update_error = _FakeSignal()
+        self.no_update_available = _FakeSignal()
+        self.finished = _FakeSignal()
+        self.started = False
+        self.waited = False
+
+    def start(self):
+        self.started = True
+        kind, value = self.action
+        if kind == "available":
+            self.update_available.emit(value or "")
+        elif kind == "error":
+            self.update_error.emit(value or "")
+        elif kind == "none":
+            self.no_update_available.emit()
+        self.finished.emit()
+
+    def isRunning(self):
+        return self.started and not self.waited
+
+    def wait(self, _timeout):
+        self.waited = True
+        return True
+
+
 @pytest.fixture
 def controller(tmp_path):
     controller = AppController()
@@ -37,6 +78,80 @@ def test_controller_add_url_queues_valid_url(controller):
     assert controller.queue_model.sources() == ["https://example.com/article"]
     assert controller.hasQueue is True
     assert controller.queueCount == 1
+
+
+def test_controller_auto_update_check_respects_disabled_setting(controller, monkeypatch):
+    controller.settings.set_update_notifications_enabled(False)
+    monkeypatch.setattr(
+        controller,
+        "_create_update_checker",
+        lambda: pytest.fail("update checker should not start"),
+    )
+
+    controller.startAutomaticUpdateCheck()
+
+    assert controller.hasUpdateNotification is False
+
+
+def test_controller_auto_update_check_exposes_available_release(controller, monkeypatch):
+    messages: list[tuple[str, str]] = []
+    changes: list[None] = []
+    controller.toastRequested.connect(lambda kind, message: messages.append((kind, message)))
+    controller.updateNotificationChanged.connect(lambda: changes.append(None))
+    monkeypatch.setattr(
+        controller,
+        "_create_update_checker",
+        lambda: _FakeUpdateChecker(("available", "v1.2.0")),
+    )
+
+    controller.startAutomaticUpdateCheck()
+
+    assert controller.hasUpdateNotification is True
+    assert controller.availableUpdateVersion == "v1.2.0"
+    assert changes == [None]
+    assert messages == []
+
+
+def test_controller_manual_update_check_reports_no_update(controller, monkeypatch):
+    messages: list[tuple[str, str]] = []
+    controller.toastRequested.connect(lambda kind, message: messages.append((kind, message)))
+    monkeypatch.setattr(
+        controller,
+        "_create_update_checker",
+        lambda: _FakeUpdateChecker(("none", None)),
+    )
+
+    controller.checkForUpdates()
+
+    assert messages == [("success", "You are using the latest version.")]
+
+
+def test_controller_manual_update_check_reports_error(controller, monkeypatch):
+    messages: list[tuple[str, str]] = []
+    controller.toastRequested.connect(lambda kind, message: messages.append((kind, message)))
+    monkeypatch.setattr(
+        controller,
+        "_create_update_checker",
+        lambda: _FakeUpdateChecker(("error", "Network unavailable")),
+    )
+
+    controller.checkForUpdates()
+
+    assert messages == [("error", "Network unavailable")]
+
+
+def test_controller_dismisses_update_notification(controller, monkeypatch):
+    monkeypatch.setattr(
+        controller,
+        "_create_update_checker",
+        lambda: _FakeUpdateChecker(("available", "v1.2.0")),
+    )
+    controller.startAutomaticUpdateCheck()
+
+    controller.dismissUpdateNotification()
+
+    assert controller.hasUpdateNotification is False
+    assert controller.availableUpdateVersion == ""
 
 
 def test_controller_locks_queue_mutations_while_converting(controller, tmp_path):

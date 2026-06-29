@@ -135,6 +135,81 @@ ApplicationWindow {
         }
     }
 
+    Rectangle {
+        id: updateBanner
+        visible: app.hasUpdateNotification
+        z: 20
+        width: Math.min(480, root.width - 48)
+        height: updateBannerRow.implicitHeight + 24
+        radius: 8
+        color: colors.surface
+        border.color: colors.border
+        anchors.top: parent.top
+        anchors.right: parent.right
+        anchors.topMargin: 22
+        anchors.rightMargin: 22
+
+        RowLayout {
+            id: updateBannerRow
+            anchors.fill: parent
+            anchors.margins: 12
+            spacing: 10
+
+            Rectangle {
+                width: 30
+                height: 30
+                radius: 7
+                color: Qt.rgba(colors.action.r, colors.action.g, colors.action.b, dark ? 0.18 : 0.14)
+
+                Icon {
+                    anchors.centerIn: parent
+                    name: "external-link"
+                    size: 15
+                    color: colors.action
+                }
+            }
+
+            ColumnLayout {
+                spacing: 1
+                Layout.fillWidth: true
+
+                Label {
+                    text: "Update " + app.availableUpdateVersion + " is available"
+                    color: colors.text
+                    font.pixelSize: 13
+                    font.weight: Font.DemiBold
+                    elide: Text.ElideRight
+                    Layout.fillWidth: true
+                }
+
+                Label {
+                    text: "Open GitHub Releases to download it."
+                    color: colors.muted
+                    font.pixelSize: 12
+                    elide: Text.ElideRight
+                    Layout.fillWidth: true
+                }
+            }
+
+            AppButton {
+                text: "Releases"
+                primary: true
+                iconName: "external-link"
+                accentColor: colors.action
+                primaryTextColor: colors.onAction
+                onClicked: app.openReleases()
+            }
+
+            AppButton {
+                text: "Dismiss"
+                subtle: true
+                accentColor: colors.action
+                textColor: colors.muted
+                onClicked: app.dismissUpdateNotification()
+            }
+        }
+    }
+
     Shortcut {
         sequence: "Ctrl+O"
         context: Qt.ApplicationShortcut
@@ -2039,6 +2114,29 @@ ApplicationWindow {
             UtilitySectionPanel {
                 title: "Reference links"
                 subtitle: "Open project, release, OCR, and conversion references."
+
+                RowLayout {
+                    spacing: 10
+                    Layout.fillWidth: true
+
+                    Label {
+                        text: "Check whether a newer app release is available."
+                        color: colors.muted
+                        font.pixelSize: 12
+                        wrapMode: Text.WordWrap
+                        Layout.fillWidth: true
+                    }
+
+                    AppButton {
+                        text: "Check for updates"
+                        iconName: "external-link"
+                        accentColor: colors.action
+                        surfaceColor: colors.surfaceAlt
+                        borderColor: colors.border
+                        textColor: colors.text
+                        onClicked: app.checkForUpdates()
+                    }
+                }
 
                 GridLayout {
                     columns: 2

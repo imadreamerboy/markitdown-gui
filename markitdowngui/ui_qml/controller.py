@@ -28,6 +28,7 @@ from markitdowngui.core.settings import SettingsManager
 from markitdowngui.ui_qml.models import QueueModel, ResultModel
 from markitdowngui.utils.logger import AppLogger
 from markitdowngui.utils.translations import DEFAULT_LANG, get_translation
+from markitdowngui.utils.update_checker import UpdateChecker
 
 
 _PREVIEW_HEADING_RE = re.compile(r'<h([1-3]) style="([^"]*)"><span style="([^"]*)">')
@@ -50,6 +51,7 @@ class AppController(QObject):
     settingsChanged = Signal()
     themeChanged = Signal()
     saveDefaultsChanged = Signal()
+    updateNotificationChanged = Signal()
     toastRequested = Signal(str, str)
 
     def __init__(self) -> None:
@@ -67,6 +69,9 @@ class AppController(QObject):
         self._preview_mode = "rendered"
         self._temp_asset_root: str | None = None
         self._cancel_requested = False
+        self._update_checker: UpdateChecker | None = None
+        self._update_check_manual = False
+        self._available_update_version = ""
 
     @Property(QObject, constant=True)
     def queueModel(self) -> QueueModel:
@@ -249,6 +254,14 @@ class AppController(QObject):
     @Property(str, notify=settingsChanged)
     def tesseractPath(self) -> str:
         return self.settings.get_tesseract_path()
+
+    @Property(bool, notify=updateNotificationChanged)
+    def hasUpdateNotification(self) -> bool:
+        return bool(self._available_update_version)
+
+    @Property(str, notify=updateNotificationChanged)
+    def availableUpdateVersion(self) -> str:
+        return self._available_update_version
 
     @Slot("QVariant")
     def addFiles(self, values: Any) -> None:
@@ -567,6 +580,27 @@ class AppController(QObject):
         self.settings.set_tesseract_path(value)
         self.settingsChanged.emit()
 
+    @Slot()
+    def startAutomaticUpdateCheck(self) -> None:
+        if self.settings.get_update_notifications_enabled():
+            self._start_update_check(manual=False)
+
+    @Slot()
+    def checkForUpdates(self) -> None:
+        self._start_update_check(manual=True)
+
+    @Slot()
+    def dismissUpdateNotification(self) -> None:
+        if not self._available_update_version:
+            return
+        self._available_update_version = ""
+        self.updateNotificationChanged.emit()
+
+    @Slot()
+    def openReleases(self) -> None:
+        self.openExternalUrl("https://github.com/imadreamerboy/markitdown-gui/releases")
+        self.dismissUpdateNotification()
+
     @Slot(str)
     def openExternalUrl(self, url: str) -> None:
         QDesktopServices.openUrl(QUrl(url))
@@ -588,7 +622,47 @@ class AppController(QObject):
                 )
                 return False
         self._cleanup_temp_assets()
+        if self._update_checker and self._update_checker.isRunning():
+            self._update_checker.wait(2000)
         return True
+
+    def _start_update_check(self, manual: bool) -> None:
+        if self._update_checker and self._update_checker.isRunning():
+            if manual:
+                self.toastRequested.emit("success", "Update check already running.")
+            return
+
+        self._update_check_manual = manual
+        self._update_checker = self._create_update_checker()
+        self._update_checker.update_available.connect(self._on_update_available)
+        self._update_checker.update_error.connect(self._on_update_error)
+        self._update_checker.no_update_available.connect(self._on_no_update)
+        self._update_checker.finished.connect(self._clear_update_checker)
+        self._update_checker.start()
+
+    def _create_update_checker(self) -> UpdateChecker:
+        return UpdateChecker(self)
+
+    def _on_update_available(self, version: str) -> None:
+        self._available_update_version = version
+        self.updateNotificationChanged.emit()
+        if self._update_check_manual:
+            self.toastRequested.emit("success", f"Update {version} is available.")
+
+    def _on_update_error(self, message: str) -> None:
+        if self._update_check_manual:
+            self.toastRequested.emit("error", message)
+        else:
+            AppLogger.error(f"Update check failed: {message}")
+
+    def _on_no_update(self) -> None:
+        if self._update_check_manual:
+            self.toastRequested.emit("success", "You are using the latest version.")
+        else:
+            AppLogger.info("No updates available")
+
+    def _clear_update_checker(self) -> None:
+        self._update_checker = None
 
     def _build_conversion_options(self) -> ConversionOptions:
         artifacts_dir = ""

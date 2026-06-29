@@ -3,7 +3,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QCoreApplication, Qt, QUrl
+from PySide6.QtCore import QCoreApplication, QTimer, Qt, QUrl
 from PySide6.QtGui import QFont, QGuiApplication, QIcon
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuickControls2 import QQuickStyle
@@ -37,6 +37,7 @@ def main() -> int:
     if not engine.rootObjects():
         return 1
 
+    QTimer.singleShot(2000, controller.startAutomaticUpdateCheck)
     app.aboutToQuit.connect(controller.shutdown)
     return app.exec()
 
