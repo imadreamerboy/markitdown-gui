@@ -14,11 +14,11 @@ from markitdowngui.utils.logger import AppLogger
 
 def main() -> int:
     AppLogger.initialize()
-    _configure_style()
-
     QGuiApplication.setHighDpiScaleFactorRoundingPolicy(
         Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
     )
+    _configure_style()
+
     QCoreApplication.setOrganizationName("MarkItDown")
     QCoreApplication.setApplicationName("MarkItDown GUI")
 

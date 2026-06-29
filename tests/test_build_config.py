@@ -65,6 +65,10 @@ def test_build_datas_keeps_base_files_and_warns_for_missing_optional_packages():
         "markitdowngui/resources/icons",
     ) in datas
     assert (
+        "markitdowngui/resources/markitdown-gui.png",
+        "markitdowngui/resources",
+    ) in datas
+    assert (
         "docling_parse/pdf_resources/fonts",
         "docling_parse/pdf_resources/fonts",
     ) in datas

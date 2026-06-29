@@ -10,7 +10,11 @@ from PySide6.QtGui import QDesktopServices, QGuiApplication, QPalette, QTextDocu
 
 from markitdowngui.core.conversion import ConversionOptions, ConversionWorker
 from markitdowngui.core.file_utils import FileManager
-from markitdowngui.core.input_sources import is_web_url, source_output_stem
+from markitdowngui.core.input_sources import (
+    is_web_url,
+    source_output_dir,
+    source_output_stem,
+)
 from markitdowngui.core.markdown_assets import (
     MarkdownSaveInput,
     cleanup_temp_asset_root,
@@ -304,6 +308,10 @@ class AppController(QObject):
         QGuiApplication.clipboard().setText(text)
         self.toastRequested.emit("success", "Copied Markdown to clipboard.")
 
+    @Slot()
+    def notifyNoOutputToSave(self) -> None:
+        self.toastRequested.emit("error", "No output to save.")
+
     @Slot("QVariant")
     def saveCombinedOutput(self, file_url: Any) -> None:
         output_path = self._path_from_url(file_url)
@@ -345,13 +353,21 @@ class AppController(QObject):
 
     @Slot("QVariant")
     def saveSeparateOutputs(self, folder_url: Any) -> None:
-        output_dir = self._path_from_url(folder_url)
-        if not output_dir:
+        fallback_dir = self._path_from_url(folder_url)
+        if not fallback_dir:
             return
-        Path(output_dir).mkdir(parents=True, exist_ok=True)
+
+        items = self.result_model.items()
+        if not items:
+            self.toastRequested.emit("error", "No output to save.")
+            return
+
+        Path(fallback_dir).mkdir(parents=True, exist_ok=True)
 
         saved_paths: list[str] = []
-        for item in self.result_model.items():
+        for item in items:
+            output_dir = self._separate_output_dir(fallback_dir, item.source)
+            Path(output_dir).mkdir(parents=True, exist_ok=True)
             output_path = self._unique_output_path(output_dir, item.source)
             try:
                 markdown = prepare_markdown_for_separate_save(
@@ -385,6 +401,8 @@ class AppController(QObject):
         self.settings.set_theme_mode(mode)
         self.settingsChanged.emit()
         self.themeChanged.emit()
+        if self._selected_result_index >= 0:
+            self.selectedResultChanged.emit()
 
     @Slot(bool)
     def setSaveCombined(self, enabled: bool) -> None:
@@ -568,6 +586,13 @@ class AppController(QObject):
             counter += 1
         return str(path)
 
+    def _separate_output_dir(self, fallback_dir: str, source: str) -> str:
+        if self.settings.get_save_to_source_folder():
+            source_dir = source_output_dir(source)
+            if source_dir:
+                return source_dir
+        return fallback_dir
+
     @staticmethod
     def _is_writable_output_dir(output_dir: str) -> bool:
         if not output_dir or not os.path.isdir(output_dir):
@@ -594,18 +619,36 @@ class AppController(QObject):
     def _preview_css(self) -> str:
         if self.darkMode:
             return (
-                "body{background:#2e3440;color:#eceff4;font-family:Segoe UI,Arial,sans-serif;"
-                "font-size:14px;line-height:1.65;margin:0;} "
-                "a{color:#88c0d0;} code,pre{background:#3b4252;border-radius:6px;} "
-                "pre{padding:10px;border:1px solid #4c566a;} blockquote{border-left:3px solid #88c0d0;"
-                "margin:8px 0;padding-left:10px;color:#d8dee9;}"
+                "body{background:#2b313c;color:#eceff4;font-family:Segoe UI,Arial,sans-serif;"
+                "font-size:14px;line-height:1.72;margin:0;} "
+                "h1{font-size:27px;line-height:1.18;margin:0 0 20px;font-weight:700;color:#f4f7fb;} "
+                "h2{font-size:20px;line-height:1.28;margin:24px 0 12px;font-weight:700;color:#eceff4;} "
+                "h3{font-size:16px;margin:20px 0 10px;color:#eceff4;} p{margin:0 0 16px;} "
+                "a{color:#88c0d0;} strong{color:#f4f7fb;} "
+                "code{background:#3b4252;border-radius:5px;padding:2px 5px;font-family:Cascadia Mono,Consolas,monospace;"
+                "font-size:13px;color:#eceff4;} pre{background:#3b4252;border:1px solid #566176;border-radius:8px;"
+                "padding:12px 14px;margin:16px 0;color:#eceff4;} "
+                "table{border-collapse:collapse;margin:14px 0 18px;font-size:13px;} "
+                "th{background:#3b4252;color:#f4f7fb;font-weight:700;} "
+                "td,th{border:1px solid #657083;padding:7px 10px;} "
+                "blockquote{border-left:3px solid #88c0d0;background:#303744;margin:16px 0;padding:10px 14px;"
+                "border-radius:6px;color:#d8dee9;} ul,ol{margin:0 0 16px 22px;} hr{border:0;border-top:1px solid #4c566a;}"
             )
         return (
-            "body{background:#fdf6e3;color:#073642;font-family:Segoe UI,Arial,sans-serif;"
-            "font-size:14px;line-height:1.65;margin:0;} "
-            "a{color:#268bd2;} code,pre{background:#eee8d5;border-radius:6px;} "
-            "pre{padding:10px;border:1px solid #d6ccb2;} blockquote{border-left:3px solid #2aa198;"
-            "margin:8px 0;padding-left:10px;color:#586e75;}"
+            "body{background:#fff9e8;color:#073642;font-family:Segoe UI,Arial,sans-serif;"
+            "font-size:14px;line-height:1.72;margin:0;} "
+            "h1{font-size:27px;line-height:1.18;margin:0 0 20px;font-weight:700;color:#073642;} "
+            "h2{font-size:20px;line-height:1.28;margin:24px 0 12px;font-weight:700;color:#073642;} "
+            "h3{font-size:16px;margin:20px 0 10px;color:#073642;} p{margin:0 0 16px;} "
+            "a{color:#268bd2;} strong{color:#073642;} "
+            "code{background:#eee8d5;border-radius:5px;padding:2px 5px;font-family:Cascadia Mono,Consolas,monospace;"
+            "font-size:13px;color:#073642;} pre{background:#eee8d5;border:1px solid #d6ccb2;border-radius:8px;"
+            "padding:12px 14px;margin:16px 0;color:#073642;} "
+            "table{border-collapse:collapse;margin:14px 0 18px;font-size:13px;} "
+            "th{background:#eee8d5;color:#073642;font-weight:700;} "
+            "td,th{border:1px solid #cfc4a8;padding:7px 10px;} "
+            "blockquote{border-left:3px solid #2aa198;background:#f6efd8;margin:16px 0;padding:10px 14px;"
+            "border-radius:6px;color:#586e75;} ul,ol{margin:0 0 16px 22px;} hr{border:0;border-top:1px solid #d6ccb2;}"
         )
 
     def translate(self, key: str) -> str:

@@ -27,6 +27,7 @@ ApplicationWindow {
         nav: dark ? Qt.color("#242A34") : Qt.color("#EEE8D5"),
         surface: dark ? Qt.color("#343B48") : Qt.color("#FFFDF3"),
         surfaceAlt: dark ? Qt.color("#3B4252") : Qt.color("#F6EFD8"),
+        document: dark ? Qt.color("#2B313C") : Qt.color("#FFF9E8"),
         input: dark ? Qt.color("#2E3440") : Qt.color("#FBF3DC"),
         border: dark ? Qt.color("#4C566A") : Qt.color("#D6CCB2"),
         text: dark ? Qt.color("#ECEFF4") : Qt.color("#073642"),
@@ -42,6 +43,18 @@ ApplicationWindow {
         success: dark ? Qt.color("#A3BE8C") : Qt.color("#859900"),
         warning: dark ? Qt.color("#EBCB8B") : Qt.color("#B58900")
     })
+
+    function requestSave() {
+        if (!app.hasResults) {
+            app.notifyNoOutputToSave()
+            return
+        }
+
+        if (app.saveCombined)
+            saveCombinedDialog.open()
+        else
+            saveSeparateDialog.open()
+    }
 
     palette.window: colors.window
     palette.windowText: colors.text
@@ -122,7 +135,7 @@ ApplicationWindow {
     Shortcut {
         sequence: "Ctrl+S"
         context: Qt.ApplicationShortcut
-        onActivated: app.saveCombined ? saveCombinedDialog.open() : saveSeparateDialog.open()
+        onActivated: root.requestSave()
     }
 
     Shortcut {
@@ -236,9 +249,13 @@ ApplicationWindow {
             spacing: 16
 
             HeaderTitle {
-                title: root.pageIndex === 0 ? "Convert to Markdown" : root.pageIndex === 1 ? "Settings" : "Help"
+                title: root.pageIndex === 0
+                    ? (app.hasResults ? "Review Markdown" : "Convert to Markdown")
+                    : root.pageIndex === 1 ? "Settings" : "Help"
                 detail: root.pageIndex === 0
-                    ? "Add documents or a webpage, review the Markdown, then save clean output."
+                    ? (app.hasResults
+                        ? "Inspect converted output, then copy or save Markdown."
+                        : "Add documents or a webpage, review the Markdown, then save clean output.")
                     : root.pageIndex === 1
                         ? "Set export, theme, and OCR defaults."
                         : "Project links, OCR references, and shortcuts."
@@ -908,21 +925,43 @@ ApplicationWindow {
                     Layout.fillHeight: true
 
                     delegate: Rectangle {
+                        id: resultRow
+
                         required property int index
                         required property string name
                         required property string backend
                         required property bool failed
                         required property int wordCount
+                        property bool selected: index === resultList.currentIndex
 
                         width: resultList.width
                         height: 68
                         radius: 9
-                        color: index === resultList.currentIndex ? Qt.rgba(colors.accent.r, colors.accent.g, colors.accent.b, 0.14) : colors.surfaceAlt
-                        border.color: index === resultList.currentIndex ? colors.accent : colors.border
+                        color: selected
+                            ? Qt.rgba(colors.accent.r, colors.accent.g, colors.accent.b, dark ? 0.10 : 0.08)
+                            : rowMouse.containsMouse
+                                ? Qt.rgba(colors.accent.r, colors.accent.g, colors.accent.b, dark ? 0.08 : 0.06)
+                                : colors.surfaceAlt
+                        border.color: selected
+                            ? Qt.rgba(colors.accent.r, colors.accent.g, colors.accent.b, dark ? 0.70 : 0.62)
+                            : colors.border
 
                         MouseArea {
+                            id: rowMouse
                             anchors.fill: parent
+                            hoverEnabled: true
                             onClicked: app.selectResult(index)
+                        }
+
+                        Rectangle {
+                            visible: resultRow.selected
+                            width: 3
+                            height: parent.height - 18
+                            radius: 2
+                            color: colors.accent
+                            anchors.left: parent.left
+                            anchors.leftMargin: 8
+                            anchors.verticalCenter: parent.verticalCenter
                         }
 
                         RowLayout {
@@ -1036,30 +1075,76 @@ ApplicationWindow {
                         iconName: "save"
                         accentColor: colors.action
                         primaryTextColor: colors.onAction
-                        onClicked: app.saveCombined ? saveCombinedDialog.open() : saveSeparateDialog.open()
+                        onClicked: root.requestSave()
                     }
                 }
 
                 ScrollView {
+                    id: previewScroll
                     clip: true
                     Layout.fillWidth: true
                     Layout.fillHeight: true
+                    contentWidth: availableWidth
+                    contentHeight: previewCanvas.height
 
-                    TextArea {
-                        text: app.previewMode === "rendered" ? app.selectedPreviewHtml : app.selectedMarkdown
-                        textFormat: app.previewMode === "rendered" ? TextEdit.RichText : TextEdit.PlainText
-                        readOnly: true
-                        wrapMode: TextEdit.Wrap
-                        selectByMouse: true
-                        color: colors.text
-                        selectedTextColor: "#FFFFFF"
-                        selectionColor: colors.accent
-                        font.pixelSize: 13
-                        padding: 14
-                        background: Rectangle {
-                            color: colors.input
-                            radius: 9
-                            border.color: colors.border
+                    Item {
+                        id: previewCanvas
+
+                        width: previewScroll.availableWidth
+                        height: Math.max(
+                            previewScroll.availableHeight,
+                            app.previewMode === "rendered"
+                                ? renderedPreview.contentHeight + renderedPreview.topPadding + renderedPreview.bottomPadding
+                                : rawPreview.contentHeight + rawPreview.topPadding + rawPreview.bottomPadding
+                        )
+
+                        TextArea {
+                            id: renderedPreview
+
+                            visible: app.previewMode === "rendered"
+                            anchors.fill: parent
+                            text: app.selectedPreviewHtml
+                            textFormat: TextEdit.RichText
+                            readOnly: true
+                            wrapMode: TextEdit.Wrap
+                            selectByMouse: true
+                            color: colors.text
+                            selectedTextColor: "#FFFFFF"
+                            selectionColor: colors.accent
+                            font.pixelSize: 13
+                            font.family: root.font.family
+                            leftPadding: 18
+                            rightPadding: 18
+                            topPadding: 18
+                            bottomPadding: 18
+                            background: Rectangle {
+                                color: colors.document
+                                radius: 9
+                                border.color: Qt.rgba(colors.border.r, colors.border.g, colors.border.b, dark ? 0.90 : 0.78)
+                            }
+                        }
+
+                        TextArea {
+                            id: rawPreview
+
+                            visible: app.previewMode === "raw"
+                            anchors.fill: parent
+                            text: app.selectedMarkdown
+                            textFormat: TextEdit.PlainText
+                            readOnly: true
+                            wrapMode: TextEdit.Wrap
+                            selectByMouse: true
+                            color: colors.text
+                            selectedTextColor: "#FFFFFF"
+                            selectionColor: colors.accent
+                            font.pixelSize: 13
+                            font.family: Qt.platform.os === "windows" ? "Cascadia Mono" : Qt.platform.os === "osx" ? "Menlo" : "monospace"
+                            padding: 14
+                            background: Rectangle {
+                                color: colors.input
+                                radius: 9
+                                border.color: Qt.rgba(colors.border.r, colors.border.g, colors.border.b, dark ? 0.90 : 0.78)
+                            }
                         }
                     }
                 }
@@ -1273,7 +1358,7 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     spacing: 10
 
-                    SpinBox {
+                    ThemeSpinBox {
                         from: 1
                         to: 65535
                         value: app.glmocrOllamaPort
