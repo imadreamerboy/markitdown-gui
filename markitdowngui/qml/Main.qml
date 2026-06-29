@@ -1189,7 +1189,10 @@ ApplicationWindow {
                         AppButton {
                             visible: !previewToolbar.compactActions
                             text: app.selectedResultFailed ? "Copy details" : "Copy"
+                            primary: app.selectedResultFailed
                             iconName: "copy"
+                            accentColor: colors.action
+                            primaryTextColor: colors.onAction
                             surfaceColor: colors.surfaceAlt
                             borderColor: colors.border
                             textColor: colors.text
@@ -1199,10 +1202,13 @@ ApplicationWindow {
                         AppButton {
                             visible: !previewToolbar.compactActions
                             text: app.saveCombined ? "Save as one file" : "Save files"
-                            primary: true
+                            primary: !app.selectedResultFailed
                             iconName: "save"
                             accentColor: colors.action
                             primaryTextColor: colors.onAction
+                            surfaceColor: colors.surfaceAlt
+                            borderColor: colors.border
+                            textColor: colors.text
                             onClicked: root.requestSave()
                         }
                     }
@@ -1217,7 +1223,10 @@ ApplicationWindow {
 
                         AppButton {
                             text: app.selectedResultFailed ? "Copy details" : "Copy"
+                            primary: app.selectedResultFailed
                             iconName: "copy"
+                            accentColor: colors.action
+                            primaryTextColor: colors.onAction
                             surfaceColor: colors.surfaceAlt
                             borderColor: colors.border
                             textColor: colors.text
@@ -1226,10 +1235,13 @@ ApplicationWindow {
 
                         AppButton {
                             text: "Save"
-                            primary: true
+                            primary: !app.selectedResultFailed
                             iconName: "save"
                             accentColor: colors.action
                             primaryTextColor: colors.onAction
+                            surfaceColor: colors.surfaceAlt
+                            borderColor: colors.border
+                            textColor: colors.text
                             onClicked: root.requestSave()
                         }
                     }
