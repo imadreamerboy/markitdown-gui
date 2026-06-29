@@ -123,6 +123,7 @@ ApplicationWindow {
     Shortcut {
         sequence: "Ctrl+O"
         context: Qt.ApplicationShortcut
+        enabled: !app.converting
         onActivated: openFileDialog.open()
     }
 
@@ -160,6 +161,7 @@ ApplicationWindow {
     Shortcut {
         sequence: "Ctrl+L"
         context: Qt.ApplicationShortcut
+        enabled: !app.converting
         onActivated: app.clearQueue()
     }
 
@@ -438,6 +440,7 @@ ApplicationWindow {
 
         DropArea {
             anchors.fill: parent
+            enabled: !app.converting
             onDropped: drop => {
                 if (drop.hasUrls)
                     app.addFiles(drop.urls)

@@ -236,6 +236,8 @@ class AppController(QObject):
 
     @Slot("QVariant")
     def addFiles(self, values: Any) -> None:
+        if self._queue_change_locked():
+            return
         sources = [path for path in self._paths_from_variant(values) if path]
         added = self.queue_model.add_sources(sources)
         if added:
@@ -252,11 +254,15 @@ class AppController(QObject):
 
     @Slot(int)
     def removeQueued(self, row: int) -> None:
+        if self._queue_change_locked():
+            return
         self.queue_model.remove(row)
         self.queueChanged.emit()
 
     @Slot()
     def clearQueue(self) -> None:
+        if self._queue_change_locked():
+            return
         self.queue_model.clear()
         self.queueChanged.emit()
         self._set_status("Queue cleared")
@@ -609,6 +615,15 @@ class AppController(QObject):
             return
         self._status = value
         self.statusChanged.emit()
+
+    def _queue_change_locked(self) -> bool:
+        if not self._converting:
+            return False
+        self.toastRequested.emit(
+            "error",
+            "Wait for conversion to finish before changing the queue.",
+        )
+        return True
 
     def _cleanup_temp_assets(self) -> None:
         cleanup_temp_asset_root(self._temp_asset_root)

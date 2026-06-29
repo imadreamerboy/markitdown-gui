@@ -39,6 +39,27 @@ def test_controller_add_url_queues_valid_url(controller):
     assert controller.queueCount == 1
 
 
+def test_controller_locks_queue_mutations_while_converting(controller, tmp_path):
+    source_a = str(tmp_path / "a.pdf")
+    source_b = str(tmp_path / "b.pdf")
+    source_c = str(tmp_path / "c.pdf")
+    messages: list[tuple[str, str]] = []
+    controller.toastRequested.connect(lambda kind, message: messages.append((kind, message)))
+    controller.addFiles([source_a, source_b])
+    controller._converting = True
+
+    controller.addFiles([source_c])
+    controller.removeQueued(0)
+    controller.clearQueue()
+
+    assert controller.queue_model.sources() == [source_a, source_b]
+    assert messages[-3:] == [
+        ("error", "Wait for conversion to finish before changing the queue."),
+        ("error", "Wait for conversion to finish before changing the queue."),
+        ("error", "Wait for conversion to finish before changing the queue."),
+    ]
+
+
 def test_controller_notifies_before_save_dialog_when_no_output(controller):
     messages: list[tuple[str, str]] = []
     controller.toastRequested.connect(lambda kind, message: messages.append((kind, message)))
