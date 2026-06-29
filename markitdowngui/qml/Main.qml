@@ -1549,7 +1549,9 @@ ApplicationWindow {
 
                 FieldGroup {
                     label: app.ocrProvider === "glmocr" ? "Fallback Azure endpoint" : "Azure endpoint"
-                    detail: app.ocrProvider === "glmocr" ? "Optional endpoint used only if GLM-OCR falls back." : ""
+                    detail: app.ocrProvider === "glmocr"
+                        ? "Optional fallback endpoint. Uses AZURE_OCR_API_KEY or Azure identity at runtime."
+                        : "Uses AZURE_OCR_API_KEY or Azure identity at runtime."
                     visible: root.showLegacyOcrSettings()
                     Layout.fillWidth: true
 
@@ -1627,6 +1629,11 @@ ApplicationWindow {
 
                 FieldGroup {
                     label: "Mode"
+                    detail: app.glmocrMode === "ollama"
+                        ? "Uses a local Ollama /api/generate endpoint."
+                        : app.glmocrMode === "sdk_server"
+                            ? "Uses a running GLM-OCR SDK server endpoint."
+                            : "Requires ZHIPU_API_KEY or GLMOCR_API_KEY in the app environment."
                     Layout.fillWidth: true
 
                     ThemeComboBox {
