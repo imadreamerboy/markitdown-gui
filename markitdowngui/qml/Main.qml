@@ -220,7 +220,9 @@ ApplicationWindow {
                 }
 
                 Label {
-                    text: app.canInstallPreferredUpdate
+                    text: app.updateInstallRunning
+                        ? app.updateInstallStatus
+                        : app.canInstallPreferredUpdate
                         ? "Install can run after download and will restart the app."
                         : "Use Releases for packaged builds, or the source updater for Git checkouts."
                     color: colors.muted
@@ -228,16 +230,28 @@ ApplicationWindow {
                     elide: Text.ElideRight
                     Layout.fillWidth: true
                 }
+
+                ProgressBar {
+                    visible: app.updateInstallRunning
+                    from: 0
+                    to: 100
+                    value: app.updateInstallProgress
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 4
+                }
             }
 
             AppButton {
-                text: app.canInstallPreferredUpdate
+                text: app.updateInstallRunning
+                    ? "Installing"
+                    : app.canInstallPreferredUpdate
                     ? "Install"
                     : app.preferredReleaseAsset.url ? app.preferredReleaseAsset.installLabel || "Download" : "Releases"
                 primary: true
-                iconName: app.canInstallPreferredUpdate ? "rotate-ccw" : "external-link"
+                iconName: app.updateInstallRunning || app.canInstallPreferredUpdate ? "rotate-ccw" : "external-link"
                 accentColor: colors.action
                 primaryTextColor: colors.onAction
+                enabled: !app.updateInstallRunning
                 onClicked: app.canInstallPreferredUpdate
                     ? app.installPreferredUpdate()
                     : app.preferredReleaseAsset.url

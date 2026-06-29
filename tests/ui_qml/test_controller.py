@@ -6,7 +6,7 @@ from PySide6.QtCore import QSettings, QUrl
 
 from markitdowngui.core.conversion import ConversionOutcome
 from markitdowngui.core.settings import SettingsManager
-from markitdowngui.ui_qml.controller import AppController
+from markitdowngui.ui_qml.controller import AppController, PackagedUpdateInstaller
 from markitdowngui.utils.packaged_updater import PackagedUpdatePlan
 from markitdowngui.utils.update_checker import ReleaseAsset, ReleaseInfo
 
@@ -47,6 +47,34 @@ class _FakeUpdateChecker:
             self.update_error.emit(value or "")
         elif kind == "none":
             self.no_update_available.emit()
+        self.finished.emit()
+
+    def isRunning(self):
+        return self.started and not self.waited
+
+    def wait(self, _timeout):
+        self.waited = True
+        return True
+
+
+class _FakeUpdateInstaller:
+    def __init__(self, action: str = "success"):
+        self.action = action
+        self.progressChanged = _FakeSignal()
+        self.installStarted = _FakeSignal()
+        self.installError = _FakeSignal()
+        self.finished = _FakeSignal()
+        self.started = False
+        self.waited = False
+
+    def start(self):
+        self.started = True
+        self.progressChanged.emit("Downloading update", 25)
+        if self.action == "error":
+            self.installError.emit("Download failed")
+        else:
+            self.progressChanged.emit("Starting restart helper", 98)
+            self.installStarted.emit()
         self.finished.emit()
 
     def isRunning(self):
@@ -199,7 +227,7 @@ def test_controller_installs_supported_preferred_update(controller, monkeypatch)
         ),
     )
     messages: list[tuple[str, str]] = []
-    installed: list[dict[str, object]] = []
+    created: list[dict[str, object]] = []
     quit_called: list[None] = []
     controller.toastRequested.connect(lambda kind, message: messages.append((kind, message)))
     monkeypatch.setattr(
@@ -207,12 +235,13 @@ def test_controller_installs_supported_preferred_update(controller, monkeypatch)
         lambda _asset: PackagedUpdatePlan(True, "zip", "Install update"),
     )
     monkeypatch.setattr(
-        "markitdowngui.ui_qml.controller.install_packaged_update",
-        lambda asset: installed.append(asset),
-    )
-    monkeypatch.setattr(
         "markitdowngui.ui_qml.controller.QGuiApplication.quit",
         lambda: quit_called.append(None),
+    )
+    monkeypatch.setattr(
+        controller,
+        "_create_update_installer",
+        lambda asset: created.append(asset) or _FakeUpdateInstaller(),
     )
     monkeypatch.setattr(
         controller,
@@ -225,15 +254,43 @@ def test_controller_installs_supported_preferred_update(controller, monkeypatch)
 
     controller.installPreferredUpdate()
 
-    assert installed and installed[0]["url"] == "https://example.com/windows.zip"
+    assert created and created[0]["url"] == "https://example.com/windows.zip"
+    assert controller.updateInstallRunning is False
+    assert controller.updateInstallProgress == 100
+    assert controller.updateInstallStatus == "Restarting app"
     assert quit_called == [None]
     assert messages == [("success", "Update installer started. Closing app.")]
     assert controller.hasUpdateNotification is False
 
 
+def test_packaged_update_installer_emits_progress_and_success(monkeypatch):
+    progress: list[tuple[str, int]] = []
+    started: list[None] = []
+    errors: list[str] = []
+
+    def fake_install(_asset, progress_callback):
+        progress_callback("Downloading update", 25)
+        progress_callback("Starting restart helper", 98)
+
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.install_packaged_update",
+        fake_install,
+    )
+    installer = PackagedUpdateInstaller({"url": "https://example.com/windows.zip"})
+    installer.progressChanged.connect(lambda status, value: progress.append((status, value)))
+    installer.installStarted.connect(lambda: started.append(None))
+    installer.installError.connect(lambda message: errors.append(message))
+
+    installer.run()
+
+    assert progress == [("Downloading update", 25), ("Starting restart helper", 98)]
+    assert started == [None]
+    assert errors == []
+
+
 def test_controller_blocks_update_install_while_converting(controller, monkeypatch):
     messages: list[tuple[str, str]] = []
-    installed: list[dict[str, object]] = []
+    created: list[dict[str, object]] = []
     controller.toastRequested.connect(lambda kind, message: messages.append((kind, message)))
     controller._preferred_release_asset = {
         "url": "https://example.com/windows.zip",
@@ -241,16 +298,38 @@ def test_controller_blocks_update_install_while_converting(controller, monkeypat
     }
     controller._converting = True
     monkeypatch.setattr(
-        "markitdowngui.ui_qml.controller.install_packaged_update",
-        lambda asset: installed.append(asset),
+        controller,
+        "_create_update_installer",
+        lambda asset: created.append(asset) or _FakeUpdateInstaller(),
     )
 
     controller.installPreferredUpdate()
 
-    assert installed == []
+    assert created == []
     assert messages == [
         ("error", "Wait for conversion to finish before installing an update.")
     ]
+
+
+def test_controller_reports_packaged_update_install_error(controller, monkeypatch):
+    messages: list[tuple[str, str]] = []
+    controller.toastRequested.connect(lambda kind, message: messages.append((kind, message)))
+    controller._preferred_release_asset = {
+        "url": "https://example.com/windows.zip",
+        "installSupported": True,
+    }
+    monkeypatch.setattr(
+        controller,
+        "_create_update_installer",
+        lambda asset: _FakeUpdateInstaller("error"),
+    )
+
+    controller.installPreferredUpdate()
+
+    assert controller.updateInstallRunning is False
+    assert controller.updateInstallProgress == 0
+    assert controller.updateInstallStatus == "Download failed"
+    assert messages == [("error", "Download failed")]
 
 
 def test_controller_manual_update_check_reports_no_update(controller, monkeypatch):
@@ -767,6 +846,24 @@ def test_controller_shutdown_rejects_close_until_worker_stops(controller):
     assert pause_changes == [None]
     assert messages == [
         ("error", "Conversion is still stopping. Close again after it finishes.")
+    ]
+
+
+def test_controller_shutdown_rejects_close_during_update_install(controller):
+    installer = _FakeUpdateInstaller()
+    installer.started = True
+    controller._update_installer = installer
+    controller._update_install_running = True
+    messages: list[tuple[str, str]] = []
+    controller.toastRequested.connect(
+        lambda kind, message: messages.append((kind, message))
+    )
+
+    accepted = controller.shutdown()
+
+    assert accepted is False
+    assert messages == [
+        ("error", "Update install is still preparing. Close after it finishes.")
     ]
 
 

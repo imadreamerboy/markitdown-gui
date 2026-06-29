@@ -6,7 +6,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QObject, Property, QUrl, Signal, Slot
+from PySide6.QtCore import QObject, Property, QThread, QUrl, Signal, Slot
 from PySide6.QtGui import QDesktopServices, QGuiApplication, QPalette, QTextDocument
 
 from markitdowngui.core.conversion import (
@@ -53,6 +53,29 @@ _PREVIEW_HEADING_MARGINS = {
     "3": "6px",
 }
 
+class PackagedUpdateInstaller(QThread):
+    progressChanged = Signal(str, int)
+    installStarted = Signal()
+    installError = Signal(str)
+
+    def __init__(self, asset: dict[str, object], parent: QObject | None = None) -> None:
+        super().__init__(parent)
+        self.asset = dict(asset)
+
+    def run(self) -> None:
+        try:
+            install_packaged_update(
+                self.asset,
+                progress_callback=self.progressChanged.emit,
+            )
+        except PackagedUpdateError as exc:
+            self.installError.emit(str(exc))
+            return
+        except Exception as exc:
+            self.installError.emit(f"Update install failed: {exc}")
+            return
+        self.installStarted.emit()
+
 
 class AppController(QObject):
     statusChanged = Signal()
@@ -67,6 +90,7 @@ class AppController(QObject):
     themeChanged = Signal()
     saveDefaultsChanged = Signal()
     updateNotificationChanged = Signal()
+    updateInstallChanged = Signal()
     toastRequested = Signal(str, str)
 
     def __init__(self) -> None:
@@ -85,11 +109,15 @@ class AppController(QObject):
         self._temp_asset_root: str | None = None
         self._cancel_requested = False
         self._update_checker: UpdateChecker | None = None
+        self._update_installer: PackagedUpdateInstaller | None = None
         self._update_check_manual = False
         self._available_update_version = ""
         self._available_release_url = ""
         self._available_release_assets: list[dict[str, object]] = []
         self._preferred_release_asset: dict[str, object] = {}
+        self._update_install_running = False
+        self._update_install_progress = 0
+        self._update_install_status = ""
 
     @Property(QObject, constant=True)
     def queueModel(self) -> QueueModel:
@@ -329,7 +357,22 @@ class AppController(QObject):
 
     @Property(bool, notify=updateNotificationChanged)
     def canInstallPreferredUpdate(self) -> bool:
-        return bool(self._preferred_release_asset.get("installSupported"))
+        return bool(
+            self._preferred_release_asset.get("installSupported")
+            and not self._update_install_running
+        )
+
+    @Property(bool, notify=updateInstallChanged)
+    def updateInstallRunning(self) -> bool:
+        return self._update_install_running
+
+    @Property(int, notify=updateInstallChanged)
+    def updateInstallProgress(self) -> int:
+        return self._update_install_progress
+
+    @Property(str, notify=updateInstallChanged)
+    def updateInstallStatus(self) -> str:
+        return self._update_install_status
 
     @Property(str, constant=True)
     def sourceUpdateCommand(self) -> str:
@@ -726,6 +769,9 @@ class AppController(QObject):
 
     @Slot()
     def installPreferredUpdate(self) -> None:
+        if self._update_install_running:
+            self.toastRequested.emit("success", "Update install already running.")
+            return
         if self._converting:
             self.toastRequested.emit(
                 "error",
@@ -741,14 +787,20 @@ class AppController(QObject):
                 self.toastRequested.emit("error", reason)
             self.openReleaseAsset(str(self._preferred_release_asset.get("url") or ""))
             return
-        try:
-            install_packaged_update(self._preferred_release_asset)
-        except PackagedUpdateError as exc:
-            self.toastRequested.emit("error", str(exc))
-            return
-        self.toastRequested.emit("success", "Update installer started. Closing app.")
-        self.dismissUpdateNotification()
-        QGuiApplication.quit()
+        self._update_install_running = True
+        self._update_install_progress = 0
+        self._update_install_status = "Preparing update"
+        self.updateInstallChanged.emit()
+        self.updateNotificationChanged.emit()
+
+        self._update_installer = self._create_update_installer(
+            dict(self._preferred_release_asset)
+        )
+        self._update_installer.progressChanged.connect(self._on_update_install_progress)
+        self._update_installer.installError.connect(self._on_update_install_error)
+        self._update_installer.installStarted.connect(self._on_update_install_started)
+        self._update_installer.finished.connect(self._clear_update_installer)
+        self._update_installer.start()
 
     @Slot()
     def copySourceUpdateCommand(self) -> None:
@@ -796,6 +848,14 @@ class AppController(QObject):
         self._cleanup_temp_assets()
         if self._update_checker and self._update_checker.isRunning():
             self._update_checker.wait(2000)
+        if self._update_installer and self._update_installer.isRunning():
+            if self._update_install_running:
+                self.toastRequested.emit(
+                    "error",
+                    "Update install is still preparing. Close after it finishes.",
+                )
+                return False
+            self._update_installer.wait(2000)
         return True
 
     def _start_update_check(self, manual: bool) -> None:
@@ -814,6 +874,42 @@ class AppController(QObject):
 
     def _create_update_checker(self) -> UpdateChecker:
         return UpdateChecker(self)
+
+    def _create_update_installer(
+        self,
+        asset: dict[str, object],
+    ) -> PackagedUpdateInstaller:
+        return PackagedUpdateInstaller(asset, self)
+
+    def _on_update_install_progress(self, status: str, progress: int) -> None:
+        self._update_install_status = status
+        self._update_install_progress = max(0, min(100, int(progress)))
+        self.updateInstallChanged.emit()
+
+    def _on_update_install_error(self, message: str) -> None:
+        self._update_install_running = False
+        self._update_install_status = message
+        self._update_install_progress = 0
+        self.updateInstallChanged.emit()
+        self.updateNotificationChanged.emit()
+        self.toastRequested.emit("error", message)
+
+    def _on_update_install_started(self) -> None:
+        self._update_install_running = False
+        self._update_install_status = "Restarting app"
+        self._update_install_progress = 100
+        self.updateInstallChanged.emit()
+        self.updateNotificationChanged.emit()
+        self.toastRequested.emit("success", "Update installer started. Closing app.")
+        self.dismissUpdateNotification()
+        QGuiApplication.quit()
+
+    def _clear_update_installer(self) -> None:
+        if self._update_install_running:
+            self._update_install_running = False
+            self.updateInstallChanged.emit()
+            self.updateNotificationChanged.emit()
+        self._update_installer = None
 
     @staticmethod
     def _release_asset_to_dict(asset: ReleaseAsset) -> dict[str, object]:

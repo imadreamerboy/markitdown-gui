@@ -99,7 +99,7 @@ def test_install_packaged_update_prepares_helper_without_replacing_app(
     monkeypatch.setattr(
         packaged_updater,
         "download_asset",
-        lambda _url, target: target.write_bytes(archive.read_bytes()),
+        lambda _url, target, **_kwargs: target.write_bytes(archive.read_bytes()),
     )
     monkeypatch.setattr(
         packaged_updater,
@@ -124,6 +124,113 @@ def test_install_packaged_update_prepares_helper_without_replacing_app(
     assert "MarkItDown.exe" in script
 
 
+def test_install_packaged_update_reports_progress(monkeypatch, tmp_path):
+    app_dir = tmp_path / "current" / "MarkItDown"
+    app_dir.mkdir(parents=True)
+    executable = app_dir / "MarkItDown.exe"
+    executable.write_text("old", encoding="utf-8")
+    archive = tmp_path / "MarkItDown-Windows-2.0.0.zip"
+    with zipfile.ZipFile(archive, "w") as zf:
+        zf.writestr("MarkItDown/MarkItDown.exe", "new")
+
+    progress: list[tuple[str, int]] = []
+    monkeypatch.setattr(packaged_updater.sys, "platform", "win32")
+    monkeypatch.setattr(packaged_updater.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(
+        packaged_updater,
+        "download_asset",
+        lambda _url, target, **_kwargs: target.write_bytes(archive.read_bytes()),
+    )
+    monkeypatch.setattr(packaged_updater, "launch_replace_helper", lambda _helper: None)
+
+    packaged_updater.install_packaged_update(
+        {
+            "name": archive.name,
+            "url": "https://example.com/app.zip",
+        },
+        app_dir=app_dir,
+        executable=str(executable),
+        progress_callback=lambda status, value: progress.append((status, value)),
+    )
+
+    assert progress == [
+        ("Downloading update", 5),
+        ("Verifying update", 72),
+        ("Extracting update", 84),
+        ("Preparing restart helper", 92),
+        ("Starting restart helper", 98),
+    ]
+
+
+def test_download_asset_reports_content_length_progress(monkeypatch, tmp_path):
+    class FakeResponse:
+        headers = {"content-length": "4"}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def raise_for_status(self):
+            return None
+
+        def iter_content(self, chunk_size):
+            yield b"aa"
+            yield b"bb"
+
+    progress: list[tuple[str, int]] = []
+    monkeypatch.setattr(
+        packaged_updater.requests,
+        "get",
+        lambda *_args, **_kwargs: FakeResponse(),
+    )
+
+    target = tmp_path / "app.zip"
+    packaged_updater.download_asset(
+        "https://example.com/app.zip",
+        target,
+        progress_callback=lambda status, value: progress.append((status, value)),
+    )
+
+    assert target.read_bytes() == b"aabb"
+    assert progress == [("Downloading update", 37), ("Downloading update", 70)]
+
+
+def test_download_asset_ignores_invalid_content_length(monkeypatch, tmp_path):
+    class FakeResponse:
+        headers = {"content-length": "unknown"}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def raise_for_status(self):
+            return None
+
+        def iter_content(self, chunk_size):
+            yield b"data"
+
+    progress: list[tuple[str, int]] = []
+    monkeypatch.setattr(
+        packaged_updater.requests,
+        "get",
+        lambda *_args, **_kwargs: FakeResponse(),
+    )
+
+    target = tmp_path / "app.zip"
+    packaged_updater.download_asset(
+        "https://example.com/app.zip",
+        target,
+        progress_callback=lambda status, value: progress.append((status, value)),
+    )
+
+    assert target.read_bytes() == b"data"
+    assert progress == []
+
+
 def test_install_packaged_update_cleans_temp_dir_on_prepare_failure(
     monkeypatch,
     tmp_path,
@@ -141,7 +248,7 @@ def test_install_packaged_update_cleans_temp_dir_on_prepare_failure(
         lambda prefix: str(runtime_dir),
     )
 
-    def write_bad_archive(_url, target):
+    def write_bad_archive(_url, target, **_kwargs):
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text("not a zip", encoding="utf-8")
 

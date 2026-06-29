@@ -8,6 +8,7 @@ import sys
 import tempfile
 import time
 import zipfile
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -24,6 +25,14 @@ class PackagedUpdatePlan:
 
 class PackagedUpdateError(RuntimeError):
     """Raised when a packaged update cannot be prepared or started."""
+
+
+ProgressCallback = Callable[[str, int], None]
+
+
+def _emit_progress(callback: ProgressCallback | None, status: str, progress: int) -> None:
+    if callback is not None:
+        callback(status, max(0, min(100, progress)))
 
 
 def is_packaged_app() -> bool:
@@ -80,6 +89,7 @@ def install_packaged_update(
     app_dir: Path | None = None,
     executable: str | None = None,
     process_id: int | None = None,
+    progress_callback: ProgressCallback | None = None,
 ) -> Path:
     plan = build_packaged_update_plan(asset)
     if not plan.supported:
@@ -100,8 +110,11 @@ def install_packaged_update(
     helper_path = runtime_dir / _helper_script_name()
 
     try:
-        download_asset(url, archive_path)
+        _emit_progress(progress_callback, "Downloading update", 5)
+        download_asset(url, archive_path, progress_callback=progress_callback)
+        _emit_progress(progress_callback, "Verifying update", 72)
         verify_sha256(archive_path, sha256)
+        _emit_progress(progress_callback, "Extracting update", 84)
         replacement_root = extract_zip_to_staging(archive_path, extract_dir, staging_dir)
         replacement_executable = replacement_root / target_executable.name
         if not replacement_executable.exists():
@@ -109,6 +122,7 @@ def install_packaged_update(
                 f"Update archive does not contain {target_executable.name}."
             )
 
+        _emit_progress(progress_callback, "Preparing restart helper", 92)
         script = build_replace_helper_script(
             current_dir=target_dir,
             replacement_dir=replacement_root,
@@ -118,6 +132,7 @@ def install_packaged_update(
         helper_path.write_text(script, encoding="utf-8")
         if sys.platform.startswith("linux") or sys.platform == "darwin":
             helper_path.chmod(0o755)
+        _emit_progress(progress_callback, "Starting restart helper", 98)
         launch_replace_helper(helper_path)
     except Exception:
         shutil.rmtree(runtime_dir, ignore_errors=True)
@@ -125,15 +140,34 @@ def install_packaged_update(
     return helper_path
 
 
-def download_asset(url: str, target: Path, *, timeout: int = 60) -> None:
+def download_asset(
+    url: str,
+    target: Path,
+    *,
+    timeout: int = 60,
+    progress_callback: ProgressCallback | None = None,
+) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
     try:
         with requests.get(url, stream=True, timeout=timeout) as response:
             response.raise_for_status()
+            try:
+                total = int(response.headers.get("content-length") or 0)
+            except (TypeError, ValueError):
+                total = 0
+            downloaded = 0
             with target.open("wb") as handle:
                 for chunk in response.iter_content(chunk_size=1024 * 1024):
                     if chunk:
                         handle.write(chunk)
+                        downloaded += len(chunk)
+                        if total:
+                            progress = 5 + int((downloaded / total) * 65)
+                            _emit_progress(
+                                progress_callback,
+                                "Downloading update",
+                                progress,
+                            )
     except requests.exceptions.RequestException as exc:
         raise PackagedUpdateError(f"Download failed: {exc}") from exc
 
