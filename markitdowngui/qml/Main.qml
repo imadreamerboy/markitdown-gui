@@ -606,10 +606,11 @@ ApplicationWindow {
         SectionPanel {
             title: ""
             subtitle: ""
-            surfaceColor: colors.surface
+            surfaceColor: colors.document
             borderColor: colors.border
             textColor: colors.text
             mutedTextColor: colors.muted
+            borderOpacity: dark ? 0.88 : 0.68
             Layout.fillWidth: true
             Layout.fillHeight: true
 
@@ -619,21 +620,21 @@ ApplicationWindow {
 
                 ColumnLayout {
                     anchors.centerIn: parent
-                    width: Math.min(parent.width - 80, 520)
-                    spacing: 16
+                    width: Math.min(parent.width - 80, 460)
+                    spacing: 13
 
                     Rectangle {
-                        width: 58
-                        height: 58
-                        radius: 8
-                        color: colors.actionSoft
-                        border.color: Qt.rgba(colors.action.r, colors.action.g, colors.action.b, 0.35)
+                        width: 50
+                        height: 50
+                        radius: 10
+                        color: Qt.rgba(colors.action.r, colors.action.g, colors.action.b, dark ? 0.14 : 0.12)
+                        border.color: Qt.rgba(colors.action.r, colors.action.g, colors.action.b, dark ? 0.32 : 0.28)
                         Layout.alignment: Qt.AlignHCenter
 
                         Icon {
                             anchors.centerIn: parent
                             name: "folder-plus"
-                            size: 26
+                            size: 22
                             color: colors.action
                         }
                     }
@@ -641,7 +642,7 @@ ApplicationWindow {
                     Label {
                         text: "Start with files or a webpage"
                         color: colors.text
-                        font.pixelSize: 20
+                        font.pixelSize: 18
                         font.weight: Font.DemiBold
                         horizontalAlignment: Text.AlignHCenter
                         Layout.fillWidth: true
@@ -651,6 +652,7 @@ ApplicationWindow {
                         text: "Drop files anywhere in this window, choose files from your system, or paste a URL above."
                         color: colors.muted
                         font.pixelSize: 13
+                        lineHeight: 1.16
                         wrapMode: Text.WordWrap
                         horizontalAlignment: Text.AlignHCenter
                         Layout.fillWidth: true
