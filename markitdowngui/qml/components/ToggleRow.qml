@@ -10,11 +10,11 @@ RowLayout {
     property bool checked: false
     property color textColor: "#18212B"
     property color mutedTextColor: "#647283"
-    property color accentColor: "#687700"
+    property color accentColor: "#88C0D0"
     property color trackColor: "#F6EFD8"
     property color handleColor: "#FFFDF3"
     property color borderColor: "#D6CCB2"
-    property color focusColor: "#687700"
+    property color focusColor: "#88C0D0"
     signal toggled(bool checked)
 
     spacing: 12

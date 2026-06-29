@@ -6,7 +6,7 @@ Button {
 
     property bool primary: false
     property bool subtle: false
-    property color accentColor: "#687700"
+    property color accentColor: "#88C0D0"
     property color surfaceColor: "#FFFFFF"
     property color borderColor: "#D8E1E8"
     property color focusColor: primary ? textColor : accentColor

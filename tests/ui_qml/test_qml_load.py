@@ -44,3 +44,18 @@ def test_main_qml_loads_with_controller_context(monkeypatch, tmp_path):
         for root in engine.rootObjects():
             root.close()
         app.processEvents()
+
+
+def test_light_olive_tokens_do_not_leak_into_component_defaults():
+    qml_root = Path(__file__).resolve().parents[2] / "markitdowngui" / "qml"
+    component_root = qml_root / "components"
+
+    component_text = "\n".join(
+        path.read_text(encoding="utf-8") for path in component_root.glob("*.qml")
+    )
+    main_text = (qml_root / "Main.qml").read_text(encoding="utf-8")
+
+    assert "#687700" not in component_text
+    assert "#7C6F00" not in component_text
+    assert "#E8EBC8" not in component_text
+    assert 'dark ? Qt.color("#88C0D0") : Qt.color("#687700")' in main_text

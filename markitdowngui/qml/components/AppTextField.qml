@@ -6,7 +6,7 @@ TextField {
 
     property color surfaceColor: "#FFFFFF"
     property color borderColor: "#D8E1E8"
-    property color accentColor: "#687700"
+    property color accentColor: "#88C0D0"
     property color textColor: "#18212B"
     property color placeholderColor: "#718091"
 

@@ -734,6 +734,7 @@ ApplicationWindow {
                             enabled: !app.converting
                             subtle: true
                             iconName: "x"
+                            accentColor: colors.action
                             textColor: colors.muted
                             onClicked: app.clearQueue()
                         }
@@ -814,6 +815,7 @@ ApplicationWindow {
                                     enabled: !app.converting
                                     subtle: true
                                     iconName: "trash-2"
+                                    accentColor: colors.action
                                     textColor: colors.muted
                                     onClicked: app.removeQueued(index)
                                 }
@@ -996,6 +998,7 @@ ApplicationWindow {
                                 text: "Set folder"
                                 subtle: true
                                 iconName: "folder-plus"
+                                accentColor: colors.action
                                 surfaceColor: colors.surfaceAlt
                                 borderColor: colors.border
                                 textColor: colors.text
@@ -1054,6 +1057,7 @@ ApplicationWindow {
                         text: app.paused ? "Resume" : "Pause"
                         enabled: app.converting
                         iconName: app.paused ? "play" : "pause"
+                        accentColor: colors.action
                         surfaceColor: colors.surfaceAlt
                         borderColor: colors.border
                         textColor: colors.text
@@ -1064,6 +1068,7 @@ ApplicationWindow {
                         text: "Cancel"
                         enabled: app.converting
                         iconName: "x"
+                        accentColor: colors.action
                         surfaceColor: colors.surfaceAlt
                         borderColor: colors.border
                         textColor: colors.text
@@ -1114,6 +1119,7 @@ ApplicationWindow {
                         text: "Back to queue"
                         subtle: true
                         iconName: "rotate-ccw"
+                        accentColor: colors.action
                         textColor: colors.text
                         onClicked: app.clearResults()
                     }
@@ -1122,6 +1128,7 @@ ApplicationWindow {
                         text: "Start new"
                         subtle: true
                         iconName: "file-text"
+                        accentColor: colors.action
                         textColor: colors.muted
                         onClicked: {
                             app.clearResults()
@@ -1672,6 +1679,7 @@ ApplicationWindow {
 
                         AppButton {
                             text: "Browse"
+                            accentColor: colors.action
                             surfaceColor: colors.surfaceAlt
                             borderColor: colors.border
                             textColor: colors.text
@@ -2051,6 +2059,7 @@ ApplicationWindow {
                         delegate: AppButton {
                             text: modelData.label
                             iconName: "external-link"
+                            accentColor: colors.action
                             surfaceColor: colors.surfaceAlt
                             borderColor: colors.border
                             textColor: colors.text
