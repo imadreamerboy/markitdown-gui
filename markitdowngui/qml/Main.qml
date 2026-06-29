@@ -56,6 +56,11 @@ ApplicationWindow {
             saveSeparateDialog.open()
     }
 
+    function showLegacyOcrSettings() {
+        return app.ocrEnabled
+            && (app.ocrProvider !== "glmocr" || app.ocrFallbackEnabled)
+    }
+
     palette.window: colors.window
     palette.windowText: colors.text
     palette.base: colors.input
@@ -141,6 +146,13 @@ ApplicationWindow {
         sequence: "Ctrl+S"
         context: Qt.ApplicationShortcut
         onActivated: root.requestSave()
+    }
+
+    Shortcut {
+        sequence: "Ctrl+C"
+        context: Qt.ApplicationShortcut
+        enabled: root.pageIndex === 0 && app.hasResults
+        onActivated: app.copySelectedMarkdown()
     }
 
     Shortcut {
@@ -1403,8 +1415,9 @@ ApplicationWindow {
                 }
 
                 FieldGroup {
-                    label: "Azure endpoint"
-                    visible: app.ocrEnabled && app.ocrProvider !== "glmocr"
+                    label: app.ocrProvider === "glmocr" ? "Fallback Azure endpoint" : "Azure endpoint"
+                    detail: app.ocrProvider === "glmocr" ? "Optional endpoint used only if GLM-OCR falls back." : ""
+                    visible: root.showLegacyOcrSettings()
                     Layout.fillWidth: true
 
                     AppTextField {
@@ -1421,8 +1434,9 @@ ApplicationWindow {
                 }
 
                 FieldGroup {
-                    label: "Tesseract languages"
-                    visible: app.ocrEnabled && app.ocrProvider !== "glmocr"
+                    label: app.ocrProvider === "glmocr" ? "Fallback Tesseract languages" : "Tesseract languages"
+                    detail: app.ocrProvider === "glmocr" ? "Optional local OCR languages used only if fallback runs." : ""
+                    visible: root.showLegacyOcrSettings()
                     Layout.fillWidth: true
 
                     AppTextField {
@@ -1439,8 +1453,9 @@ ApplicationWindow {
                 }
 
                 FieldGroup {
-                    label: "Tesseract executable"
-                    visible: app.ocrEnabled && app.ocrProvider !== "glmocr"
+                    label: app.ocrProvider === "glmocr" ? "Fallback Tesseract executable" : "Tesseract executable"
+                    detail: app.ocrProvider === "glmocr" ? "Optional local executable used only if fallback runs." : ""
+                    visible: root.showLegacyOcrSettings()
                     Layout.fillWidth: true
 
                     AppTextField {
