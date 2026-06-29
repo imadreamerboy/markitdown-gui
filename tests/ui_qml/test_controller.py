@@ -387,6 +387,46 @@ def test_controller_reports_packaged_update_install_error(controller, monkeypatc
     assert messages == [("error", "Download failed")]
 
 
+def test_controller_loads_last_packaged_update_result(controller, monkeypatch):
+    messages: list[tuple[str, str]] = []
+    cleared: list[None] = []
+    result = (
+        "Status: failed\n"
+        "Message: Update failed and rollback was attempted.\n"
+        "Backup: C:/Apps/MarkItDown.backup"
+    )
+    controller.toastRequested.connect(lambda kind, message: messages.append((kind, message)))
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.read_packaged_update_result",
+        lambda: result,
+    )
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.clear_packaged_update_result",
+        lambda: cleared.append(None),
+    )
+
+    controller.checkLastPackagedUpdateResult()
+
+    assert controller.hasLastPackagedUpdateResult is True
+    assert controller.lastPackagedUpdateResult == result
+    assert cleared == [None]
+    assert messages == [
+        (
+            "error",
+            "Previous update failed and rollback details are in Diagnostics.",
+        )
+    ]
+
+
+def test_controller_clears_last_packaged_update_result(controller):
+    controller._last_packaged_update_result = "Status: success"
+
+    controller.clearLastPackagedUpdateResult()
+
+    assert controller.hasLastPackagedUpdateResult is False
+    assert controller.lastPackagedUpdateResult == ""
+
+
 def test_controller_manual_update_check_reports_no_update(controller, monkeypatch):
     messages: list[tuple[str, str]] = []
     controller.toastRequested.connect(lambda kind, message: messages.append((kind, message)))

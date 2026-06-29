@@ -37,6 +37,7 @@ def main() -> int:
     if not engine.rootObjects():
         return 1
 
+    QTimer.singleShot(500, controller.checkLastPackagedUpdateResult)
     QTimer.singleShot(2000, controller.startAutomaticUpdateCheck)
     app.aboutToQuit.connect(controller.shutdown)
     return app.exec()

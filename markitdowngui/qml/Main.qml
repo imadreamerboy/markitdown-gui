@@ -2523,6 +2523,43 @@ ApplicationWindow {
                         onClicked: app.exportSupportBundle()
                     }
                 }
+
+                ColumnLayout {
+                    visible: app.hasLastPackagedUpdateResult
+                    spacing: 8
+                    Layout.fillWidth: true
+
+                    RowLayout {
+                        spacing: 10
+                        Layout.fillWidth: true
+
+                        Label {
+                            text: "Last packaged update"
+                            color: colors.text
+                            font.pixelSize: 12
+                            font.weight: Font.DemiBold
+                            Layout.fillWidth: true
+                        }
+
+                        AppButton {
+                            text: "Clear"
+                            iconName: "x"
+                            accentColor: colors.action
+                            surfaceColor: colors.surfaceAlt
+                            borderColor: colors.border
+                            textColor: colors.text
+                            onClicked: app.clearLastPackagedUpdateResult()
+                        }
+                    }
+
+                    Label {
+                        text: app.lastPackagedUpdateResult
+                        color: colors.muted
+                        font.pixelSize: 12
+                        wrapMode: Text.WordWrap
+                        Layout.fillWidth: true
+                    }
+                }
             }
 
             UtilitySectionPanel {

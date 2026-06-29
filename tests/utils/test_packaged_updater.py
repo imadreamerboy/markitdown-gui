@@ -80,6 +80,19 @@ def test_extract_zip_to_staging_rejects_path_traversal(tmp_path):
         )
 
 
+def test_packaged_update_result_read_and_clear(tmp_path):
+    result_path = tmp_path / "packaged-update-result.txt"
+    result_path.write_text("Status: failed\nBackup: C:/App.backup\n", encoding="utf-8")
+
+    assert packaged_updater.read_packaged_update_result(result_path) == (
+        "Status: failed\nBackup: C:/App.backup"
+    )
+
+    packaged_updater.clear_packaged_update_result(result_path)
+
+    assert packaged_updater.read_packaged_update_result(result_path) == ""
+
+
 def test_install_packaged_update_prepares_helper_without_replacing_app(
     monkeypatch,
     tmp_path,
@@ -93,9 +106,15 @@ def test_install_packaged_update_prepares_helper_without_replacing_app(
         zf.writestr("MarkItDown/MarkItDown.exe", "new")
 
     digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+    result_path = tmp_path / "update-result.txt"
     launched: list[Path] = []
     monkeypatch.setattr(packaged_updater.sys, "platform", "win32")
     monkeypatch.setattr(packaged_updater.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(
+        packaged_updater,
+        "packaged_update_result_path",
+        lambda: result_path,
+    )
     monkeypatch.setattr(
         packaged_updater,
         "download_asset",
@@ -122,6 +141,26 @@ def test_install_packaged_update_prepares_helper_without_replacing_app(
     script = helper.read_text(encoding="utf-8")
     assert str(app_dir) in script
     assert "MarkItDown.exe" in script
+    assert str(result_path) in script
+    assert "Write-UpdateResult" in script
+    assert "Backup: $backupDir" in script
+
+
+def test_build_posix_replace_helper_writes_update_result(monkeypatch, tmp_path):
+    monkeypatch.setattr(packaged_updater.sys, "platform", "linux")
+
+    script = packaged_updater.build_replace_helper_script(
+        current_dir=tmp_path / "MarkItDown",
+        replacement_dir=tmp_path / "replacement",
+        executable_name="MarkItDown",
+        process_id=1234,
+        result_path=tmp_path / "update-result.txt",
+    )
+
+    assert "write_update_result" in script
+    assert "Status: %s\\n" in script
+    assert str(tmp_path / "update-result.txt") in script
+    assert "Update failed and rollback was attempted." in script
 
 
 def test_install_packaged_update_reports_progress(monkeypatch, tmp_path):

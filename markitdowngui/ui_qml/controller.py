@@ -35,7 +35,9 @@ from markitdowngui.utils.logger import AppLogger, build_diagnostic_report
 from markitdowngui.utils.packaged_updater import (
     PackagedUpdateError,
     build_packaged_update_plan,
+    clear_packaged_update_result,
     install_packaged_update,
+    read_packaged_update_result,
 )
 from markitdowngui.utils.source_updater import (
     build_source_update_command,
@@ -146,6 +148,7 @@ class AppController(QObject):
         self._update_install_running = False
         self._update_install_progress = 0
         self._update_install_status = ""
+        self._last_packaged_update_result = ""
         self._source_update_runner: SourceUpdateInstaller | None = None
         self._source_update_running = False
         self._source_update_progress = 0
@@ -409,6 +412,14 @@ class AppController(QObject):
     @Property(str, notify=updateInstallChanged)
     def updateInstallStatus(self) -> str:
         return self._update_install_status
+
+    @Property(bool, notify=updateInstallChanged)
+    def hasLastPackagedUpdateResult(self) -> bool:
+        return bool(self._last_packaged_update_result)
+
+    @Property(str, notify=updateInstallChanged)
+    def lastPackagedUpdateResult(self) -> str:
+        return self._last_packaged_update_result
 
     @Property(str, constant=True)
     def sourceUpdateCommand(self) -> str:
@@ -789,6 +800,31 @@ class AppController(QObject):
     @Slot()
     def checkForUpdates(self) -> None:
         self._start_update_check(manual=True)
+
+    @Slot()
+    def checkLastPackagedUpdateResult(self) -> None:
+        result = read_packaged_update_result()
+        if not result:
+            return
+
+        self._last_packaged_update_result = result
+        clear_packaged_update_result()
+        self.updateInstallChanged.emit()
+
+        if "Status: failed" in result:
+            self.toastRequested.emit(
+                "error",
+                "Previous update failed and rollback details are in Diagnostics.",
+            )
+        else:
+            self.toastRequested.emit("success", "Previous update completed.")
+
+    @Slot()
+    def clearLastPackagedUpdateResult(self) -> None:
+        if not self._last_packaged_update_result:
+            return
+        self._last_packaged_update_result = ""
+        self.updateInstallChanged.emit()
 
     @Slot()
     def dismissUpdateNotification(self) -> None:

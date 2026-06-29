@@ -28,6 +28,8 @@ class PackagedUpdateError(RuntimeError):
 
 
 ProgressCallback = Callable[[str, int], None]
+PACKAGED_UPDATE_RESULT_FILE = "packaged-update-result.txt"
+MAX_UPDATE_RESULT_CHARS = 4000
 
 
 def _emit_progress(callback: ProgressCallback | None, status: str, progress: int) -> None:
@@ -41,6 +43,30 @@ def is_packaged_app() -> bool:
 
 def current_app_dir(executable: str | None = None) -> Path:
     return Path(executable or sys.executable).resolve().parent
+
+
+def packaged_update_result_path(log_dir: Path | str | None = None) -> Path:
+    root = Path(log_dir) if log_dir is not None else Path.home() / ".markitdown"
+    return root / PACKAGED_UPDATE_RESULT_FILE
+
+
+def read_packaged_update_result(path: Path | str | None = None) -> str:
+    result_path = Path(path) if path is not None else packaged_update_result_path()
+    try:
+        text = result_path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+    return text[:MAX_UPDATE_RESULT_CHARS]
+
+
+def clear_packaged_update_result(path: Path | str | None = None) -> None:
+    result_path = Path(path) if path is not None else packaged_update_result_path()
+    try:
+        result_path.unlink()
+    except FileNotFoundError:
+        return
+    except OSError:
+        return
 
 
 def build_packaged_update_plan(
@@ -108,6 +134,7 @@ def install_packaged_update(
     target_dir = app_dir or current_app_dir(executable)
     target_executable = Path(executable or sys.executable).resolve()
     helper_path = runtime_dir / _helper_script_name()
+    result_path = packaged_update_result_path()
 
     try:
         _emit_progress(progress_callback, "Downloading update", 5)
@@ -128,6 +155,7 @@ def install_packaged_update(
             replacement_dir=replacement_root,
             executable_name=target_executable.name,
             process_id=process_id or os.getpid(),
+            result_path=result_path,
         )
         helper_path.write_text(script, encoding="utf-8")
         if sys.platform.startswith("linux") or sys.platform == "darwin":
@@ -221,10 +249,12 @@ def build_replace_helper_script(
     replacement_dir: Path,
     executable_name: str,
     process_id: int,
+    result_path: Path | None = None,
 ) -> str:
     backup_dir = current_dir.with_name(
         f"{current_dir.name}.backup-{int(time.time())}"
     )
+    result_path = result_path or packaged_update_result_path()
     if sys.platform.startswith("win32") or sys.platform == "cygwin":
         return _build_windows_helper(
             current_dir=current_dir,
@@ -232,6 +262,7 @@ def build_replace_helper_script(
             backup_dir=backup_dir,
             executable_name=executable_name,
             process_id=process_id,
+            result_path=result_path,
         )
     return _build_posix_helper(
         current_dir=current_dir,
@@ -239,6 +270,7 @@ def build_replace_helper_script(
         backup_dir=backup_dir,
         executable_name=executable_name,
         process_id=process_id,
+        result_path=result_path,
     )
 
 
@@ -281,6 +313,7 @@ def _build_windows_helper(
     backup_dir: Path,
     executable_name: str,
     process_id: int,
+    result_path: Path,
 ) -> str:
     return f"""$ErrorActionPreference = "Stop"
 $pidToWait = {process_id}
@@ -288,18 +321,38 @@ $currentDir = '{_ps(current_dir)}'
 $replacementDir = '{_ps(replacement_dir)}'
 $backupDir = '{_ps(backup_dir)}'
 $executableName = '{_ps(executable_name)}'
+$resultPath = '{_ps(result_path)}'
+
+function Write-UpdateResult([string]$status, [string]$message) {{
+    try {{
+        $resultDir = Split-Path -Parent $resultPath
+        if ($resultDir) {{
+            New-Item -ItemType Directory -Force -Path $resultDir | Out-Null
+        }}
+        @"
+Status: $status
+Message: $message
+Current app: $currentDir
+Backup: $backupDir
+Replacement: $replacementDir
+Executable: $executableName
+Time: $(Get-Date -Format o)
+"@ | Set-Content -LiteralPath $resultPath -Encoding UTF8
+    }} catch {{}}
+}}
 
 try {{
     Wait-Process -Id $pidToWait -Timeout 90 -ErrorAction SilentlyContinue
 }} catch {{}}
 
-if (Test-Path -LiteralPath $backupDir) {{
-    Remove-Item -LiteralPath $backupDir -Recurse -Force
-}}
-
-Move-Item -LiteralPath $currentDir -Destination $backupDir -Force
 try {{
+    if (Test-Path -LiteralPath $backupDir) {{
+        Remove-Item -LiteralPath $backupDir -Recurse -Force
+    }}
+
+    Move-Item -LiteralPath $currentDir -Destination $backupDir -Force
     Move-Item -LiteralPath $replacementDir -Destination $currentDir -Force
+    Write-UpdateResult "success" "Update installed and app restarted."
     Start-Process -FilePath (Join-Path $currentDir $executableName)
     Start-Sleep -Seconds 2
     Remove-Item -LiteralPath $backupDir -Recurse -Force -ErrorAction SilentlyContinue
@@ -310,6 +363,7 @@ try {{
     if (Test-Path -LiteralPath $backupDir) {{
         Move-Item -LiteralPath $backupDir -Destination $currentDir -Force
     }}
+    Write-UpdateResult "failed" "Update failed and rollback was attempted: $($_.Exception.Message)"
     throw
 }}
 """
@@ -322,6 +376,7 @@ def _build_posix_helper(
     backup_dir: Path,
     executable_name: str,
     process_id: int,
+    result_path: Path,
 ) -> str:
     executable_path = current_dir / executable_name
     return f"""#!/bin/sh
@@ -331,21 +386,44 @@ current_dir={_sh(current_dir)}
 replacement_dir={_sh(replacement_dir)}
 backup_dir={_sh(backup_dir)}
 executable_path={_sh(executable_path)}
+result_path={_sh(result_path)}
+
+write_update_result() {{
+    status=$1
+    message=$2
+    result_dir=$(dirname "$result_path")
+    mkdir -p "$result_dir" 2>/dev/null || true
+    {{
+        printf 'Status: %s\\n' "$status"
+        printf 'Message: %s\\n' "$message"
+        printf 'Current app: %s\\n' "$current_dir"
+        printf 'Backup: %s\\n' "$backup_dir"
+        printf 'Replacement: %s\\n' "$replacement_dir"
+        printf 'Executable: %s\\n' "$executable_path"
+        printf 'Time: %s\\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+    }} > "$result_path" 2>/dev/null || true
+}}
 
 while kill -0 "$pid_to_wait" 2>/dev/null; do
     sleep 1
 done
 
 rm -rf "$backup_dir"
-mv "$current_dir" "$backup_dir"
+if ! mv "$current_dir" "$backup_dir"; then
+    write_update_result "failed" "Could not move the current app to the backup path."
+    exit 1
+fi
+
 if mv "$replacement_dir" "$current_dir"; then
     chmod +x "$executable_path" 2>/dev/null || true
+    write_update_result "success" "Update installed and app restarted."
     nohup "$executable_path" >/dev/null 2>&1 &
     sleep 2
     rm -rf "$backup_dir"
 else
     rm -rf "$current_dir"
     mv "$backup_dir" "$current_dir"
+    write_update_result "failed" "Update failed and rollback was attempted."
     exit 1
 fi
 """
