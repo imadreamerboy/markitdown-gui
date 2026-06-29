@@ -11,24 +11,25 @@ Rectangle {
     property color borderColor: "#D8E1E8"
     property color textColor: "#18212B"
     property color mutedTextColor: "#647283"
+    property real borderOpacity: 1.0
 
-    implicitWidth: Math.max(96, content.implicitWidth + 20)
-    implicitHeight: 48
+    implicitWidth: Math.max(92, content.implicitWidth + 18)
+    implicitHeight: 46
     radius: 8
     color: backgroundColor
-    border.color: borderColor
+    border.color: Qt.rgba(borderColor.r, borderColor.g, borderColor.b, borderOpacity)
     border.width: 1
 
     ColumnLayout {
         id: content
         anchors.fill: parent
-        anchors.margins: 10
-        spacing: 2
+        anchors.margins: 9
+        spacing: 1
 
         Label {
             text: root.label
             color: root.mutedTextColor
-            font.pixelSize: 10
+            font.pixelSize: 9
             font.weight: Font.Medium
             elide: Text.ElideRight
             Layout.fillWidth: true

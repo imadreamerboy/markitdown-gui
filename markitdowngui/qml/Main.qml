@@ -35,12 +35,12 @@ ApplicationWindow {
         subtle: dark ? Qt.color("#AEB8C8") : Qt.color("#839496"),
         accent: dark ? Qt.color("#88C0D0") : Qt.color("#2AA198"),
         accentAlt: dark ? Qt.color("#8FBCBB") : Qt.color("#268BD2"),
-        action: dark ? Qt.color("#88C0D0") : Qt.color("#657400"),
+        action: dark ? Qt.color("#88C0D0") : Qt.color("#687700"),
         actionSoft: dark ? Qt.color("#415867") : Qt.color("#E8EBC8"),
         onAccent: dark ? Qt.color("#2E3440") : Qt.color("#073642"),
         onAction: dark ? Qt.color("#2E3440") : Qt.color("#FDF6E3"),
         danger: dark ? Qt.color("#BF616A") : Qt.color("#DC322F"),
-        success: dark ? Qt.color("#A3BE8C") : Qt.color("#859900"),
+        success: dark ? Qt.color("#A3BE8C") : Qt.color("#397D54"),
         warning: dark ? Qt.color("#EBCB8B") : Qt.color("#B58900")
     })
 
@@ -367,6 +367,7 @@ ApplicationWindow {
             value: app.queueCount.toString()
             backgroundColor: colors.surfaceAlt
             borderColor: colors.border
+            borderOpacity: dark ? 0.70 : 0.56
             textColor: colors.text
             mutedTextColor: colors.muted
         }
@@ -376,6 +377,7 @@ ApplicationWindow {
             value: app.progress + "%"
             backgroundColor: colors.surfaceAlt
             borderColor: colors.border
+            borderOpacity: dark ? 0.70 : 0.56
             textColor: colors.text
             mutedTextColor: colors.muted
         }
@@ -385,6 +387,7 @@ ApplicationWindow {
             value: app.saveCombined ? "Combined" : "Separate"
             backgroundColor: colors.surfaceAlt
             borderColor: colors.border
+            borderOpacity: dark ? 0.70 : 0.56
             textColor: colors.text
             mutedTextColor: colors.muted
         }

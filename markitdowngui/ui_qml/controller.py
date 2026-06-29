@@ -790,7 +790,7 @@ class AppController(QObject):
                 "border-radius:6px;color:#d8dee9;} ul,ol{margin:0 0 14px 22px;} hr{border:0;border-top:1px solid #4c566a;}"
             )
         return (
-            "body{background:#fff9e8;color:#073642;font-family:Segoe UI,Arial,sans-serif;"
+            "body{background:#fffef7;color:#073642;font-family:Segoe UI,Arial,sans-serif;"
             "font-size:14px;line-height:1.68;margin:0;} "
             "h1{font-size:18px;line-height:1.28;margin:0 0 14px;font-weight:700;color:#073642;} "
             "h2{font-size:15px;line-height:1.36;margin:18px 0 8px;font-weight:700;color:#073642;} "
