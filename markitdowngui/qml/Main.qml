@@ -481,7 +481,7 @@ ApplicationWindow {
 
                 AppButton {
                     text: "Add webpage"
-                    primary: true
+                    primary: !app.hasResults
                     iconName: "link"
                     accentColor: colors.action
                     primaryTextColor: colors.onAction
