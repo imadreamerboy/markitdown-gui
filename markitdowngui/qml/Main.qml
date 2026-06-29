@@ -656,28 +656,55 @@ ApplicationWindow {
 
                 SectionPanel {
                     title: "Markdown review"
-                    subtitle: "Converted output opens here before export."
+                    subtitle: root.height < 700 ? "" : "Converted output opens here before export."
                     surfaceColor: colors.surface
                     borderColor: colors.border
                     textColor: colors.text
                     mutedTextColor: colors.muted
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 178
+                    Layout.preferredHeight: root.height < 700 ? 112 : 178
 
-                    TextArea {
-                        text: "# Preview after conversion\n\nSelect a converted file to inspect rendered Markdown or raw text, then save a combined file or separate outputs."
-                        readOnly: true
-                        wrapMode: TextEdit.Wrap
-                        selectByMouse: false
-                        color: colors.muted
-                        font.pixelSize: 12
-                        padding: 12
+                    Rectangle {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
-                        background: Rectangle {
-                            color: colors.input
-                            radius: 8
-                            border.color: colors.border
+                        radius: 8
+                        color: colors.input
+                        border.color: colors.border
+
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.margins: 12
+                            spacing: 10
+
+                            Icon {
+                                name: "panel-right"
+                                size: 18
+                                color: colors.muted
+                                Layout.alignment: Qt.AlignTop
+                            }
+
+                            ColumnLayout {
+                                spacing: 3
+                                Layout.fillWidth: true
+
+                                Label {
+                                    text: "Preview after conversion"
+                                    color: colors.text
+                                    font.pixelSize: 12
+                                    font.weight: Font.Medium
+                                    Layout.fillWidth: true
+                                }
+
+                                Label {
+                                    text: root.height < 700
+                                        ? "Converted Markdown opens here."
+                                        : "Inspect rendered Markdown or source text, then export combined or separate files."
+                                    color: colors.muted
+                                    font.pixelSize: 12
+                                    wrapMode: Text.WordWrap
+                                    Layout.fillWidth: true
+                                }
+                            }
                         }
                     }
                 }
