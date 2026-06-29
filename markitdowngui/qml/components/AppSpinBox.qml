@@ -46,12 +46,11 @@ SpinBox {
             anchors.left: parent.left
         }
 
-        Label {
+        Icon {
             anchors.centerIn: parent
-            text: "+"
+            name: "plus"
+            size: 15
             color: control.textColor
-            font.pixelSize: 22
-            font.weight: Font.Light
         }
     }
 
@@ -70,12 +69,11 @@ SpinBox {
             anchors.right: parent.right
         }
 
-        Label {
+        Icon {
             anchors.centerIn: parent
-            text: "-"
+            name: "minus"
+            size: 15
             color: control.textColor
-            font.pixelSize: 22
-            font.weight: Font.Light
         }
     }
 
