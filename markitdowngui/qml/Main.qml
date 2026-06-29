@@ -1594,6 +1594,7 @@ ApplicationWindow {
 
                 FieldGroup {
                     label: "Ollama host"
+                    visible: app.glmocrMode === "ollama"
                     Layout.fillWidth: true
 
                     AppTextField {
@@ -1610,6 +1611,7 @@ ApplicationWindow {
                 }
 
                 RowLayout {
+                    visible: app.glmocrMode === "ollama"
                     Layout.fillWidth: true
                     spacing: 10
 
@@ -1622,6 +1624,7 @@ ApplicationWindow {
                             from: 1
                             to: 65535
                             value: app.glmocrOllamaPort
+                            textFromValue: function(value, locale) { return value.toString() }
                             onValueModified: app.setGlmocrOllamaPort(value)
                         }
                     }
@@ -1646,6 +1649,7 @@ ApplicationWindow {
 
                 FieldGroup {
                     label: "SDK server endpoint"
+                    visible: app.glmocrMode === "sdk_server"
                     Layout.fillWidth: true
 
                     AppTextField {
