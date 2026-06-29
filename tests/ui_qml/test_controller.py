@@ -409,6 +409,8 @@ def test_controller_loads_last_packaged_update_result(controller, monkeypatch):
 
     assert controller.hasLastPackagedUpdateResult is True
     assert controller.lastPackagedUpdateResult == result
+    assert controller.hasLastPackagedUpdateBackupPath is True
+    assert controller.lastPackagedUpdateBackupPath == "C:/Apps/MarkItDown.backup"
     assert cleared == [None]
     assert messages == [
         (
@@ -425,6 +427,41 @@ def test_controller_clears_last_packaged_update_result(controller):
 
     assert controller.hasLastPackagedUpdateResult is False
     assert controller.lastPackagedUpdateResult == ""
+    assert controller.hasLastPackagedUpdateBackupPath is False
+    assert controller.lastPackagedUpdateBackupPath == ""
+
+
+def test_controller_opens_last_packaged_update_backup(controller, tmp_path, monkeypatch):
+    opened: list[str] = []
+    backup_dir = tmp_path / "MarkItDown.backup"
+    backup_dir.mkdir()
+    controller._last_packaged_update_result = (
+        "Status: failed\n"
+        "Message: Update failed and rollback was attempted.\n"
+        f"Backup: {backup_dir}"
+    )
+    monkeypatch.setattr(controller, "openExternalUrl", lambda url: opened.append(url))
+
+    controller.openLastPackagedUpdateBackup()
+
+    assert opened and opened[0].startswith("file:")
+
+
+def test_controller_reports_missing_last_packaged_update_backup(
+    controller, tmp_path
+):
+    messages: list[tuple[str, str]] = []
+    controller.toastRequested.connect(
+        lambda kind, message: messages.append((kind, message))
+    )
+    controller._last_packaged_update_result = (
+        "Status: failed\n"
+        f"Backup: {tmp_path / 'missing-backup'}"
+    )
+
+    controller.openLastPackagedUpdateBackup()
+
+    assert messages == [("error", "Backup folder no longer exists.")]
 
 
 def test_controller_manual_update_check_reports_no_update(controller, monkeypatch):

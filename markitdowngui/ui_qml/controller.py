@@ -425,6 +425,14 @@ class AppController(QObject):
     def lastPackagedUpdateResult(self) -> str:
         return self._last_packaged_update_result
 
+    @Property(bool, notify=updateInstallChanged)
+    def hasLastPackagedUpdateBackupPath(self) -> bool:
+        return bool(self.lastPackagedUpdateBackupPath)
+
+    @Property(str, notify=updateInstallChanged)
+    def lastPackagedUpdateBackupPath(self) -> str:
+        return self._packaged_update_result_field("Backup")
+
     @Property("QVariant", notify=diagnosticsChanged)
     def diagnosticReadinessItems(self) -> list[dict[str, str]]:
         return self._build_diagnostic_readiness_items()
@@ -858,6 +866,18 @@ class AppController(QObject):
         self.diagnosticsChanged.emit()
 
     @Slot()
+    def openLastPackagedUpdateBackup(self) -> None:
+        backup_path = self.lastPackagedUpdateBackupPath
+        if not backup_path:
+            self.toastRequested.emit("error", "No update backup path was recorded.")
+            return
+        backup_dir = Path(backup_path).expanduser()
+        if not backup_dir.exists():
+            self.toastRequested.emit("error", "Backup folder no longer exists.")
+            return
+        self.openExternalUrl(QUrl.fromLocalFile(str(backup_dir)).toString())
+
+    @Slot()
     def dismissUpdateNotification(self) -> None:
         if not self._available_update_version:
             return
@@ -1238,6 +1258,13 @@ class AppController(QObject):
         if self._last_packaged_update_result:
             lines.extend(["", "Last packaged update", self._last_packaged_update_result])
         return "\n".join(lines)
+
+    def _packaged_update_result_field(self, name: str) -> str:
+        prefix = f"{name}:"
+        for line in self._last_packaged_update_result.splitlines():
+            if line.startswith(prefix):
+                return line[len(prefix) :].strip()
+        return ""
 
     def _build_ocr_validation_options(self) -> ConversionOptions:
         return ConversionOptions(

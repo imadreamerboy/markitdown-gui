@@ -2603,6 +2603,17 @@ ApplicationWindow {
                         }
 
                         AppButton {
+                            text: "Open backup folder"
+                            iconName: "external-link"
+                            accentColor: colors.action
+                            surfaceColor: colors.surfaceAlt
+                            borderColor: colors.border
+                            textColor: colors.text
+                            visible: app.hasLastPackagedUpdateBackupPath
+                            onClicked: app.openLastPackagedUpdateBackup()
+                        }
+
+                        AppButton {
                             text: "Clear"
                             iconName: "x"
                             accentColor: colors.action
