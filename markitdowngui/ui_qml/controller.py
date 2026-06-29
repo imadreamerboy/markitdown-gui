@@ -37,6 +37,7 @@ from markitdowngui.utils.packaged_updater import (
     build_packaged_update_plan,
     clear_packaged_update_result,
     install_packaged_update,
+    is_packaged_app,
     read_packaged_update_result,
 )
 from markitdowngui.utils.source_updater import (
@@ -120,6 +121,7 @@ class AppController(QObject):
     updateNotificationChanged = Signal()
     updateInstallChanged = Signal()
     sourceUpdateChanged = Signal()
+    diagnosticsChanged = Signal()
     toastRequested = Signal(str, str)
 
     def __init__(self) -> None:
@@ -421,6 +423,10 @@ class AppController(QObject):
     def lastPackagedUpdateResult(self) -> str:
         return self._last_packaged_update_result
 
+    @Property("QVariant", notify=diagnosticsChanged)
+    def diagnosticReadinessItems(self) -> list[dict[str, str]]:
+        return self._build_diagnostic_readiness_items()
+
     @Property(str, constant=True)
     def sourceUpdateCommand(self) -> str:
         return build_source_update_command()
@@ -701,6 +707,7 @@ class AppController(QObject):
     def setOcrEnabled(self, enabled: bool) -> None:
         self.settings.set_ocr_enabled(enabled)
         self.settingsChanged.emit()
+        self.diagnosticsChanged.emit()
 
     @Slot(bool)
     def setPreservePdfImages(self, enabled: bool) -> None:
@@ -716,80 +723,95 @@ class AppController(QObject):
     def setOcrProvider(self, provider: str) -> None:
         self.settings.set_ocr_provider(provider)
         self.settingsChanged.emit()
+        self.diagnosticsChanged.emit()
 
     @Slot(bool)
     def setOcrFallbackEnabled(self, enabled: bool) -> None:
         self.settings.set_ocr_fallback_enabled(enabled)
         self.settingsChanged.emit()
+        self.diagnosticsChanged.emit()
 
     @Slot(str)
     def setOcrFallbackProvider(self, provider: str) -> None:
         self.settings.set_ocr_fallback_provider(provider)
         self.settingsChanged.emit()
+        self.diagnosticsChanged.emit()
 
     @Slot(str)
     def setGlmocrMode(self, mode: str) -> None:
         self.settings.set_glmocr_mode(mode)
         self.settingsChanged.emit()
+        self.diagnosticsChanged.emit()
 
     @Slot(str)
     def setGlmocrOllamaHost(self, value: str) -> None:
         self.settings.set_glmocr_ollama_host(value)
         self.settingsChanged.emit()
+        self.diagnosticsChanged.emit()
 
     @Slot(int)
     def setGlmocrOllamaPort(self, value: int) -> None:
         self.settings.set_glmocr_ollama_port(value)
         self.settingsChanged.emit()
+        self.diagnosticsChanged.emit()
 
     @Slot(str)
     def setGlmocrOllamaModel(self, value: str) -> None:
         self.settings.set_glmocr_ollama_model(value)
         self.settingsChanged.emit()
+        self.diagnosticsChanged.emit()
 
     @Slot(str)
     def setGlmocrSdkServerUrl(self, value: str) -> None:
         self.settings.set_glmocr_sdk_server_url(value)
         self.settingsChanged.emit()
+        self.diagnosticsChanged.emit()
 
     @Slot(str)
     def setHttpOcrEndpoint(self, value: str) -> None:
         self.settings.set_http_ocr_endpoint(value)
         self.settingsChanged.emit()
+        self.diagnosticsChanged.emit()
 
     @Slot(str)
     def setHttpOcrModel(self, value: str) -> None:
         self.settings.set_http_ocr_model(value)
         self.settingsChanged.emit()
+        self.diagnosticsChanged.emit()
 
     @Slot(str)
     def setHttpOcrApiKeyEnv(self, value: str) -> None:
         self.settings.set_http_ocr_api_key_env(value)
         self.settingsChanged.emit()
+        self.diagnosticsChanged.emit()
 
     @Slot(int)
     def setHttpOcrTimeoutSeconds(self, value: int) -> None:
         self.settings.set_http_ocr_timeout_seconds(value)
         self.settingsChanged.emit()
+        self.diagnosticsChanged.emit()
 
     @Slot(str)
     def setDocintelEndpoint(self, value: str) -> None:
         self.settings.set_docintel_endpoint(value)
         self.settingsChanged.emit()
+        self.diagnosticsChanged.emit()
 
     @Slot(str)
     def setOcrLanguages(self, value: str) -> None:
         self.settings.set_ocr_languages(value)
         self.settingsChanged.emit()
+        self.diagnosticsChanged.emit()
 
     @Slot(str)
     def setTesseractPath(self, value: str) -> None:
         self.settings.set_tesseract_path(value)
         self.settingsChanged.emit()
+        self.diagnosticsChanged.emit()
 
     @Slot()
     def validateOcrSetup(self) -> None:
-        result = validate_ocr_setup(self._build_conversion_options())
+        result = validate_ocr_setup(self._build_ocr_validation_options())
         self.toastRequested.emit("success" if result.ok else "error", result.message)
 
     @Slot()
@@ -810,6 +832,7 @@ class AppController(QObject):
         self._last_packaged_update_result = result
         clear_packaged_update_result()
         self.updateInstallChanged.emit()
+        self.diagnosticsChanged.emit()
 
         if "Status: failed" in result:
             self.toastRequested.emit(
@@ -825,6 +848,7 @@ class AppController(QObject):
             return
         self._last_packaged_update_result = ""
         self.updateInstallChanged.emit()
+        self.diagnosticsChanged.emit()
 
     @Slot()
     def dismissUpdateNotification(self) -> None:
@@ -836,11 +860,13 @@ class AppController(QObject):
         self._available_release_assets = []
         self._preferred_release_asset = {}
         self.updateNotificationChanged.emit()
+        self.diagnosticsChanged.emit()
 
     @Slot()
     def disableUpdateNotifications(self) -> None:
         self.settings.set_update_notifications_enabled(False)
         self.settingsChanged.emit()
+        self.diagnosticsChanged.emit()
         self.dismissUpdateNotification()
         self.toastRequested.emit("success", "Update notifications disabled.")
 
@@ -886,6 +912,7 @@ class AppController(QObject):
         self.updateInstallChanged.emit()
         self.updateNotificationChanged.emit()
         self.sourceUpdateChanged.emit()
+        self.diagnosticsChanged.emit()
 
         self._update_installer = self._create_update_installer(
             dict(self._preferred_release_asset)
@@ -936,6 +963,7 @@ class AppController(QObject):
         self._source_update_progress = 0
         self._source_update_status = "Preparing source update"
         self.sourceUpdateChanged.emit()
+        self.diagnosticsChanged.emit()
 
         self._source_update_runner = self._create_source_update_runner()
         self._source_update_runner.progressChanged.connect(self._on_source_update_progress)
@@ -1037,6 +1065,7 @@ class AppController(QObject):
         self._update_install_status = status
         self._update_install_progress = max(0, min(100, int(progress)))
         self.updateInstallChanged.emit()
+        self.diagnosticsChanged.emit()
 
     def _on_update_install_error(self, message: str) -> None:
         self._update_install_running = False
@@ -1045,6 +1074,7 @@ class AppController(QObject):
         self.updateInstallChanged.emit()
         self.updateNotificationChanged.emit()
         self.sourceUpdateChanged.emit()
+        self.diagnosticsChanged.emit()
         self.toastRequested.emit("error", message)
 
     def _on_update_install_started(self) -> None:
@@ -1054,6 +1084,7 @@ class AppController(QObject):
         self.updateInstallChanged.emit()
         self.updateNotificationChanged.emit()
         self.sourceUpdateChanged.emit()
+        self.diagnosticsChanged.emit()
         self.toastRequested.emit("success", "Update installer started. Closing app.")
         self.dismissUpdateNotification()
         QGuiApplication.quit()
@@ -1064,18 +1095,133 @@ class AppController(QObject):
             self.updateInstallChanged.emit()
             self.updateNotificationChanged.emit()
             self.sourceUpdateChanged.emit()
+            self.diagnosticsChanged.emit()
         self._update_installer = None
+
+    def _build_diagnostic_readiness_items(self) -> list[dict[str, str]]:
+        ocr_result = validate_ocr_setup(self._build_ocr_validation_options())
+        if not self.settings.get_ocr_enabled():
+            ocr_status = "Off"
+            ocr_severity = "muted"
+        elif ocr_result.ok:
+            ocr_status = "Ready"
+            ocr_severity = "ok"
+        else:
+            ocr_status = "Needs setup"
+            ocr_severity = "warn"
+
+        if self._update_install_running:
+            packaged_status = "Installing"
+            packaged_detail = self._update_install_status or "Preparing update."
+            packaged_severity = "warn"
+        elif self._last_packaged_update_result:
+            packaged_status = "Last result"
+            packaged_detail = self._last_packaged_update_result.splitlines()[0]
+            packaged_severity = (
+                "warn"
+                if "Status: failed" in self._last_packaged_update_result
+                else "ok"
+            )
+        elif is_packaged_app():
+            packaged_status = "Ready"
+            packaged_detail = "Packaged install helper is available for supported release assets."
+            packaged_severity = "ok"
+        else:
+            packaged_status = "Source build"
+            packaged_detail = "Packaged install helper runs only in frozen builds."
+            packaged_severity = "muted"
+
+        if self._source_update_running:
+            source_status = "Running"
+            source_detail = self._source_update_status or "Source update is running."
+            source_severity = "warn"
+        elif self.sourceUpdateCommand:
+            source_status = "Available"
+            source_detail = "Git checkout can pull and reinstall from Help."
+            source_severity = "ok"
+        else:
+            source_status = "Unavailable"
+            source_detail = "No Git checkout detected for source updates."
+            source_severity = "muted"
+
+        if self.hasUpdateNotification:
+            update_status = "Update available"
+            update_detail = f"Latest detected release: {self._available_update_version}."
+            update_severity = "warn"
+        elif self.settings.get_update_notifications_enabled():
+            update_status = "Auto-check on"
+            update_detail = "The app checks GitHub releases after startup."
+            update_severity = "ok"
+        else:
+            update_status = "Auto-check off"
+            update_detail = "Update notifications are disabled."
+            update_severity = "muted"
+
+        return [
+            {
+                "label": "OCR",
+                "status": ocr_status,
+                "detail": ocr_result.message,
+                "severity": ocr_severity,
+            },
+            {
+                "label": "Packaged updates",
+                "status": packaged_status,
+                "detail": packaged_detail,
+                "severity": packaged_severity,
+            },
+            {
+                "label": "Source updates",
+                "status": source_status,
+                "detail": source_detail,
+                "severity": source_severity,
+            },
+            {
+                "label": "Update checks",
+                "status": update_status,
+                "detail": update_detail,
+                "severity": update_severity,
+            },
+            {
+                "label": "Logs",
+                "status": "Ready",
+                "detail": f"Log directory: {AppLogger.log_dir()}",
+                "severity": "ok",
+            },
+        ]
+
+    def _build_ocr_validation_options(self) -> ConversionOptions:
+        return ConversionOptions(
+            ocr_enabled=self.settings.get_ocr_enabled(),
+            ocr_provider=self.settings.get_ocr_provider(),
+            ocr_fallback_enabled=self.settings.get_ocr_fallback_enabled(),
+            ocr_fallback_provider=self.settings.get_ocr_fallback_provider(),
+            docintel_endpoint=self.settings.get_docintel_endpoint(),
+            ocr_languages=self.settings.get_ocr_languages(),
+            tesseract_path=self.settings.get_tesseract_path(),
+            glmocr_mode=self.settings.get_glmocr_mode(),
+            glmocr_ollama_host=self.settings.get_glmocr_ollama_host(),
+            glmocr_ollama_port=self.settings.get_glmocr_ollama_port(),
+            glmocr_ollama_model=self.settings.get_glmocr_ollama_model(),
+            glmocr_sdk_server_url=self.settings.get_glmocr_sdk_server_url(),
+            http_ocr_endpoint=self.settings.get_http_ocr_endpoint(),
+            http_ocr_model=self.settings.get_http_ocr_model(),
+            http_ocr_api_key_env=self.settings.get_http_ocr_api_key_env(),
+            http_ocr_timeout_seconds=self.settings.get_http_ocr_timeout_seconds(),
+        )
 
     def _on_source_update_progress(self, status: str, progress: int) -> None:
         self._source_update_status = status
         self._source_update_progress = max(0, min(100, int(progress)))
         self.sourceUpdateChanged.emit()
+        self.diagnosticsChanged.emit()
 
     def _on_source_update_error(self, message: str) -> None:
         self._source_update_running = False
         self._source_update_status = message
         self._source_update_progress = 0
         self.sourceUpdateChanged.emit()
+        self.diagnosticsChanged.emit()
         self.toastRequested.emit("error", message)
 
     def _on_source_update_finished(self) -> None:
@@ -1083,12 +1229,14 @@ class AppController(QObject):
         self._source_update_status = "Source update complete. Restart the app."
         self._source_update_progress = 100
         self.sourceUpdateChanged.emit()
+        self.diagnosticsChanged.emit()
         self.toastRequested.emit("success", "Source update complete. Restart the app.")
 
     def _clear_source_update_runner(self) -> None:
         if self._source_update_running:
             self._source_update_running = False
             self.sourceUpdateChanged.emit()
+            self.diagnosticsChanged.emit()
         self._source_update_runner = None
 
     @staticmethod
@@ -1129,6 +1277,7 @@ class AppController(QObject):
             else {}
         )
         self.updateNotificationChanged.emit()
+        self.diagnosticsChanged.emit()
         if self._update_check_manual:
             self.toastRequested.emit("success", f"Update {version} is available.")
 
@@ -1163,6 +1312,7 @@ class AppController(QObject):
             self.toastRequested.emit("success", "You are using the latest version.")
         else:
             AppLogger.info("No updates available")
+        self.diagnosticsChanged.emit()
 
     def _clear_update_checker(self) -> None:
         self._update_checker = None

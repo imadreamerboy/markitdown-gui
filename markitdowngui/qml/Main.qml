@@ -2481,6 +2481,52 @@ ApplicationWindow {
                 title: "Diagnostics"
                 subtitle: "Useful when an update, OCR provider, or conversion fails."
 
+                GridLayout {
+                    columns: helpPage.width < 840 ? 1 : 2
+                    columnSpacing: 14
+                    rowSpacing: 10
+                    Layout.fillWidth: true
+
+                    Repeater {
+                        model: app.diagnosticReadinessItems
+
+                        delegate: RowLayout {
+                            spacing: 10
+                            Layout.fillWidth: true
+
+                            Label {
+                                text: modelData.label
+                                color: colors.text
+                                font.pixelSize: 12
+                                font.weight: Font.DemiBold
+                                Layout.preferredWidth: 112
+                                elide: Text.ElideRight
+                            }
+
+                            Label {
+                                text: modelData.status
+                                color: modelData.severity === "ok"
+                                    ? colors.success
+                                    : modelData.severity === "warn"
+                                    ? colors.warning
+                                    : colors.muted
+                                font.pixelSize: 12
+                                font.weight: Font.DemiBold
+                                Layout.preferredWidth: 112
+                                elide: Text.ElideRight
+                            }
+
+                            Label {
+                                text: modelData.detail
+                                color: colors.muted
+                                font.pixelSize: 12
+                                wrapMode: Text.WordWrap
+                                Layout.fillWidth: true
+                            }
+                        }
+                    }
+                }
+
                 RowLayout {
                     spacing: 10
                     Layout.fillWidth: true

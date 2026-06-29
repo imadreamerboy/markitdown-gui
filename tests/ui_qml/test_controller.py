@@ -507,6 +507,65 @@ def test_controller_reports_ocr_validation_error(controller, monkeypatch):
     assert messages == [("error", "HTTP OCR requires an endpoint URL.")]
 
 
+def test_controller_exposes_diagnostic_readiness_items(controller, monkeypatch):
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.build_source_update_command",
+        lambda: "git -C repo pull --ff-only && uv pip install -e repo",
+    )
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.is_packaged_app",
+        lambda: False,
+    )
+    controller.setOcrEnabled(True)
+    controller.setOcrProvider("http")
+
+    items = controller.diagnosticReadinessItems
+    by_label = {item["label"]: item for item in items}
+
+    assert [item["label"] for item in items] == [
+        "OCR",
+        "Packaged updates",
+        "Source updates",
+        "Update checks",
+        "Logs",
+    ]
+    assert by_label["OCR"] == {
+        "label": "OCR",
+        "status": "Needs setup",
+        "detail": "HTTP OCR requires an endpoint URL.",
+        "severity": "warn",
+    }
+    assert by_label["Packaged updates"]["status"] == "Source build"
+    assert by_label["Source updates"]["status"] == "Available"
+    assert by_label["Update checks"]["status"] == "Auto-check on"
+    assert by_label["Logs"]["status"] == "Ready"
+
+
+def test_controller_diagnostic_readiness_updates_after_ocr_change(controller):
+    changes: list[None] = []
+    controller.diagnosticsChanged.connect(lambda: changes.append(None))
+
+    controller.setOcrEnabled(True)
+    controller.setOcrProvider("http")
+    controller.setOcrFallbackProvider("none")
+    controller.setHttpOcrEndpoint("http://localhost:8000/ocr")
+
+    by_label = {item["label"]: item for item in controller.diagnosticReadinessItems}
+    assert by_label["OCR"]["status"] == "Ready"
+    assert by_label["OCR"]["severity"] == "ok"
+    assert changes
+
+
+def test_diagnostic_readiness_does_not_create_temp_asset_root(controller, monkeypatch):
+    controller.setPreservePdfImages(True)
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.create_temp_asset_root",
+        lambda: pytest.fail("diagnostics should not prepare conversion assets"),
+    )
+
+    controller.diagnosticReadinessItems
+
+
 def test_controller_copies_source_update_command(controller, monkeypatch):
     messages: list[tuple[str, str]] = []
     copied: list[str] = []

@@ -40,7 +40,7 @@ The source updater runs `git pull --ff-only` in the checkout, then reinstalls th
 
 ### Support bundles
 
-The Help view can export a support bundle for issue reports. It includes a compact diagnostics report, sanitised settings, and capped recent log tails; raw recent file paths, output paths, and obvious secret values are excluded or redacted.
+The Help view shows a compact readiness summary for OCR, packaged updates, source updates, update checks, and logs. It can also export a support bundle for issue reports with a diagnostics report, sanitised settings, and capped recent log tails; raw recent file paths, output paths, and obvious secret values are excluded or redacted.
 
 ### Prerequisites
 
