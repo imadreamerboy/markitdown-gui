@@ -264,6 +264,49 @@ def test_controller_save_all_failed_results_reports_no_success(controller, tmp_p
     assert messages == [("error", "No successful output to save.")]
 
 
+def test_controller_finished_status_reports_mixed_failures(controller):
+    messages: list[tuple[str, str]] = []
+    controller.toastRequested.connect(
+        lambda kind, message: messages.append((kind, message))
+    )
+    controller.worker = SimpleNamespace(
+        is_cancelled=False,
+        failed_files={"C:/tmp/broken.pdf"},
+    )
+    controller._converting = True
+
+    controller._handle_finished(
+        {
+            "C:/tmp/ok.pdf": ConversionOutcome("# Converted", backend="native"),
+            "C:/tmp/broken.pdf": ConversionOutcome("Conversion failed", backend="native"),
+        }
+    )
+
+    assert controller.statusText == "1 converted, 1 failed"
+    assert controller.hasSuccessfulResults is True
+    assert messages == [("error", "1 conversion failed.")]
+
+
+def test_controller_finished_status_reports_all_failed(controller):
+    messages: list[tuple[str, str]] = []
+    controller.toastRequested.connect(
+        lambda kind, message: messages.append((kind, message))
+    )
+    controller.worker = SimpleNamespace(
+        is_cancelled=False,
+        failed_files={"C:/tmp/broken.pdf"},
+    )
+    controller._converting = True
+
+    controller._handle_finished(
+        {"C:/tmp/broken.pdf": ConversionOutcome("Conversion failed", backend="native")}
+    )
+
+    assert controller.statusText == "1 failed"
+    assert controller.hasSuccessfulResults is False
+    assert messages == [("error", "1 conversion failed.")]
+
+
 def test_controller_separate_save_falls_back_when_source_folder_is_not_writable(
     controller,
     monkeypatch,
@@ -384,6 +427,26 @@ def test_controller_theme_change_refreshes_selected_preview(controller):
 
     assert changes == [None]
     assert "background:#2b313c" in controller.selectedPreviewHtml
+
+
+def test_controller_light_preview_uses_olive_accents(controller):
+    controller.setThemeMode("light")
+    controller.result_model.set_results(
+        {
+            "C:/tmp/report.pdf": ConversionOutcome(
+                "# Title\n\n[Release notes](https://example.com)\n\n> Check OCR.",
+                backend="native",
+            )
+        }
+    )
+    controller.selectResult(0)
+
+    html = controller.selectedPreviewHtml
+
+    assert "a{color:#687700;}" in html
+    assert "blockquote{border-left:3px solid #687700;" in html
+    assert "#268bd2" not in html
+    assert "#2aa198" not in html
 
 
 def test_controller_preview_compacts_qt_heading_sizes(controller):

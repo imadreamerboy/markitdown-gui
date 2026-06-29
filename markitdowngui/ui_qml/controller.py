@@ -637,6 +637,14 @@ class AppController(QObject):
                 if results
                 else "Cancelled"
             )
+        elif failed:
+            failed_count = len(failed)
+            converted_count = max(0, len(results) - failed_count)
+            self._set_status(
+                f"{converted_count} converted, {failed_count} failed"
+                if converted_count
+                else f"{failed_count} failed"
+            )
         else:
             self._set_status(f"Converted {len(results)} input{'s' if len(results) != 1 else ''}")
         self.worker = None
@@ -650,7 +658,13 @@ class AppController(QObject):
         if was_cancelled:
             self.toastRequested.emit("success", "Conversion cancelled.")
         elif failed:
-            self.toastRequested.emit("error", f"{len(failed)} conversion(s) failed.")
+            failed_count = len(failed)
+            self.toastRequested.emit(
+                "error",
+                "1 conversion failed."
+                if failed_count == 1
+                else f"{failed_count} conversions failed.",
+            )
         else:
             self.toastRequested.emit("success", "Conversion complete.")
 

@@ -1371,155 +1371,251 @@ ApplicationWindow {
                     }
                 }
 
-                ScrollView {
-                    id: previewScroll
-                    clip: true
+                Item {
+                    id: previewFrame
+
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    contentWidth: availableWidth
-                    contentHeight: previewCanvas.height
+
+                    ScrollView {
+                        id: previewScroll
+
+                        property bool canScroll: contentHeight > height + 1
+
+                        anchors.fill: parent
+                        clip: true
+                        contentWidth: availableWidth
+                        contentHeight: previewCanvas.height
+                        ScrollBar.vertical: ScrollBar {
+                            id: previewScrollBar
+
+                            policy: previewScroll.canScroll ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
+                            minimumSize: 0.08
+
+                            contentItem: Rectangle {
+                                implicitWidth: 6
+                                radius: 3
+                                color: Qt.rgba(colors.muted.r, colors.muted.g, colors.muted.b, dark ? 0.52 : 0.36)
+                            }
+
+                            background: Rectangle {
+                                implicitWidth: 8
+                                radius: 4
+                                color: Qt.rgba(colors.border.r, colors.border.g, colors.border.b, dark ? 0.20 : 0.26)
+                            }
+                        }
+
+                        Item {
+                            id: previewCanvas
+
+                            width: previewScroll.availableWidth
+                            height: Math.max(
+                                previewScroll.availableHeight,
+                                app.selectedResultFailed
+                                    ? previewScroll.availableHeight
+                                    : app.previewMode === "rendered"
+                                    ? renderedPreview.contentHeight + renderedPreview.topPadding + renderedPreview.bottomPadding
+                                    : rawPreview.contentHeight + rawPreview.topPadding + rawPreview.bottomPadding
+                            )
+
+                            Rectangle {
+                                id: failedPreview
+
+                                visible: app.selectedResultFailed
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                anchors.top: parent.top
+                                height: Math.min(
+                                    parent.height,
+                                    Math.max(190, failedContent.implicitHeight + 36)
+                                )
+                                radius: 9
+                                color: colors.document
+                                border.color: Qt.rgba(colors.danger.r, colors.danger.g, colors.danger.b, dark ? 0.55 : 0.40)
+
+                                ColumnLayout {
+                                    id: failedContent
+
+                                    anchors.fill: parent
+                                    anchors.margins: 18
+                                    spacing: 12
+
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        spacing: 10
+
+                                        Rectangle {
+                                            width: 34
+                                            height: 34
+                                            radius: 8
+                                            color: Qt.rgba(colors.danger.r, colors.danger.g, colors.danger.b, dark ? 0.18 : 0.10)
+                                            border.color: Qt.rgba(colors.danger.r, colors.danger.g, colors.danger.b, dark ? 0.40 : 0.28)
+
+                                            Icon {
+                                                anchors.centerIn: parent
+                                                name: "file-x"
+                                                size: 17
+                                                color: colors.danger
+                                            }
+                                        }
+
+                                        ColumnLayout {
+                                            spacing: 3
+                                            Layout.fillWidth: true
+
+                                            Label {
+                                                text: "This input could not be converted"
+                                                color: colors.text
+                                                font.pixelSize: 15
+                                                font.weight: Font.DemiBold
+                                                wrapMode: Text.WordWrap
+                                                Layout.fillWidth: true
+                                            }
+
+                                            Label {
+                                                text: "The details below can be copied for troubleshooting."
+                                                color: colors.muted
+                                                font.pixelSize: 12
+                                                wrapMode: Text.WordWrap
+                                                Layout.fillWidth: true
+                                            }
+                                        }
+                                    }
+
+                                    TextArea {
+                                        text: app.selectedMarkdown
+                                        textFormat: TextEdit.PlainText
+                                        readOnly: true
+                                        wrapMode: TextEdit.Wrap
+                                        selectByMouse: true
+                                        color: colors.text
+                                        selectedTextColor: "#FFFFFF"
+                                        selectionColor: colors.danger
+                                        font.pixelSize: 13
+                                        padding: 12
+                                        Layout.fillWidth: true
+                                        Layout.preferredHeight: 100
+                                        background: Rectangle {
+                                            color: colors.input
+                                            radius: 8
+                                            border.color: colors.border
+                                        }
+                                    }
+                                }
+                            }
+
+                            TextArea {
+                                id: renderedPreview
+
+                                visible: !app.selectedResultFailed && app.previewMode === "rendered"
+                                anchors.fill: parent
+                                text: app.selectedPreviewHtml
+                                textFormat: TextEdit.RichText
+                                readOnly: true
+                                wrapMode: TextEdit.Wrap
+                                selectByMouse: true
+                                color: colors.text
+                                selectedTextColor: "#FFFFFF"
+                                selectionColor: colors.accent
+                                font.pixelSize: 13
+                                font.family: root.font.family
+                                leftPadding: 18
+                                rightPadding: 18
+                                topPadding: 18
+                                bottomPadding: 18
+                                background: Rectangle {
+                                    color: colors.document
+                                    radius: 9
+                                    border.color: Qt.rgba(colors.border.r, colors.border.g, colors.border.b, dark ? 0.90 : 0.78)
+                                }
+                            }
+
+                            TextArea {
+                                id: rawPreview
+
+                                visible: !app.selectedResultFailed && app.previewMode === "raw"
+                                anchors.fill: parent
+                                text: app.selectedMarkdown
+                                textFormat: TextEdit.PlainText
+                                readOnly: true
+                                wrapMode: TextEdit.Wrap
+                                selectByMouse: true
+                                color: colors.text
+                                selectedTextColor: "#FFFFFF"
+                                selectionColor: colors.accent
+                                font.pixelSize: 13
+                                font.family: Qt.platform.os === "windows" ? "Cascadia Mono" : Qt.platform.os === "osx" ? "Menlo" : "monospace"
+                                padding: 14
+                                background: Rectangle {
+                                    color: colors.input
+                                    radius: 9
+                                    border.color: Qt.rgba(colors.border.r, colors.border.g, colors.border.b, dark ? 0.90 : 0.78)
+                                }
+                            }
+                        }
+                    }
 
                     Item {
-                        id: previewCanvas
+                        id: previewScrollIndicator
 
-                        width: previewScroll.availableWidth
-                        height: Math.max(
-                            previewScroll.availableHeight,
-                            app.selectedResultFailed
-                                ? previewScroll.availableHeight
-                                : app.previewMode === "rendered"
-                                ? renderedPreview.contentHeight + renderedPreview.topPadding + renderedPreview.bottomPadding
-                                : rawPreview.contentHeight + rawPreview.topPadding + rawPreview.bottomPadding
-                        )
+                        visible: previewScroll.canScroll
+                        width: 8
+                        anchors.top: parent.top
+                        anchors.topMargin: 12
+                        anchors.right: parent.right
+                        anchors.rightMargin: 13
+                        anchors.bottom: parent.bottom
+                        anchors.bottomMargin: 12
+                        z: 3
+                        Accessible.role: Accessible.Indicator
+                        Accessible.name: "Preview scroll position"
 
                         Rectangle {
-                            id: failedPreview
-
-                            visible: app.selectedResultFailed
-                            anchors.fill: parent
-                            radius: 9
-                            color: colors.document
-                            border.color: Qt.rgba(colors.danger.r, colors.danger.g, colors.danger.b, dark ? 0.55 : 0.40)
-
-                            ColumnLayout {
-                                anchors.fill: parent
-                                anchors.margins: 18
-                                spacing: 12
-
-                                RowLayout {
-                                    Layout.fillWidth: true
-                                    spacing: 10
-
-                                    Rectangle {
-                                        width: 34
-                                        height: 34
-                                        radius: 8
-                                        color: Qt.rgba(colors.danger.r, colors.danger.g, colors.danger.b, dark ? 0.18 : 0.10)
-                                        border.color: Qt.rgba(colors.danger.r, colors.danger.g, colors.danger.b, dark ? 0.40 : 0.28)
-
-                                        Icon {
-                                            anchors.centerIn: parent
-                                            name: "file-x"
-                                            size: 17
-                                            color: colors.danger
-                                        }
-                                    }
-
-                                    ColumnLayout {
-                                        spacing: 3
-                                        Layout.fillWidth: true
-
-                                        Label {
-                                            text: "This input could not be converted"
-                                            color: colors.text
-                                            font.pixelSize: 15
-                                            font.weight: Font.DemiBold
-                                            wrapMode: Text.WordWrap
-                                            Layout.fillWidth: true
-                                        }
-
-                                        Label {
-                                            text: "The details below can be copied for troubleshooting."
-                                            color: colors.muted
-                                            font.pixelSize: 12
-                                            wrapMode: Text.WordWrap
-                                            Layout.fillWidth: true
-                                        }
-                                    }
-                                }
-
-                                TextArea {
-                                    text: app.selectedMarkdown
-                                    textFormat: TextEdit.PlainText
-                                    readOnly: true
-                                    wrapMode: TextEdit.Wrap
-                                    selectByMouse: true
-                                    color: colors.text
-                                    selectedTextColor: "#FFFFFF"
-                                    selectionColor: colors.danger
-                                    font.pixelSize: 13
-                                    padding: 12
-                                    Layout.fillWidth: true
-                                    Layout.preferredHeight: 100
-                                    background: Rectangle {
-                                        color: colors.input
-                                        radius: 8
-                                        border.color: colors.border
-                                    }
-                                }
-
-                                Item {
-                                    Layout.fillHeight: true
-                                }
-                            }
+                            width: 3
+                            radius: 2
+                            color: Qt.rgba(colors.border.r, colors.border.g, colors.border.b, dark ? 0.42 : 0.48)
+                            anchors.top: parent.top
+                            anchors.bottom: parent.bottom
+                            anchors.horizontalCenter: parent.horizontalCenter
                         }
 
-                        TextArea {
-                            id: renderedPreview
-
-                            visible: !app.selectedResultFailed && app.previewMode === "rendered"
-                            anchors.fill: parent
-                            text: app.selectedPreviewHtml
-                            textFormat: TextEdit.RichText
-                            readOnly: true
-                            wrapMode: TextEdit.Wrap
-                            selectByMouse: true
-                            color: colors.text
-                            selectedTextColor: "#FFFFFF"
-                            selectionColor: colors.accent
-                            font.pixelSize: 13
-                            font.family: root.font.family
-                            leftPadding: 18
-                            rightPadding: 18
-                            topPadding: 18
-                            bottomPadding: 18
-                            background: Rectangle {
-                                color: colors.document
-                                radius: 9
-                                border.color: Qt.rgba(colors.border.r, colors.border.g, colors.border.b, dark ? 0.90 : 0.78)
-                            }
+                        Rectangle {
+                            width: 5
+                            height: Math.max(28, previewScrollIndicator.height * previewScrollBar.size)
+                            radius: 3
+                            color: Qt.rgba(colors.action.r, colors.action.g, colors.action.b, dark ? 0.66 : 0.58)
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            y: Math.max(
+                                0,
+                                Math.min(
+                                    previewScrollIndicator.height - height,
+                                    (previewScrollIndicator.height - height)
+                                        * previewScrollBar.position
+                                        / Math.max(0.0001, 1 - previewScrollBar.size)
+                                )
+                            )
                         }
+                    }
 
-                        TextArea {
-                            id: rawPreview
-
-                            visible: !app.selectedResultFailed && app.previewMode === "raw"
-                            anchors.fill: parent
-                            text: app.selectedMarkdown
-                            textFormat: TextEdit.PlainText
-                            readOnly: true
-                            wrapMode: TextEdit.Wrap
-                            selectByMouse: true
-                            color: colors.text
-                            selectedTextColor: "#FFFFFF"
-                            selectionColor: colors.accent
-                            font.pixelSize: 13
-                            font.family: Qt.platform.os === "windows" ? "Cascadia Mono" : Qt.platform.os === "osx" ? "Menlo" : "monospace"
-                            padding: 14
-                            background: Rectangle {
-                                color: colors.input
-                                radius: 9
-                                border.color: Qt.rgba(colors.border.r, colors.border.g, colors.border.b, dark ? 0.90 : 0.78)
+                    Rectangle {
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.bottom: parent.bottom
+                        anchors.rightMargin: previewScroll.canScroll ? 18 : 0
+                        height: 34
+                        visible: previewScroll.canScroll && previewScrollBar.position + previewScrollBar.size < 0.98
+                        radius: 8
+                        gradient: Gradient {
+                            orientation: Gradient.Vertical
+                            GradientStop {
+                                position: 0.0
+                                color: app.previewMode === "raw"
+                                    ? Qt.rgba(colors.input.r, colors.input.g, colors.input.b, 0.0)
+                                    : Qt.rgba(colors.document.r, colors.document.g, colors.document.b, 0.0)
+                            }
+                            GradientStop {
+                                position: 1.0
+                                color: app.previewMode === "raw" ? colors.input : colors.document
                             }
                         }
                     }
