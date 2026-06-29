@@ -66,7 +66,10 @@ from markitdowngui.utils.settings_profile import (
     export_settings_profile,
     import_settings_profile,
 )
-from markitdowngui.utils.support_bundle import create_support_bundle
+from markitdowngui.utils.support_bundle import (
+    create_support_bundle,
+    redact_diagnostic_text,
+)
 from markitdowngui.utils.translations import DEFAULT_LANG, get_translation
 from markitdowngui.utils.update_checker import (
     ReleaseAsset,
@@ -1185,7 +1188,7 @@ class AppController(QObject):
             )
             if part.strip()
         )
-        QGuiApplication.clipboard().setText(diagnostic_text)
+        QGuiApplication.clipboard().setText(redact_diagnostic_text(diagnostic_text))
         self.toastRequested.emit("success", "Diagnostics copied.")
 
     @Slot()

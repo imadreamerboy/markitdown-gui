@@ -56,7 +56,7 @@ def create_support_bundle(
     }
 
     with zipfile.ZipFile(bundle_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-        archive.writestr("diagnostics.txt", _redact_text(build_diagnostic_report()))
+        archive.writestr("diagnostics.txt", redact_diagnostic_text(build_diagnostic_report()))
         archive.writestr(
             "settings.json",
             json.dumps(build_sanitized_settings_snapshot(settings), indent=2) + "\n",
@@ -129,7 +129,7 @@ def _collect_log_tails(log_dir: Path) -> dict[str, str]:
             raw = _tail_bytes(path, MAX_LOG_BYTES).decode("utf-8", errors="replace")
         except OSError:
             continue
-        logs[path.name] = _redact_text(raw)
+        logs[path.name] = redact_diagnostic_text(raw)
     return logs
 
 
@@ -141,8 +141,14 @@ def _tail_bytes(path: Path, limit: int) -> bytes:
         return handle.read(limit)
 
 
-def _redact_text(text: str) -> str:
+def redact_diagnostic_text(text: str) -> str:
     redacted = text.replace(str(Path.home()), "~")
+    redacted = redacted.replace(Path.home().as_posix(), "~")
+    redacted = re.sub(
+        r"~[^\s]*",
+        lambda match: match.group(0).replace("\\", "/"),
+        redacted,
+    )
     for pattern in _SECRET_PATTERNS:
         redacted = pattern.sub(_redact_secret_match, redacted)
     return redacted

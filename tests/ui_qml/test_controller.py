@@ -1163,7 +1163,11 @@ def test_controller_copies_diagnostics(controller, monkeypatch):
     controller.toastRequested.connect(lambda kind, message: messages.append((kind, message)))
     monkeypatch.setattr(
         "markitdowngui.ui_qml.controller.build_diagnostic_report",
-        lambda: "diagnostic report",
+        lambda: (
+            f"diagnostic report\n"
+            f"Executable: {Path.home() / 'app' / 'MarkItDown.exe'}\n"
+            "api_key=secret-value"
+        ),
     )
     monkeypatch.setattr(
         "markitdowngui.ui_qml.controller.QGuiApplication.clipboard",
@@ -1179,7 +1183,7 @@ def test_controller_copies_diagnostics(controller, monkeypatch):
     )
     monkeypatch.setattr(
         "markitdowngui.ui_qml.controller.AppLogger.log_dir",
-        lambda: "C:/logs",
+        lambda: str(Path.home() / ".markitdown"),
     )
 
     controller.copyDiagnostics()
@@ -1188,13 +1192,15 @@ def test_controller_copies_diagnostics(controller, monkeypatch):
         "\n".join(
             [
                 "diagnostic report",
+                "Executable: ~/app/MarkItDown.exe",
+                "api_key=[redacted]",
                 "",
                 "Readiness",
                 "- OCR: Off - OCR is disabled.",
                 "- Packaged updates: Source build - Packaged install helper runs only in frozen builds.",
                 "- Source updates: Unavailable - No Git checkout detected for source updates.",
                 "- Update checks: Auto-check on - The app checks GitHub releases after startup.",
-                "- Logs: Ready - Log directory: C:/logs",
+                "- Logs: Ready - Log directory: ~/.markitdown",
             ]
         )
     ]
@@ -1206,7 +1212,8 @@ def test_controller_copied_diagnostics_include_last_packaged_update_result(
 ):
     copied: list[str] = []
     controller._last_packaged_update_result = (
-        "Status: failed\nBackup: C:/Apps/MarkItDown.backup"
+        f"Status: failed\nBackup: {Path.home() / 'Apps' / 'MarkItDown.backup'}\n"
+        "Authorization: Bearer token-value"
     )
     monkeypatch.setattr(
         "markitdowngui.ui_qml.controller.build_diagnostic_report",
@@ -1227,10 +1234,9 @@ def test_controller_copied_diagnostics_include_last_packaged_update_result(
 
     controller.copyDiagnostics()
 
-    assert (
-        "Last packaged update\nStatus: failed\nBackup: C:/Apps/MarkItDown.backup"
-        in copied[0]
-    )
+    assert "Last packaged update\nStatus: failed\nBackup: ~/Apps/MarkItDown.backup" in copied[0]
+    assert "Authorization: Bearer [redacted]" in copied[0]
+    assert str(Path.home()) not in copied[0]
     assert "- Packaged updates: Last result - Status: failed" in copied[0]
 
 

@@ -40,6 +40,21 @@ def test_sanitized_settings_snapshot_excludes_raw_paths(tmp_path):
     assert "ocr.example" not in encoded
 
 
+def test_redact_diagnostic_text_removes_home_and_secret_values():
+    text = (
+        f"Executable: {Path.home() / 'app' / 'MarkItDown.exe'}\n"
+        "token: token-value\n"
+        "Authorization: Bearer secret-token"
+    )
+
+    redacted = support_bundle.redact_diagnostic_text(text)
+
+    assert str(Path.home()) not in redacted
+    assert "Executable: ~/app/MarkItDown.exe" in redacted
+    assert "token: [redacted]" in redacted
+    assert "Authorization: Bearer [redacted]" in redacted
+
+
 def test_create_support_bundle_writes_redacted_zip(monkeypatch, tmp_path):
     settings = _settings(tmp_path)
     log_dir = tmp_path / "logs"
