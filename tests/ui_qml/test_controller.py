@@ -728,11 +728,69 @@ def test_controller_copies_diagnostics(controller, monkeypatch):
         "markitdowngui.ui_qml.controller.QGuiApplication.clipboard",
         lambda: SimpleNamespace(setText=lambda value: copied.append(value)),
     )
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.build_source_update_command",
+        lambda: "",
+    )
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.is_packaged_app",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.AppLogger.log_dir",
+        lambda: "C:/logs",
+    )
 
     controller.copyDiagnostics()
 
-    assert copied == ["diagnostic report"]
+    assert copied == [
+        "\n".join(
+            [
+                "diagnostic report",
+                "",
+                "Readiness",
+                "- OCR: Off - OCR is disabled.",
+                "- Packaged updates: Source build - Packaged install helper runs only in frozen builds.",
+                "- Source updates: Unavailable - No Git checkout detected for source updates.",
+                "- Update checks: Auto-check on - The app checks GitHub releases after startup.",
+                "- Logs: Ready - Log directory: C:/logs",
+            ]
+        )
+    ]
     assert messages == [("success", "Diagnostics copied.")]
+
+
+def test_controller_copied_diagnostics_include_last_packaged_update_result(
+    controller, monkeypatch
+):
+    copied: list[str] = []
+    controller._last_packaged_update_result = (
+        "Status: failed\nBackup: C:/Apps/MarkItDown.backup"
+    )
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.build_diagnostic_report",
+        lambda: "diagnostic report",
+    )
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.QGuiApplication.clipboard",
+        lambda: SimpleNamespace(setText=lambda value: copied.append(value)),
+    )
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.build_source_update_command",
+        lambda: "",
+    )
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.AppLogger.log_dir",
+        lambda: "C:/logs",
+    )
+
+    controller.copyDiagnostics()
+
+    assert (
+        "Last packaged update\nStatus: failed\nBackup: C:/Apps/MarkItDown.backup"
+        in copied[0]
+    )
+    assert "- Packaged updates: Last result - Status: failed" in copied[0]
 
 
 def test_controller_opens_log_folder(controller, monkeypatch, tmp_path):

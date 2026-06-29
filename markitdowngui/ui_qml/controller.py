@@ -980,7 +980,15 @@ class AppController(QObject):
 
     @Slot()
     def copyDiagnostics(self) -> None:
-        QGuiApplication.clipboard().setText(build_diagnostic_report())
+        diagnostic_text = "\n\n".join(
+            part
+            for part in (
+                build_diagnostic_report(),
+                self._build_diagnostic_readiness_text(),
+            )
+            if part.strip()
+        )
+        QGuiApplication.clipboard().setText(diagnostic_text)
         self.toastRequested.emit("success", "Diagnostics copied.")
 
     @Slot()
@@ -1189,6 +1197,14 @@ class AppController(QObject):
                 "severity": "ok",
             },
         ]
+
+    def _build_diagnostic_readiness_text(self) -> str:
+        lines = ["Readiness"]
+        for item in self._build_diagnostic_readiness_items():
+            lines.append(f"- {item['label']}: {item['status']} - {item['detail']}")
+        if self._last_packaged_update_result:
+            lines.extend(["", "Last packaged update", self._last_packaged_update_result])
+        return "\n".join(lines)
 
     def _build_ocr_validation_options(self) -> ConversionOptions:
         return ConversionOptions(
