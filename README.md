@@ -18,8 +18,8 @@ It focuses on fast multi-file conversion to Markdown with a modern, native-style
 - Save modes: export as one combined file or separate files.
 - Quick actions: copy Markdown, save output, back to queue, start over.
 - Optional OCR for scanned PDFs and image files, with selectable `Azure/Tesseract OCR` and `GLM-OCR` providers.
-- Settings for output folder, batch size, header style, table style, OCR, and theme mode (light/dark/system).
-- Built-in shortcuts dialog, update check action, and about dialog.
+- Settings for output folder, save mode, source-folder saves, batch size, OCR, and theme mode (light/dark/system).
+- Help view with project links, OCR references, conversion references, and keyboard shortcuts.
 
 ## Installation
 

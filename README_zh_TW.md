@@ -4,7 +4,7 @@
 
 # MarkItDown GUI 轉換工具
 
-基於 `PySide6` 和 `QFluentWidgets` 的桌面 GUI，讓你用直覺的拖放介面，把 PDF、Word、圖片等各種格式批次轉換為 Markdown。
+基於 `PySide6` 和官方 Qt Quick Controls/QML 的桌面 GUI，讓你用接近原生桌面體驗的介面，把 PDF、Word、圖片、網頁 URL 等格式批次轉換為 Markdown。
 
 ![目前介面截圖](image.png)
 
@@ -20,7 +20,8 @@
 | 預覽模式 | 渲染檢視 / 原始 Markdown 雙模式切換 |
 | 儲存模式 | 合併單一檔案 或 分別儲存 |
 | OCR | 掃描版 PDF 和圖片的文字辨識（選填） |
-| 繁體中文介面 | 語言選單 → 繁體中文 |
+| 設定 | 輸出目錄、儲存模式、批次大小、OCR、淺色／深色／系統主題 |
+| 說明 | 專案連結、OCR 參考、轉換參考和鍵盤快捷鍵 |
 
 ---
 

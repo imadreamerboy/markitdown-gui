@@ -571,13 +571,24 @@ class AppController(QObject):
     def openExternalUrl(self, url: str) -> None:
         QDesktopServices.openUrl(QUrl(url))
 
-    @Slot()
-    def shutdown(self) -> None:
+    @Slot(result=bool)
+    def shutdown(self) -> bool:
         if self.worker and self.worker.isRunning():
+            self._cancel_requested = True
             self.worker.is_cancelled = True
             self.worker.is_paused = False
-            self.worker.wait(1500)
+            if self._paused:
+                self._paused = False
+                self.pausedChanged.emit()
+            self._set_status("Cancelling")
+            if not self.worker.wait(1500):
+                self.toastRequested.emit(
+                    "error",
+                    "Conversion is still stopping. Close again after it finishes.",
+                )
+                return False
         self._cleanup_temp_assets()
+        return True
 
     def _build_conversion_options(self) -> ConversionOptions:
         artifacts_dir = ""

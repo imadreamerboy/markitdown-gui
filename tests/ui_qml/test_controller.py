@@ -319,6 +319,59 @@ def test_controller_cancel_unpauses_worker(controller):
     assert changes == [None]
 
 
+def test_controller_shutdown_rejects_close_until_worker_stops(controller):
+    worker = SimpleNamespace(
+        is_paused=True,
+        is_cancelled=False,
+        isRunning=lambda: True,
+        wait=lambda timeout: False,
+    )
+    controller.worker = worker
+    controller._converting = True
+    controller._paused = True
+    messages: list[tuple[str, str]] = []
+    pause_changes: list[None] = []
+    controller.toastRequested.connect(
+        lambda kind, message: messages.append((kind, message))
+    )
+    controller.pausedChanged.connect(lambda: pause_changes.append(None))
+
+    accepted = controller.shutdown()
+
+    assert accepted is False
+    assert worker.is_cancelled is True
+    assert worker.is_paused is False
+    assert controller.paused is False
+    assert controller.statusText == "Cancelling"
+    assert pause_changes == [None]
+    assert messages == [
+        ("error", "Conversion is still stopping. Close again after it finishes.")
+    ]
+
+
+def test_controller_shutdown_cleans_up_after_worker_stops(controller, monkeypatch):
+    worker = SimpleNamespace(
+        is_cancelled=False,
+        is_paused=False,
+        isRunning=lambda: True,
+        wait=lambda timeout: True,
+    )
+    controller.worker = worker
+    controller._temp_asset_root = "C:/tmp/markitdown-assets"
+    cleaned: list[str | None] = []
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.cleanup_temp_asset_root",
+        lambda path: cleaned.append(path),
+    )
+
+    accepted = controller.shutdown()
+
+    assert accepted is True
+    assert worker.is_cancelled is True
+    assert cleaned == ["C:/tmp/markitdown-assets"]
+    assert controller._temp_asset_root is None
+
+
 def test_controller_theme_change_refreshes_selected_preview(controller):
     controller.result_model.set_results(
         {"C:/tmp/report.pdf": ConversionOutcome("# Title", backend="native")}
