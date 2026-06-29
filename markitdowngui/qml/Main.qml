@@ -284,6 +284,19 @@ ApplicationWindow {
         }
     }
 
+    component PreviewModeButton: AppButton {
+        property bool selected: false
+
+        primary: selected
+        subtle: !selected
+        accentColor: colors.actionSoft
+        primaryTextColor: colors.text
+        surfaceColor: colors.surfaceAlt
+        borderColor: colors.border
+        focusColor: colors.action
+        textColor: selected ? colors.text : colors.muted
+    }
+
     component HeaderBar: Rectangle {
         color: colors.window
         implicitHeight: 72
@@ -1242,25 +1255,17 @@ ApplicationWindow {
                     RowLayout {
                         Layout.fillWidth: true
 
-                        AppButton {
+                        PreviewModeButton {
                             visible: !app.selectedResultFailed
                             text: "Rendered"
-                            primary: app.previewMode === "rendered"
-                            subtle: app.previewMode !== "rendered"
-                            accentColor: colors.action
-                            primaryTextColor: colors.onAction
-                            textColor: colors.text
+                            selected: app.previewMode === "rendered"
                             onClicked: app.setPreviewMode("rendered")
                         }
 
-                        AppButton {
+                        PreviewModeButton {
                             visible: !app.selectedResultFailed
                             text: "Source"
-                            primary: app.previewMode === "raw"
-                            subtle: app.previewMode !== "raw"
-                            accentColor: colors.action
-                            primaryTextColor: colors.onAction
-                            textColor: colors.text
+                            selected: app.previewMode === "raw"
                             onClicked: app.setPreviewMode("raw")
                         }
 
