@@ -328,6 +328,47 @@ ApplicationWindow {
         mutedTextColor: colors.muted
     }
 
+    component FieldGroup: ColumnLayout {
+        id: fieldGroup
+
+        property string label: ""
+        property string detail: ""
+        default property alias content: fieldBody.data
+
+        spacing: 6
+        Layout.fillWidth: true
+
+        ColumnLayout {
+            spacing: 2
+            Layout.fillWidth: true
+
+            Label {
+                text: fieldGroup.label
+                visible: fieldGroup.label.length > 0
+                color: colors.text
+                font.pixelSize: 12
+                font.weight: Font.Medium
+                Layout.fillWidth: true
+            }
+
+            Label {
+                text: fieldGroup.detail
+                visible: fieldGroup.detail.length > 0
+                color: colors.muted
+                font.pixelSize: 11
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
+            }
+        }
+
+        ColumnLayout {
+            id: fieldBody
+
+            spacing: 8
+            Layout.fillWidth: true
+        }
+    }
+
     component WorkspacePage: Item {
         Layout.fillWidth: true
         Layout.fillHeight: true
@@ -1040,8 +1081,8 @@ ApplicationWindow {
                         text: "Rendered"
                         primary: app.previewMode === "rendered"
                         subtle: app.previewMode !== "rendered"
-                        accentColor: colors.accent
-                        primaryTextColor: colors.onAccent
+                        accentColor: colors.action
+                        primaryTextColor: colors.onAction
                         textColor: colors.text
                         onClicked: app.setPreviewMode("rendered")
                     }
@@ -1050,8 +1091,8 @@ ApplicationWindow {
                         text: "Raw"
                         primary: app.previewMode === "raw"
                         subtle: app.previewMode !== "raw"
-                        accentColor: colors.accent
-                        primaryTextColor: colors.onAccent
+                        accentColor: colors.action
+                        primaryTextColor: colors.onAction
                         textColor: colors.text
                         onClicked: app.setPreviewMode("raw")
                     }
@@ -1172,28 +1213,34 @@ ApplicationWindow {
                 mutedTextColor: colors.muted
                 Layout.fillWidth: true
 
-                RowLayout {
+                FieldGroup {
+                    label: "Default folder"
+                    detail: "Leave empty to choose a location when saving."
                     Layout.fillWidth: true
-                    spacing: 10
 
-                    AppTextField {
-                        text: app.outputFolder
-                        placeholderText: "Optional default output folder"
-                        surfaceColor: colors.input
-                        borderColor: colors.border
-                        accentColor: colors.accent
-                        textColor: colors.text
-                        placeholderColor: colors.subtle
+                    RowLayout {
                         Layout.fillWidth: true
-                        onEditingFinished: app.setOutputFolder(text)
-                    }
+                        spacing: 10
 
-                    AppButton {
-                        text: "Browse"
-                        surfaceColor: colors.surfaceAlt
-                        borderColor: colors.border
-                        textColor: colors.text
-                        onClicked: outputFolderDialog.open()
+                        AppTextField {
+                            text: app.outputFolder
+                            placeholderText: "No default folder set"
+                            surfaceColor: colors.input
+                            borderColor: colors.border
+                            accentColor: colors.accent
+                            textColor: colors.text
+                            placeholderColor: colors.subtle
+                            Layout.fillWidth: true
+                            onEditingFinished: app.setOutputFolder(text)
+                        }
+
+                        AppButton {
+                            text: "Browse"
+                            surfaceColor: colors.surfaceAlt
+                            borderColor: colors.border
+                            textColor: colors.text
+                            onClicked: outputFolderDialog.open()
+                        }
                     }
                 }
 
@@ -1217,15 +1264,10 @@ ApplicationWindow {
                     Layout.fillWidth: true
                 }
 
-                RowLayout {
+                FieldGroup {
+                    label: "Batch size"
+                    detail: "Limit how many sources convert in one worker batch."
                     Layout.fillWidth: true
-
-                    Label {
-                        text: "Batch size"
-                        color: colors.text
-                        font.pixelSize: 13
-                        Layout.fillWidth: true
-                    }
 
                     ThemeSpinBox {
                         from: 1
@@ -1245,11 +1287,17 @@ ApplicationWindow {
                 mutedTextColor: colors.muted
                 Layout.fillWidth: true
 
-                ThemeComboBox {
-                    model: ["Solarized Light", "Nord Dark", "System"]
-                    currentIndex: app.themeMode === "dark" ? 1 : app.themeMode === "system" ? 2 : 0
-                    onActivated: index => app.setThemeMode(index === 1 ? "dark" : index === 2 ? "system" : "light")
+                FieldGroup {
+                    label: "Theme"
+                    detail: "Use explicit palettes or follow the operating system."
                     Layout.fillWidth: true
+
+                    ThemeComboBox {
+                        model: ["Solarized Light", "Nord Dark", "System"]
+                        currentIndex: app.themeMode === "dark" ? 1 : app.themeMode === "system" ? 2 : 0
+                        onActivated: index => app.setThemeMode(index === 1 ? "dark" : index === 2 ? "system" : "light")
+                        Layout.fillWidth: true
+                    }
                 }
             }
 
@@ -1272,47 +1320,68 @@ ApplicationWindow {
                     Layout.fillWidth: true
                 }
 
-                ThemeComboBox {
-                    model: ["Azure/Tesseract", "GLM-OCR"]
-                    currentIndex: app.ocrProvider === "glmocr" ? 1 : 0
-                    onActivated: index => app.setOcrProvider(index === 1 ? "glmocr" : "legacy")
+                FieldGroup {
+                    label: "Provider"
+                    detail: "GLM-OCR is best for image-heavy pages; Azure/Tesseract keeps the legacy path."
                     Layout.fillWidth: true
+
+                    ThemeComboBox {
+                        model: ["Azure/Tesseract", "GLM-OCR"]
+                        currentIndex: app.ocrProvider === "glmocr" ? 1 : 0
+                        onActivated: index => app.setOcrProvider(index === 1 ? "glmocr" : "legacy")
+                        Layout.fillWidth: true
+                    }
                 }
 
-                AppTextField {
-                    text: app.docintelEndpoint
-                    placeholderText: "Azure Document Intelligence endpoint"
-                    surfaceColor: colors.input
-                    borderColor: colors.border
-                    accentColor: colors.accent
-                    textColor: colors.text
-                    placeholderColor: colors.subtle
+                FieldGroup {
+                    label: "Azure endpoint"
                     Layout.fillWidth: true
-                    onEditingFinished: app.setDocintelEndpoint(text)
+
+                    AppTextField {
+                        text: app.docintelEndpoint
+                        placeholderText: "https://example.cognitiveservices.azure.com/"
+                        surfaceColor: colors.input
+                        borderColor: colors.border
+                        accentColor: colors.accent
+                        textColor: colors.text
+                        placeholderColor: colors.subtle
+                        Layout.fillWidth: true
+                        onEditingFinished: app.setDocintelEndpoint(text)
+                    }
                 }
 
-                AppTextField {
-                    text: app.ocrLanguages
-                    placeholderText: "Tesseract languages, for example eng or eng+deu"
-                    surfaceColor: colors.input
-                    borderColor: colors.border
-                    accentColor: colors.accent
-                    textColor: colors.text
-                    placeholderColor: colors.subtle
+                FieldGroup {
+                    label: "Tesseract languages"
                     Layout.fillWidth: true
-                    onEditingFinished: app.setOcrLanguages(text)
+
+                    AppTextField {
+                        text: app.ocrLanguages
+                        placeholderText: "eng or eng+deu"
+                        surfaceColor: colors.input
+                        borderColor: colors.border
+                        accentColor: colors.accent
+                        textColor: colors.text
+                        placeholderColor: colors.subtle
+                        Layout.fillWidth: true
+                        onEditingFinished: app.setOcrLanguages(text)
+                    }
                 }
 
-                AppTextField {
-                    text: app.tesseractPath
-                    placeholderText: "Optional Tesseract executable path"
-                    surfaceColor: colors.input
-                    borderColor: colors.border
-                    accentColor: colors.accent
-                    textColor: colors.text
-                    placeholderColor: colors.subtle
+                FieldGroup {
+                    label: "Tesseract executable"
                     Layout.fillWidth: true
-                    onEditingFinished: app.setTesseractPath(text)
+
+                    AppTextField {
+                        text: app.tesseractPath
+                        placeholderText: "Optional executable path"
+                        surfaceColor: colors.input
+                        borderColor: colors.border
+                        accentColor: colors.accent
+                        textColor: colors.text
+                        placeholderColor: colors.subtle
+                        Layout.fillWidth: true
+                        onEditingFinished: app.setTesseractPath(text)
+                    }
                 }
             }
 
@@ -1335,59 +1404,85 @@ ApplicationWindow {
                     Layout.fillWidth: true
                 }
 
-                ThemeComboBox {
-                    model: ["Official API", "Ollama", "SDK Server"]
-                    currentIndex: app.glmocrMode === "ollama" ? 1 : app.glmocrMode === "sdk_server" ? 2 : 0
-                    onActivated: index => app.setGlmocrMode(index === 1 ? "ollama" : index === 2 ? "sdk_server" : "maas")
+                FieldGroup {
+                    label: "Mode"
                     Layout.fillWidth: true
-                }
 
-                AppTextField {
-                    text: app.glmocrOllamaHost
-                    placeholderText: "Ollama host"
-                    surfaceColor: colors.input
-                    borderColor: colors.border
-                    accentColor: colors.accent
-                    textColor: colors.text
-                    placeholderColor: colors.subtle
-                    Layout.fillWidth: true
-                    onEditingFinished: app.setGlmocrOllamaHost(text)
-                }
-
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 10
-
-                    ThemeSpinBox {
-                        from: 1
-                        to: 65535
-                        value: app.glmocrOllamaPort
-                        onValueModified: app.setGlmocrOllamaPort(value)
+                    ThemeComboBox {
+                        model: ["Official API", "Ollama", "SDK Server"]
+                        currentIndex: app.glmocrMode === "ollama" ? 1 : app.glmocrMode === "sdk_server" ? 2 : 0
+                        onActivated: index => app.setGlmocrMode(index === 1 ? "ollama" : index === 2 ? "sdk_server" : "maas")
+                        Layout.fillWidth: true
                     }
+                }
+
+                FieldGroup {
+                    label: "Ollama host"
+                    Layout.fillWidth: true
 
                     AppTextField {
-                        text: app.glmocrOllamaModel
-                        placeholderText: "Ollama model"
+                        text: app.glmocrOllamaHost
+                        placeholderText: "127.0.0.1"
                         surfaceColor: colors.input
                         borderColor: colors.border
                         accentColor: colors.accent
                         textColor: colors.text
                         placeholderColor: colors.subtle
                         Layout.fillWidth: true
-                        onEditingFinished: app.setGlmocrOllamaModel(text)
+                        onEditingFinished: app.setGlmocrOllamaHost(text)
                     }
                 }
 
-                AppTextField {
-                    text: app.glmocrSdkServerUrl
-                    placeholderText: "SDK server parse endpoint"
-                    surfaceColor: colors.input
-                    borderColor: colors.border
-                    accentColor: colors.accent
-                    textColor: colors.text
-                    placeholderColor: colors.subtle
+                RowLayout {
                     Layout.fillWidth: true
-                    onEditingFinished: app.setGlmocrSdkServerUrl(text)
+                    spacing: 10
+
+                    FieldGroup {
+                        label: "Port"
+                        Layout.preferredWidth: 150
+                        Layout.fillWidth: false
+
+                        ThemeSpinBox {
+                            from: 1
+                            to: 65535
+                            value: app.glmocrOllamaPort
+                            onValueModified: app.setGlmocrOllamaPort(value)
+                        }
+                    }
+
+                    FieldGroup {
+                        label: "Model"
+                        Layout.fillWidth: true
+
+                        AppTextField {
+                            text: app.glmocrOllamaModel
+                            placeholderText: "glm-ocr:latest"
+                            surfaceColor: colors.input
+                            borderColor: colors.border
+                            accentColor: colors.accent
+                            textColor: colors.text
+                            placeholderColor: colors.subtle
+                            Layout.fillWidth: true
+                            onEditingFinished: app.setGlmocrOllamaModel(text)
+                        }
+                    }
+                }
+
+                FieldGroup {
+                    label: "SDK server endpoint"
+                    Layout.fillWidth: true
+
+                    AppTextField {
+                        text: app.glmocrSdkServerUrl
+                        placeholderText: "http://127.0.0.1:5002/glmocr/parse"
+                        surfaceColor: colors.input
+                        borderColor: colors.border
+                        accentColor: colors.accent
+                        textColor: colors.text
+                        placeholderColor: colors.subtle
+                        Layout.fillWidth: true
+                        onEditingFinished: app.setGlmocrSdkServerUrl(text)
+                    }
                 }
             }
 
