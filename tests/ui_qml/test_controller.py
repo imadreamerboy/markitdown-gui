@@ -265,6 +265,30 @@ def test_controller_theme_change_refreshes_selected_preview(controller):
     assert "background:#2b313c" in controller.selectedPreviewHtml
 
 
+def test_controller_preview_compacts_qt_heading_sizes(controller):
+    controller.result_model.set_results(
+        {
+            "C:/tmp/report.pdf": ConversionOutcome(
+                "# Title\n\n## Section\n\n### Detail",
+                backend="native",
+            )
+        }
+    )
+    controller.selectResult(0)
+
+    html = controller.selectedPreviewHtml
+
+    assert "font-size:xx-large;" not in html
+    assert "font-size:x-large;" not in html
+    assert "font-size:large;" not in html
+    assert "font-size:18px;" in html
+    assert "font-size:15px;" in html
+    assert "font-size:14px;" in html
+    assert "<h1" not in html
+    assert "<h2" not in html
+    assert "<h3" not in html
+
+
 def test_controller_exposes_selected_failed_result(controller):
     controller.result_model.set_results(
         {

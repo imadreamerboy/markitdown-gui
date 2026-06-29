@@ -1055,7 +1055,7 @@ ApplicationWindow {
                 borderColor: colors.border
                 textColor: colors.text
                 mutedTextColor: colors.muted
-                Layout.preferredWidth: 330
+                Layout.preferredWidth: 300
                 Layout.fillHeight: true
 
                 RowLayout {

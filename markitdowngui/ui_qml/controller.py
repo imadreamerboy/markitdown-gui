@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -27,6 +28,14 @@ from markitdowngui.core.settings import SettingsManager
 from markitdowngui.ui_qml.models import QueueModel, ResultModel
 from markitdowngui.utils.logger import AppLogger
 from markitdowngui.utils.translations import DEFAULT_LANG, get_translation
+
+
+_PREVIEW_HEADING_RE = re.compile(r'<h([1-3]) style="([^"]*)"><span style="([^"]*)">')
+_PREVIEW_HEADING_MARGINS = {
+    "1": "10px",
+    "2": "8px",
+    "3": "6px",
+}
 
 
 class AppController(QObject):
@@ -120,7 +129,8 @@ class AppController(QObject):
         )
         doc = QTextDocument()
         doc.setMarkdown(markdown)
-        return f"<style>{self._preview_css()}</style>{doc.toHtml()}"
+        html = self._compact_preview_html(doc.toHtml())
+        return f"<style>{self._preview_css()}</style>{html}"
 
     @Property(str, notify=previewModeChanged)
     def previewMode(self) -> str:
@@ -728,36 +738,58 @@ class AppController(QObject):
         if self.darkMode:
             return (
                 "body{background:#2b313c;color:#eceff4;font-family:Segoe UI,Arial,sans-serif;"
-                "font-size:14px;line-height:1.72;margin:0;} "
-                "h1{font-size:27px;line-height:1.18;margin:0 0 20px;font-weight:700;color:#f4f7fb;} "
-                "h2{font-size:20px;line-height:1.28;margin:24px 0 12px;font-weight:700;color:#eceff4;} "
-                "h3{font-size:16px;margin:20px 0 10px;color:#eceff4;} p{margin:0 0 16px;} "
+                "font-size:14px;line-height:1.68;margin:0;} "
+                "h1{font-size:18px;line-height:1.28;margin:0 0 14px;font-weight:700;color:#f4f7fb;} "
+                "h2{font-size:15px;line-height:1.36;margin:18px 0 8px;font-weight:700;color:#eceff4;} "
+                "h3{font-size:14px;margin:18px 0 8px;color:#eceff4;} p{margin:0 0 14px;} "
                 "a{color:#88c0d0;} strong{color:#f4f7fb;} "
                 "code{background:#3b4252;border-radius:5px;padding:2px 5px;font-family:Cascadia Mono,Consolas,monospace;"
                 "font-size:13px;color:#eceff4;} pre{background:#3b4252;border:1px solid #566176;border-radius:8px;"
-                "padding:12px 14px;margin:16px 0;color:#eceff4;} "
-                "table{border-collapse:collapse;margin:14px 0 18px;font-size:13px;} "
+                "padding:12px 14px;margin:14px 0;color:#eceff4;} "
+                "table{border-collapse:collapse;margin:12px 0 16px;font-size:13px;} "
                 "th{background:#3b4252;color:#f4f7fb;font-weight:700;} "
                 "td,th{border:1px solid #657083;padding:7px 10px;} "
-                "blockquote{border-left:3px solid #88c0d0;background:#303744;margin:16px 0;padding:10px 14px;"
-                "border-radius:6px;color:#d8dee9;} ul,ol{margin:0 0 16px 22px;} hr{border:0;border-top:1px solid #4c566a;}"
+                "blockquote{border-left:3px solid #88c0d0;background:#303744;margin:14px 0;padding:10px 14px;"
+                "border-radius:6px;color:#d8dee9;} ul,ol{margin:0 0 14px 22px;} hr{border:0;border-top:1px solid #4c566a;}"
             )
         return (
             "body{background:#fff9e8;color:#073642;font-family:Segoe UI,Arial,sans-serif;"
-            "font-size:14px;line-height:1.72;margin:0;} "
-            "h1{font-size:27px;line-height:1.18;margin:0 0 20px;font-weight:700;color:#073642;} "
-            "h2{font-size:20px;line-height:1.28;margin:24px 0 12px;font-weight:700;color:#073642;} "
-            "h3{font-size:16px;margin:20px 0 10px;color:#073642;} p{margin:0 0 16px;} "
+            "font-size:14px;line-height:1.68;margin:0;} "
+            "h1{font-size:18px;line-height:1.28;margin:0 0 14px;font-weight:700;color:#073642;} "
+            "h2{font-size:15px;line-height:1.36;margin:18px 0 8px;font-weight:700;color:#073642;} "
+            "h3{font-size:14px;margin:18px 0 8px;color:#073642;} p{margin:0 0 14px;} "
             "a{color:#268bd2;} strong{color:#073642;} "
             "code{background:#eee8d5;border-radius:5px;padding:2px 5px;font-family:Cascadia Mono,Consolas,monospace;"
             "font-size:13px;color:#073642;} pre{background:#eee8d5;border:1px solid #d6ccb2;border-radius:8px;"
-            "padding:12px 14px;margin:16px 0;color:#073642;} "
-            "table{border-collapse:collapse;margin:14px 0 18px;font-size:13px;} "
+            "padding:12px 14px;margin:14px 0;color:#073642;} "
+            "table{border-collapse:collapse;margin:12px 0 16px;font-size:13px;} "
             "th{background:#eee8d5;color:#073642;font-weight:700;} "
             "td,th{border:1px solid #cfc4a8;padding:7px 10px;} "
-            "blockquote{border-left:3px solid #2aa198;background:#f6efd8;margin:16px 0;padding:10px 14px;"
-            "border-radius:6px;color:#586e75;} ul,ol{margin:0 0 16px 22px;} hr{border:0;border-top:1px solid #d6ccb2;}"
+            "blockquote{border-left:3px solid #2aa198;background:#f6efd8;margin:14px 0;padding:10px 14px;"
+            "border-radius:6px;color:#586e75;} ul,ol{margin:0 0 14px 22px;} hr{border:0;border-top:1px solid #d6ccb2;}"
         )
+
+    @staticmethod
+    def _compact_preview_html(html: str) -> str:
+        # Qt RichText applies built-in heading scale even when the span font is restyled.
+        html = (
+            html.replace("font-size:xx-large;", "font-size:18px;")
+            .replace("font-size:x-large;", "font-size:15px;")
+            .replace("font-size:large;", "font-size:14px;")
+        )
+        html = _PREVIEW_HEADING_RE.sub(AppController._preview_heading_to_paragraph, html)
+        return (
+            html.replace("</h1>", "</p>")
+            .replace("</h2>", "</p>")
+            .replace("</h3>", "</p>")
+        )
+
+    @staticmethod
+    def _preview_heading_to_paragraph(match: re.Match[str]) -> str:
+        level, style, span_style = match.groups()
+        margin = _PREVIEW_HEADING_MARGINS[level]
+        style = style.replace("margin-bottom:0px;", f"margin-bottom:{margin};")
+        return f'<p style="{style}"><span style="{span_style}">'
 
     def translate(self, key: str) -> str:
         lang = self.settings.get_current_language() or DEFAULT_LANG
