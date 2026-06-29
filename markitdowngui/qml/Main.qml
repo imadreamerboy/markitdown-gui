@@ -23,20 +23,20 @@ ApplicationWindow {
     property int panelRadius: 8
     property int controlRadius: 8
     property var colors: ({
-        window: dark ? Qt.color("#2E3440") : Qt.color("#F8F1DC"),
-        nav: dark ? Qt.color("#242A34") : Qt.color("#EDE4CC"),
+        window: dark ? Qt.color("#2E3440") : Qt.color("#FBF4E1"),
+        nav: dark ? Qt.color("#242A34") : Qt.color("#EEE8D5"),
         surface: dark ? Qt.color("#343B48") : Qt.color("#FFFCF0"),
-        surfaceAlt: dark ? Qt.color("#3B4252") : Qt.color("#F2E8CD"),
+        surfaceAlt: dark ? Qt.color("#3B4252") : Qt.color("#F7F0D8"),
         document: dark ? Qt.color("#2B313C") : Qt.color("#FFFEF7"),
-        input: dark ? Qt.color("#2E3440") : Qt.color("#FFF7E4"),
-        border: dark ? Qt.color("#4C566A") : Qt.color("#D3C6A8"),
+        input: dark ? Qt.color("#2E3440") : Qt.color("#FFF9EA"),
+        border: dark ? Qt.color("#4C566A") : Qt.color("#D8CEB5"),
         text: dark ? Qt.color("#ECEFF4") : Qt.color("#073642"),
         muted: dark ? Qt.color("#D8DEE9") : Qt.color("#586E75"),
         subtle: dark ? Qt.color("#AEB8C8") : Qt.color("#839496"),
         accent: dark ? Qt.color("#88C0D0") : Qt.color("#2AA198"),
         accentAlt: dark ? Qt.color("#8FBCBB") : Qt.color("#268BD2"),
-        action: dark ? Qt.color("#88C0D0") : Qt.color("#7B6100"),
-        actionSoft: dark ? Qt.color("#415867") : Qt.color("#EEE1B3"),
+        action: dark ? Qt.color("#88C0D0") : Qt.color("#2AA198"),
+        actionSoft: dark ? Qt.color("#415867") : Qt.color("#DCEDE7"),
         onAccent: dark ? Qt.color("#2E3440") : Qt.color("#073642"),
         onAction: dark ? Qt.color("#2E3440") : Qt.color("#FDF6E3"),
         danger: dark ? Qt.color("#BF616A") : Qt.color("#DC322F"),
@@ -47,6 +47,10 @@ ApplicationWindow {
     function requestSave() {
         if (!app.hasResults) {
             app.notifyNoOutputToSave()
+            return
+        }
+        if (!app.hasSuccessfulResults) {
+            app.notifyNoSuccessfulOutputToSave()
             return
         }
 
@@ -61,6 +65,17 @@ ApplicationWindow {
     function showLegacyOcrSettings() {
         return app.ocrEnabled
             && (app.ocrProvider !== "glmocr" || app.ocrFallbackEnabled)
+    }
+
+    function focusedTextControl() {
+        var item = root.activeFocusItem
+        if (!item)
+            return false
+        try {
+            return item.selectedText !== undefined
+        } catch (error) {
+            return false
+        }
     }
 
     palette.window: colors.window
@@ -148,13 +163,14 @@ ApplicationWindow {
     Shortcut {
         sequence: "Ctrl+S"
         context: Qt.ApplicationShortcut
+        enabled: app.hasSuccessfulResults && !app.selectedResultFailed
         onActivated: root.requestSave()
     }
 
     Shortcut {
         sequence: "Ctrl+C"
         context: Qt.ApplicationShortcut
-        enabled: root.pageIndex === 0 && app.hasResults
+        enabled: root.pageIndex === 0 && app.hasResults && !root.focusedTextControl()
         onActivated: app.copySelectedMarkdown()
     }
 
@@ -584,7 +600,6 @@ ApplicationWindow {
                 AppButton {
                     text: "Add webpage"
                     enabled: !app.converting
-                    primary: !urlBar.compact && !app.converting
                     iconName: "link"
                     accentColor: colors.action
                     primaryTextColor: colors.onAction
@@ -1304,6 +1319,7 @@ ApplicationWindow {
                         AppButton {
                             visible: !previewToolbar.compactActions
                             text: app.saveCombined ? "Save as one file" : "Save files"
+                            enabled: app.hasSuccessfulResults && !app.selectedResultFailed
                             primary: !app.selectedResultFailed
                             iconName: "save"
                             accentColor: colors.action
@@ -1337,6 +1353,7 @@ ApplicationWindow {
 
                         AppButton {
                             text: "Save"
+                            enabled: app.hasSuccessfulResults && !app.selectedResultFailed
                             primary: !app.selectedResultFailed
                             iconName: "save"
                             accentColor: colors.action
@@ -1959,7 +1976,7 @@ ApplicationWindow {
                             { key: "Ctrl+B", action: "Convert queue" },
                             { key: "Ctrl+P", action: "Pause or resume" },
                             { key: "Ctrl+S", action: "Save Markdown" },
-                            { key: "Ctrl+C", action: "Copy Markdown" },
+                            { key: "Ctrl+C", action: "Copy selected result" },
                             { key: "Ctrl+L", action: "Clear queue" },
                             { key: "Ctrl+K", action: "Open Help" },
                             { key: "Esc", action: "Cancel conversion" }

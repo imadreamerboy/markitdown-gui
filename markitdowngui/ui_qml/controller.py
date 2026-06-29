@@ -104,6 +104,10 @@ class AppController(QObject):
     def hasResults(self) -> bool:
         return self.result_model.rowCount() > 0
 
+    @Property(bool, notify=resultsChanged)
+    def hasSuccessfulResults(self) -> bool:
+        return bool(self._successful_result_items())
+
     @Property(int, notify=selectedResultChanged)
     def selectedResultIndex(self) -> int:
         return self._selected_result_index
@@ -167,7 +171,9 @@ class AppController(QObject):
         if not output_dir:
             return ""
 
-        items = self.result_model.items()
+        items = self._successful_result_items()
+        if not items:
+            return ""
         stem = source_output_stem(items[0].source) if len(items) == 1 else "converted"
         output_path = Path(output_dir) / f"{stem}{self.settings.get_default_output_format()}"
         return QUrl.fromLocalFile(str(output_path)).toString()
@@ -370,6 +376,10 @@ class AppController(QObject):
     def notifyNoOutputToSave(self) -> None:
         self.toastRequested.emit("error", "No output to save.")
 
+    @Slot()
+    def notifyNoSuccessfulOutputToSave(self) -> None:
+        self.toastRequested.emit("error", "No successful output to save.")
+
     @Slot("QVariant")
     def saveCombinedOutput(self, file_url: Any) -> None:
         output_path = self._path_from_url(file_url)
@@ -378,9 +388,13 @@ class AppController(QObject):
         if not output_path.lower().endswith(".md"):
             output_path = f"{output_path}.md"
 
-        items = self.result_model.items()
-        if not items:
+        all_items = self.result_model.items()
+        if not all_items:
             self.toastRequested.emit("error", "No output to save.")
+            return
+        items = self._successful_result_items(all_items)
+        if not items:
+            self.notifyNoSuccessfulOutputToSave()
             return
 
         documents = [
@@ -412,9 +426,13 @@ class AppController(QObject):
     @Slot("QVariant")
     def saveSeparateOutputs(self, folder_url: Any) -> None:
         fallback_dir = self._path_from_url(folder_url)
-        items = self.result_model.items()
-        if not items:
+        all_items = self.result_model.items()
+        if not all_items:
             self.toastRequested.emit("error", "No output to save.")
+            return
+        items = self._successful_result_items(all_items)
+        if not items:
+            self.notifyNoSuccessfulOutputToSave()
             return
 
         if not fallback_dir and not self._can_save_separate_without_dialog(items):
@@ -691,7 +709,11 @@ class AppController(QObject):
         if not self.settings.get_save_to_source_folder():
             return False
 
-        items = self.result_model.items() if items is None else items
+        items = (
+            self._successful_result_items()
+            if items is None
+            else self._successful_result_items(items)
+        )
         if not items:
             return False
 
@@ -702,10 +724,14 @@ class AppController(QObject):
         if output_dir:
             return output_dir
 
-        items = self.result_model.items()
+        items = self._successful_result_items()
         if not items:
             return ""
         return self._separate_output_dir("", items[0].source)
+
+    def _successful_result_items(self, items: list[Any] | None = None) -> list[Any]:
+        result_items = self.result_model.items() if items is None else items
+        return [item for item in result_items if not item.failed]
 
     @staticmethod
     def _folder_url(folder: str) -> str:

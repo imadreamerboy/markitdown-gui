@@ -196,6 +196,74 @@ def test_controller_separate_save_requires_fallback_for_web_sources(
     assert messages == [("error", "Choose an output folder before saving.")]
 
 
+def test_controller_save_combined_skips_failed_results(controller, tmp_path):
+    output_path = tmp_path / "combined.md"
+    controller.result_model.set_results(
+        {
+            "C:/tmp/ok.pdf": ConversionOutcome("# Converted\n\nBody", backend="native"),
+            "C:/tmp/broken.pdf": ConversionOutcome(
+                "Error converting broken.pdf",
+                backend="native",
+            ),
+        },
+        {"C:/tmp/broken.pdf"},
+    )
+
+    assert controller.hasSuccessfulResults is True
+
+    controller.saveCombinedOutput(str(output_path))
+
+    saved = output_path.read_text(encoding="utf-8")
+    assert "# Converted" in saved
+    assert "Error converting broken.pdf" not in saved
+    assert "C:/tmp/broken.pdf" not in saved
+
+
+def test_controller_save_separate_skips_failed_results(controller, tmp_path):
+    output_dir = tmp_path / "exports"
+    controller.result_model.set_results(
+        {
+            "C:/tmp/ok.pdf": ConversionOutcome("# Converted\n\nBody", backend="native"),
+            "C:/tmp/broken.pdf": ConversionOutcome(
+                "Error converting broken.pdf",
+                backend="native",
+            ),
+        },
+        {"C:/tmp/broken.pdf"},
+    )
+
+    controller.saveSeparateOutputs(str(output_dir))
+
+    saved_files = sorted(path.name for path in output_dir.glob("*.md"))
+    assert saved_files == ["ok.md"]
+    assert (output_dir / "ok.md").read_text(encoding="utf-8") == "# Converted\n\nBody"
+
+
+def test_controller_save_all_failed_results_reports_no_success(controller, tmp_path):
+    output_path = tmp_path / "combined.md"
+    messages: list[tuple[str, str]] = []
+    controller.toastRequested.connect(
+        lambda kind, message: messages.append((kind, message))
+    )
+    controller.result_model.set_results(
+        {
+            "C:/tmp/broken.pdf": ConversionOutcome(
+                "Error converting broken.pdf",
+                backend="native",
+            )
+        },
+        {"C:/tmp/broken.pdf"},
+    )
+
+    assert controller.hasSuccessfulResults is False
+    assert controller.suggestedCombinedOutputUrl == ""
+
+    controller.saveCombinedOutput(str(output_path))
+
+    assert not output_path.exists()
+    assert messages == [("error", "No successful output to save.")]
+
+
 def test_controller_separate_save_falls_back_when_source_folder_is_not_writable(
     controller,
     monkeypatch,

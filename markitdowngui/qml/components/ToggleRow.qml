@@ -54,6 +54,9 @@ RowLayout {
 
         checked: root.checked
         hoverEnabled: true
+        Accessible.role: Accessible.Switch
+        Accessible.name: root.title
+        Accessible.description: root.detail
         onToggled: root.toggled(checked)
 
         indicator: Rectangle {
