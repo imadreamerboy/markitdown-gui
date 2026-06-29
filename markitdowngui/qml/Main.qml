@@ -1108,8 +1108,10 @@ ApplicationWindow {
             }
 
             SectionPanel {
-                title: "Markdown preview"
-                subtitle: "Check the rendered view or raw Markdown before export."
+                title: app.selectedResultFailed ? "Conversion failed" : "Markdown preview"
+                subtitle: app.selectedResultFailed
+                    ? "Review the error, then return to the queue or try another input."
+                    : "Check the rendered view or source Markdown before export."
                 surfaceColor: colors.surface
                 borderColor: colors.border
                 textColor: colors.text
@@ -1129,6 +1131,7 @@ ApplicationWindow {
                         Layout.fillWidth: true
 
                         AppButton {
+                            visible: !app.selectedResultFailed
                             text: "Rendered"
                             primary: app.previewMode === "rendered"
                             subtle: app.previewMode !== "rendered"
@@ -1139,6 +1142,7 @@ ApplicationWindow {
                         }
 
                         AppButton {
+                            visible: !app.selectedResultFailed
                             text: "Source"
                             primary: app.previewMode === "raw"
                             subtle: app.previewMode !== "raw"
@@ -1154,7 +1158,7 @@ ApplicationWindow {
 
                         AppButton {
                             visible: !previewToolbar.compactActions
-                            text: "Copy"
+                            text: app.selectedResultFailed ? "Copy details" : "Copy"
                             iconName: "copy"
                             surfaceColor: colors.surfaceAlt
                             borderColor: colors.border
@@ -1182,7 +1186,7 @@ ApplicationWindow {
                         }
 
                         AppButton {
-                            text: "Copy"
+                            text: app.selectedResultFailed ? "Copy details" : "Copy"
                             iconName: "copy"
                             surfaceColor: colors.surfaceAlt
                             borderColor: colors.border
@@ -1215,15 +1219,97 @@ ApplicationWindow {
                         width: previewScroll.availableWidth
                         height: Math.max(
                             previewScroll.availableHeight,
-                            app.previewMode === "rendered"
+                            app.selectedResultFailed
+                                ? previewScroll.availableHeight
+                                : app.previewMode === "rendered"
                                 ? renderedPreview.contentHeight + renderedPreview.topPadding + renderedPreview.bottomPadding
                                 : rawPreview.contentHeight + rawPreview.topPadding + rawPreview.bottomPadding
                         )
 
+                        Rectangle {
+                            id: failedPreview
+
+                            visible: app.selectedResultFailed
+                            anchors.fill: parent
+                            radius: 9
+                            color: colors.document
+                            border.color: Qt.rgba(colors.danger.r, colors.danger.g, colors.danger.b, dark ? 0.55 : 0.40)
+
+                            ColumnLayout {
+                                anchors.fill: parent
+                                anchors.margins: 18
+                                spacing: 12
+
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 10
+
+                                    Rectangle {
+                                        width: 34
+                                        height: 34
+                                        radius: 8
+                                        color: Qt.rgba(colors.danger.r, colors.danger.g, colors.danger.b, dark ? 0.18 : 0.10)
+                                        border.color: Qt.rgba(colors.danger.r, colors.danger.g, colors.danger.b, dark ? 0.40 : 0.28)
+
+                                        Icon {
+                                            anchors.centerIn: parent
+                                            name: "file-x"
+                                            size: 17
+                                            color: colors.danger
+                                        }
+                                    }
+
+                                    ColumnLayout {
+                                        spacing: 3
+                                        Layout.fillWidth: true
+
+                                        Label {
+                                            text: "This input could not be converted"
+                                            color: colors.text
+                                            font.pixelSize: 15
+                                            font.weight: Font.DemiBold
+                                            Layout.fillWidth: true
+                                        }
+
+                                        Label {
+                                            text: "The details below can be copied for troubleshooting."
+                                            color: colors.muted
+                                            font.pixelSize: 12
+                                            Layout.fillWidth: true
+                                        }
+                                    }
+                                }
+
+                                TextArea {
+                                    text: app.selectedMarkdown
+                                    textFormat: TextEdit.PlainText
+                                    readOnly: true
+                                    wrapMode: TextEdit.Wrap
+                                    selectByMouse: true
+                                    color: colors.text
+                                    selectedTextColor: "#FFFFFF"
+                                    selectionColor: colors.danger
+                                    font.pixelSize: 13
+                                    padding: 12
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: 100
+                                    background: Rectangle {
+                                        color: colors.input
+                                        radius: 8
+                                        border.color: colors.border
+                                    }
+                                }
+
+                                Item {
+                                    Layout.fillHeight: true
+                                }
+                            }
+                        }
+
                         TextArea {
                             id: renderedPreview
 
-                            visible: app.previewMode === "rendered"
+                            visible: !app.selectedResultFailed && app.previewMode === "rendered"
                             anchors.fill: parent
                             text: app.selectedPreviewHtml
                             textFormat: TextEdit.RichText
@@ -1249,7 +1335,7 @@ ApplicationWindow {
                         TextArea {
                             id: rawPreview
 
-                            visible: app.previewMode === "raw"
+                            visible: !app.selectedResultFailed && app.previewMode === "raw"
                             anchors.fill: parent
                             text: app.selectedMarkdown
                             textFormat: TextEdit.PlainText
@@ -1702,7 +1788,7 @@ ApplicationWindow {
                 Layout.fillWidth: true
 
                 Label {
-                    text: "Ctrl+O open files, Ctrl+B convert, Ctrl+P pause or resume, Ctrl+S save, Ctrl+L clear queue, Ctrl+K help, Esc cancel."
+                    text: "Ctrl+O add files, Ctrl+B convert, Ctrl+P pause or resume, Ctrl+S save, Ctrl+C copy Markdown, Ctrl+L clear queue, Ctrl+K open Help, Esc cancel."
                     color: colors.muted
                     font.pixelSize: 13
                     wrapMode: Text.WordWrap

@@ -104,6 +104,11 @@ class AppController(QObject):
         item = self.result_model.item_at(self._selected_result_index)
         return item.outcome.markdown if item else ""
 
+    @Property(bool, notify=selectedResultChanged)
+    def selectedResultFailed(self) -> bool:
+        item = self.result_model.item_at(self._selected_result_index)
+        return bool(item and item.failed)
+
     @Property(str, notify=selectedResultChanged)
     def selectedPreviewHtml(self) -> str:
         item = self.result_model.item_at(self._selected_result_index)

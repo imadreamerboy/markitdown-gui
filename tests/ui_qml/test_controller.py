@@ -183,3 +183,19 @@ def test_controller_theme_change_refreshes_selected_preview(controller):
     assert changes == [None]
     assert "background:#2b313c" in controller.selectedPreviewHtml
 
+
+def test_controller_exposes_selected_failed_result(controller):
+    controller.result_model.set_results(
+        {
+            "C:/tmp/ok.pdf": ConversionOutcome("# Title", backend="native"),
+            "C:/tmp/broken.pdf": ConversionOutcome("Conversion failed", backend="native"),
+        },
+        {"C:/tmp/broken.pdf"},
+    )
+
+    controller.selectResult(0)
+    assert controller.selectedResultFailed is False
+
+    controller.selectResult(1)
+    assert controller.selectedResultFailed is True
+
