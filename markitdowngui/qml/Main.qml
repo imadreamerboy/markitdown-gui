@@ -62,9 +62,46 @@ ApplicationWindow {
             saveSeparateDialog.open()
     }
 
-    function showLegacyOcrSettings() {
+    function showAzureTesseractSettings() {
         return app.ocrEnabled
-            && (app.ocrProvider !== "glmocr" || app.ocrFallbackEnabled)
+            && (app.ocrProvider === "azure_tesseract" || app.ocrFallbackProvider === "azure_tesseract")
+    }
+
+    function showHttpOcrSettings() {
+        return app.ocrEnabled
+            && (app.ocrProvider === "http" || app.ocrFallbackProvider === "http")
+    }
+
+    function ocrProviderIndex(provider) {
+        if (provider === "glmocr")
+            return 1
+        if (provider === "http")
+            return 2
+        return 0
+    }
+
+    function ocrProviderFromIndex(index) {
+        if (index === 1)
+            return "glmocr"
+        if (index === 2)
+            return "http"
+        return "azure_tesseract"
+    }
+
+    function ocrFallbackIndex(provider) {
+        if (provider === "azure_tesseract")
+            return 1
+        if (provider === "http")
+            return 2
+        return 0
+    }
+
+    function ocrFallbackFromIndex(index) {
+        if (index === 1)
+            return "azure_tesseract"
+        if (index === 2)
+            return "http"
+        return "none"
     }
 
     function focusedTextControl() {
@@ -183,7 +220,7 @@ ApplicationWindow {
                 }
 
                 Label {
-                    text: "Open GitHub Releases to download it."
+                    text: "Use Releases for packaged builds, or the source updater for Git checkouts."
                     color: colors.muted
                     font.pixelSize: 12
                     elide: Text.ElideRight
@@ -192,12 +229,14 @@ ApplicationWindow {
             }
 
             AppButton {
-                text: "Releases"
+                text: app.availableReleaseAssets.length > 0 ? "Download" : "Releases"
                 primary: true
                 iconName: "external-link"
                 accentColor: colors.action
                 primaryTextColor: colors.onAction
-                onClicked: app.openReleases()
+                onClicked: app.availableReleaseAssets.length > 0
+                    ? app.openReleaseAsset(app.availableReleaseAssets[0].url)
+                    : app.openReleases()
             }
 
             AppButton {
@@ -1001,7 +1040,7 @@ ApplicationWindow {
 
                         ThemeToggleRow {
                             title: "OCR"
-                            detail: "Provider: " + (app.ocrProvider === "glmocr" ? "GLM-OCR" : "Azure/Tesseract") + ". Use for scanned or image-heavy inputs."
+                            detail: "Provider: " + (app.ocrProvider === "glmocr" ? "GLM-OCR" : "Azure + Tesseract") + ". Use for scanned or image-heavy inputs."
                             enabled: !app.converting
                             checked: app.ocrEnabled
                             textColor: colors.text
@@ -1862,16 +1901,54 @@ ApplicationWindow {
                 }
 
                 FieldGroup {
-                    label: "Provider"
-                    detail: "GLM-OCR is best for image-heavy pages; Azure/Tesseract keeps the legacy path."
+                    label: "Primary provider"
+                    detail: "Choose the OCR engine used first. A fallback can be configured for model failures."
                     visible: app.ocrEnabled
                     Layout.fillWidth: true
 
                     ThemeComboBox {
-                        model: ["Azure/Tesseract", "GLM-OCR"]
-                        currentIndex: app.ocrProvider === "glmocr" ? 1 : 0
-                        onActivated: index => app.setOcrProvider(index === 1 ? "glmocr" : "legacy")
+                        model: ["Azure + Tesseract", "GLM-OCR", "HTTP OCR"]
+                        currentIndex: root.ocrProviderIndex(app.ocrProvider)
+                        onActivated: index => app.setOcrProvider(root.ocrProviderFromIndex(index))
                         Layout.fillWidth: true
+                    }
+                }
+
+                FieldGroup {
+                    label: "Provider capabilities"
+                    visible: app.ocrEnabled
+                    Layout.fillWidth: true
+
+                    ColumnLayout {
+                        spacing: 5
+                        Layout.fillWidth: true
+
+                        Repeater {
+                            model: app.ocrProviderOptions
+
+                            delegate: RowLayout {
+                                spacing: 8
+                                Layout.fillWidth: true
+                                opacity: modelData.id === app.ocrProvider ? 1.0 : 0.68
+
+                                Label {
+                                    text: modelData.label
+                                    color: colors.text
+                                    font.pixelSize: 12
+                                    font.weight: modelData.id === app.ocrProvider ? Font.DemiBold : Font.Normal
+                                    Layout.preferredWidth: 118
+                                    elide: Text.ElideRight
+                                }
+
+                                Label {
+                                    text: modelData.capabilities.join(" / ")
+                                    color: colors.muted
+                                    font.pixelSize: 11
+                                    wrapMode: Text.WordWrap
+                                    Layout.fillWidth: true
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -1880,7 +1957,7 @@ ApplicationWindow {
                     detail: app.ocrProvider === "glmocr"
                         ? "Optional fallback endpoint. Uses AZURE_OCR_API_KEY or Azure identity at runtime."
                         : "Uses AZURE_OCR_API_KEY or Azure identity at runtime."
-                    visible: root.showLegacyOcrSettings()
+                    visible: root.showAzureTesseractSettings()
                     Layout.fillWidth: true
 
                     AppTextField {
@@ -1898,8 +1975,8 @@ ApplicationWindow {
 
                 FieldGroup {
                     label: app.ocrProvider === "glmocr" ? "Fallback Tesseract languages" : "Tesseract languages"
-                    detail: app.ocrProvider === "glmocr" ? "Optional local OCR languages used only if fallback runs." : ""
-                    visible: root.showLegacyOcrSettings()
+                    detail: app.ocrProvider === "glmocr" ? "Optional language codes used only if fallback runs." : ""
+                    visible: root.showAzureTesseractSettings()
                     Layout.fillWidth: true
 
                     AppTextField {
@@ -1917,8 +1994,8 @@ ApplicationWindow {
 
                 FieldGroup {
                     label: app.ocrProvider === "glmocr" ? "Fallback Tesseract executable" : "Tesseract executable"
-                    detail: app.ocrProvider === "glmocr" ? "Optional local executable used only if fallback runs." : ""
-                    visible: root.showLegacyOcrSettings()
+                    detail: app.ocrProvider === "glmocr" ? "Optional executable path used only if fallback runs." : ""
+                    visible: root.showAzureTesseractSettings()
                     Layout.fillWidth: true
 
                     AppTextField {
@@ -1949,14 +2026,17 @@ ApplicationWindow {
                 visible: app.ocrEnabled && app.ocrProvider === "glmocr"
                 Layout.fillWidth: true
 
-                ThemeToggleRow {
-                    title: "Fallback to Azure/Tesseract"
-                    detail: "Use the legacy OCR path if GLM-OCR fails."
-                    checked: app.ocrFallbackEnabled
-                    textColor: colors.text
-                    mutedTextColor: colors.muted
-                    onToggled: checked => app.setOcrFallbackEnabled(checked)
+                FieldGroup {
+                    label: "Fallback provider"
+                    detail: "Optional provider used if GLM-OCR fails or returns no text."
                     Layout.fillWidth: true
+
+                    ThemeComboBox {
+                        model: ["None", "Azure + Tesseract", "HTTP OCR"]
+                        currentIndex: root.ocrFallbackIndex(app.ocrFallbackProvider)
+                        onActivated: index => app.setOcrFallbackProvider(root.ocrFallbackFromIndex(index))
+                        Layout.fillWidth: true
+                    }
                 }
 
                 FieldGroup {
@@ -2050,6 +2130,95 @@ ApplicationWindow {
                 }
             }
 
+            SectionPanel {
+                title: "HTTP OCR"
+                subtitle: "Connect any local or self-hosted OCR server that accepts a multipart file upload."
+                surfaceColor: colors.surface
+                borderColor: colors.border
+                textColor: colors.text
+                mutedTextColor: colors.muted
+                panelPadding: 14
+                contentSpacing: 10
+                bodySpacing: 9
+                borderOpacity: dark ? 0.90 : 0.72
+                visible: root.showHttpOcrSettings()
+                Layout.fillWidth: true
+
+                FieldGroup {
+                    label: "Endpoint"
+                    detail: "POST endpoint. The app sends a `file` part plus optional `model`."
+                    Layout.fillWidth: true
+
+                    AppTextField {
+                        text: app.httpOcrEndpoint
+                        placeholderText: "http://127.0.0.1:8000/ocr"
+                        surfaceColor: colors.input
+                        borderColor: colors.border
+                        accentColor: colors.accent
+                        textColor: colors.text
+                        placeholderColor: colors.subtle
+                        Layout.fillWidth: true
+                        onEditingFinished: app.setHttpOcrEndpoint(text)
+                    }
+                }
+
+                RowLayout {
+                    spacing: 10
+                    Layout.fillWidth: true
+
+                    FieldGroup {
+                        label: "Model"
+                        detail: "Optional model field."
+                        Layout.fillWidth: true
+
+                        AppTextField {
+                            text: app.httpOcrModel
+                            placeholderText: "surya, doctr, paddleocr, ..."
+                            surfaceColor: colors.input
+                            borderColor: colors.border
+                            accentColor: colors.accent
+                            textColor: colors.text
+                            placeholderColor: colors.subtle
+                            Layout.fillWidth: true
+                            onEditingFinished: app.setHttpOcrModel(text)
+                        }
+                    }
+
+                    FieldGroup {
+                        label: "Timeout"
+                        detail: "Seconds."
+                        Layout.preferredWidth: 150
+                        Layout.fillWidth: false
+
+                        ThemeSpinBox {
+                            from: 1
+                            to: 3600
+                            value: app.httpOcrTimeoutSeconds
+                            textFromValue: function(value, locale) { return value.toString() }
+                            onValueModified: app.setHttpOcrTimeoutSeconds(value)
+                        }
+                    }
+                }
+
+                FieldGroup {
+                    label: "API key environment variable"
+                    detail: "Optional. If set, the value is sent as `Authorization: Bearer ...`."
+                    Layout.fillWidth: true
+
+                    AppTextField {
+                        text: app.httpOcrApiKeyEnv
+                        placeholderText: "OCR_HTTP_API_KEY"
+                        surfaceColor: colors.input
+                        borderColor: colors.border
+                        accentColor: colors.accent
+                        textColor: colors.text
+                        placeholderColor: colors.subtle
+                        Layout.fillWidth: true
+                        onEditingFinished: app.setHttpOcrApiKeyEnv(text)
+                    }
+                }
+            }
+
             Item {
                 height: 24
             }
@@ -2132,7 +2301,9 @@ ApplicationWindow {
                     Layout.fillWidth: true
 
                     Label {
-                        text: "Check whether a newer app release is available."
+                        text: app.availableReleaseAssets.length > 0
+                            ? "Packaged release assets are available for " + app.availableUpdateVersion + "."
+                            : "Check whether a newer packaged app release is available."
                         color: colors.muted
                         font.pixelSize: 12
                         wrapMode: Text.WordWrap
@@ -2147,6 +2318,55 @@ ApplicationWindow {
                         borderColor: colors.border
                         textColor: colors.text
                         onClicked: app.checkForUpdates()
+                    }
+                }
+
+                GridLayout {
+                    visible: app.availableReleaseAssets.length > 0
+                    columns: 2
+                    columnSpacing: 10
+                    rowSpacing: 10
+                    Layout.fillWidth: true
+
+                    Repeater {
+                        model: app.availableReleaseAssets
+
+                        delegate: AppButton {
+                            text: modelData.name
+                            iconName: "external-link"
+                            accentColor: colors.action
+                            surfaceColor: colors.surfaceAlt
+                            borderColor: colors.border
+                            textColor: colors.text
+                            Layout.fillWidth: true
+                            onClicked: app.openReleaseAsset(modelData.url)
+                        }
+                    }
+                }
+
+                RowLayout {
+                    spacing: 10
+                    Layout.fillWidth: true
+
+                    Label {
+                        text: app.sourceUpdateCommand
+                            ? "For source checkouts, copy a command that pulls the checkout and reinstalls the app."
+                            : "Source updater is available only when the app runs from a Git checkout."
+                        color: colors.muted
+                        font.pixelSize: 12
+                        wrapMode: Text.WordWrap
+                        Layout.fillWidth: true
+                    }
+
+                    AppButton {
+                        text: "Copy source update"
+                        iconName: "copy"
+                        accentColor: colors.action
+                        surfaceColor: colors.surfaceAlt
+                        borderColor: colors.border
+                        textColor: colors.text
+                        enabled: !!app.sourceUpdateCommand
+                        onClicked: app.copySourceUpdateCommand()
                     }
                 }
 

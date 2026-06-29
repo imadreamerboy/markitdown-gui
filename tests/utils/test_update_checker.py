@@ -18,7 +18,17 @@ def test_check_for_updates_new_version_available(mock_requests_get, monkeypatch)
     # Mock the current version and GitHub API response
     monkeypatch.setattr(update_checker, 'get_current_version', lambda: 'v1.0.0')
     mock_response = MagicMock()
-    mock_response.json.return_value = {'tag_name': 'v1.1.0'}
+    mock_response.json.return_value = {
+        'tag_name': 'v1.1.0',
+        'html_url': 'https://github.com/example/releases/tag/v1.1.0',
+        'assets': [
+            {
+                'name': 'MarkItDown-Windows.exe',
+                'browser_download_url': 'https://example.com/MarkItDown-Windows.exe',
+                'size': 123,
+            }
+        ],
+    }
     mock_requests_get.return_value = mock_response
 
     latest_version = update_checker.check_for_updates()
@@ -46,3 +56,32 @@ def test_check_for_updates_request_exception(mock_requests_get, monkeypatch):
     
     # This should run without raising an exception
     assert update_checker.check_for_updates() is None
+
+
+def test_parse_release_info_extracts_download_assets():
+    release = update_checker.parse_release_info(
+        {
+            "tag_name": "v2.0.0",
+            "html_url": "https://github.com/example/releases/tag/v2.0.0",
+            "assets": [
+                {
+                    "name": "MarkItDown-Windows.exe",
+                    "browser_download_url": "https://example.com/windows.exe",
+                    "size": 42,
+                },
+                {"name": "broken"},
+            ],
+        }
+    )
+
+    assert release == update_checker.ReleaseInfo(
+        tag_name="v2.0.0",
+        html_url="https://github.com/example/releases/tag/v2.0.0",
+        assets=(
+            update_checker.ReleaseAsset(
+                name="MarkItDown-Windows.exe",
+                browser_download_url="https://example.com/windows.exe",
+                size=42,
+            ),
+        ),
+    )

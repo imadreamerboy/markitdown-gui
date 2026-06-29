@@ -7,6 +7,7 @@ from PySide6.QtCore import QSettings, QUrl
 from markitdowngui.core.conversion import ConversionOutcome
 from markitdowngui.core.settings import SettingsManager
 from markitdowngui.ui_qml.controller import AppController
+from markitdowngui.utils.update_checker import ReleaseAsset, ReleaseInfo
 
 
 class _FakeSignal:
@@ -22,8 +23,13 @@ class _FakeSignal:
 
 
 class _FakeUpdateChecker:
-    def __init__(self, action: tuple[str, str | None]):
+    def __init__(
+        self,
+        action: tuple[str, str | None],
+        release: ReleaseInfo | None = None,
+    ):
         self.action = action
+        self.latest_release = release
         self.update_available = _FakeSignal()
         self.update_error = _FakeSignal()
         self.no_update_available = _FakeSignal()
@@ -112,6 +118,43 @@ def test_controller_auto_update_check_exposes_available_release(controller, monk
     assert messages == []
 
 
+def test_controller_exposes_release_assets_for_packaged_updates(controller, monkeypatch):
+    release = ReleaseInfo(
+        tag_name="v1.2.0",
+        html_url="https://github.com/example/releases/tag/v1.2.0",
+        assets=(
+            ReleaseAsset(
+                name="MarkItDown-Windows.exe",
+                browser_download_url="https://example.com/windows.exe",
+                size=42,
+            ),
+        ),
+    )
+    opened: list[str] = []
+    monkeypatch.setattr(
+        controller,
+        "_create_update_checker",
+        lambda: _FakeUpdateChecker(("available", "v1.2.0"), release),
+    )
+    monkeypatch.setattr(controller, "openExternalUrl", lambda url: opened.append(url))
+
+    controller.startAutomaticUpdateCheck()
+
+    assert controller.availableReleaseUrl == release.html_url
+    assert controller.availableReleaseAssets == [
+        {
+            "name": "MarkItDown-Windows.exe",
+            "url": "https://example.com/windows.exe",
+            "size": 42,
+        }
+    ]
+
+    controller.openReleaseAsset("https://example.com/windows.exe")
+
+    assert opened == ["https://example.com/windows.exe"]
+    assert controller.hasUpdateNotification is False
+
+
 def test_controller_manual_update_check_reports_no_update(controller, monkeypatch):
     messages: list[tuple[str, str]] = []
     controller.toastRequested.connect(lambda kind, message: messages.append((kind, message)))
@@ -138,6 +181,51 @@ def test_controller_manual_update_check_reports_error(controller, monkeypatch):
     controller.checkForUpdates()
 
     assert messages == [("error", "Network unavailable")]
+
+
+def test_controller_exposes_ocr_fallback_provider(controller):
+    controller.setOcrFallbackProvider("none")
+    assert controller.ocrFallbackProvider == "none"
+    assert controller.ocrFallbackEnabled is False
+
+    controller.setOcrFallbackProvider("legacy")
+    assert controller.ocrFallbackProvider == "azure_tesseract"
+    assert controller.ocrFallbackEnabled is True
+
+
+def test_controller_exposes_ocr_provider_options_and_http_settings(controller):
+    provider_ids = [option["id"] for option in controller.ocrProviderOptions]
+
+    assert provider_ids == ["azure_tesseract", "glmocr", "http"]
+
+    controller.setHttpOcrEndpoint(" http://localhost:8000/ocr ")
+    controller.setHttpOcrModel(" surya ")
+    controller.setHttpOcrApiKeyEnv(" CUSTOM_OCR_KEY ")
+    controller.setHttpOcrTimeoutSeconds(45)
+
+    assert controller.httpOcrEndpoint == "http://localhost:8000/ocr"
+    assert controller.httpOcrModel == "surya"
+    assert controller.httpOcrApiKeyEnv == "CUSTOM_OCR_KEY"
+    assert controller.httpOcrTimeoutSeconds == 45
+
+
+def test_controller_copies_source_update_command(controller, monkeypatch):
+    messages: list[tuple[str, str]] = []
+    copied: list[str] = []
+    controller.toastRequested.connect(lambda kind, message: messages.append((kind, message)))
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.build_source_update_command",
+        lambda: "git -C repo pull --ff-only && uv pip install -e repo",
+    )
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.QGuiApplication.clipboard",
+        lambda: SimpleNamespace(setText=lambda value: copied.append(value)),
+    )
+
+    controller.copySourceUpdateCommand()
+
+    assert copied == ["git -C repo pull --ff-only && uv pip install -e repo"]
+    assert messages == [("success", "Source update command copied.")]
 
 
 def test_controller_dismisses_update_notification(controller, monkeypatch):

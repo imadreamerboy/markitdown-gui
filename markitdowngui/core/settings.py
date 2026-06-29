@@ -2,8 +2,28 @@ from PySide6.QtCore import QSettings
 from typing import cast, List
 
 
-OCR_PROVIDER_LEGACY = "legacy"
+OCR_PROVIDER_AZURE_TESSERACT = "azure_tesseract"
 OCR_PROVIDER_GLMOCR = "glmocr"
+OCR_PROVIDER_HTTP = "http"
+OCR_PROVIDER_LEGACY = "legacy"
+OCR_PROVIDER_NONE = "none"
+OCR_PROVIDER_ALIASES = {
+    "azure": OCR_PROVIDER_AZURE_TESSERACT,
+    "azure_tesseract": OCR_PROVIDER_AZURE_TESSERACT,
+    "custom_http": OCR_PROVIDER_HTTP,
+    "legacy": OCR_PROVIDER_AZURE_TESSERACT,
+    "local": OCR_PROVIDER_AZURE_TESSERACT,
+    "tesseract": OCR_PROVIDER_AZURE_TESSERACT,
+    "glmocr": OCR_PROVIDER_GLMOCR,
+    "http": OCR_PROVIDER_HTTP,
+    "http_ocr": OCR_PROVIDER_HTTP,
+}
+OCR_PROVIDERS = {OCR_PROVIDER_AZURE_TESSERACT, OCR_PROVIDER_GLMOCR, OCR_PROVIDER_HTTP}
+OCR_FALLBACK_PROVIDERS = {
+    OCR_PROVIDER_NONE,
+    OCR_PROVIDER_AZURE_TESSERACT,
+    OCR_PROVIDER_HTTP,
+}
 GLMOCR_MODE_MAAS = "maas"
 GLMOCR_MODE_OLLAMA = "ollama"
 GLMOCR_MODE_SDK_SERVER = "sdk_server"
@@ -12,6 +32,14 @@ DEFAULT_GLMOCR_SDK_SERVER_URL = "http://127.0.0.1:5002/glmocr/parse"
 DEFAULT_GLMOCR_OLLAMA_HOST = "127.0.0.1"
 DEFAULT_GLMOCR_OLLAMA_PORT = 11434
 DEFAULT_GLMOCR_OLLAMA_MODEL = "glm-ocr:latest"
+DEFAULT_HTTP_OCR_API_KEY_ENV = "OCR_HTTP_API_KEY"
+DEFAULT_HTTP_OCR_TIMEOUT_SECONDS = 300
+
+
+def normalize_ocr_provider(value: str, default: str = OCR_PROVIDER_AZURE_TESSERACT) -> str:
+    """Normalise saved and legacy OCR provider identifiers."""
+    normalized = (value or '').strip().lower()
+    return OCR_PROVIDER_ALIASES.get(normalized, default)
 
 
 class SettingsManager:
@@ -126,11 +154,11 @@ class SettingsManager:
         self.settings.setValue('batchSize', size)
 
     def get_ocr_enabled(self) -> bool:
-        """Get whether OCR fallback is enabled."""
+        """Get whether OCR is enabled."""
         return bool(self.settings.value('ocrEnabled', False, type=bool))
 
     def set_ocr_enabled(self, enabled: bool) -> None:
-        """Set whether OCR fallback is enabled."""
+        """Set whether OCR is enabled."""
         self.settings.setValue('ocrEnabled', enabled)
 
     def get_preserve_pdf_images(self) -> bool:
@@ -152,26 +180,45 @@ class SettingsManager:
     def get_ocr_provider(self) -> str:
         """Get the configured OCR provider."""
         value = str(
-            self.settings.value('ocrProvider', OCR_PROVIDER_LEGACY, type=str)
-        ).strip().lower()
-        if value in {OCR_PROVIDER_LEGACY, OCR_PROVIDER_GLMOCR}:
-            return value
-        return OCR_PROVIDER_LEGACY
+            self.settings.value('ocrProvider', OCR_PROVIDER_AZURE_TESSERACT, type=str)
+        )
+        return normalize_ocr_provider(value)
 
     def set_ocr_provider(self, provider: str) -> None:
         """Set the OCR provider."""
-        normalized = (provider or '').strip().lower()
-        if normalized not in {OCR_PROVIDER_LEGACY, OCR_PROVIDER_GLMOCR}:
-            normalized = OCR_PROVIDER_LEGACY
+        normalized = normalize_ocr_provider(provider)
         self.settings.setValue('ocrProvider', normalized)
 
+    def get_ocr_fallback_provider(self) -> str:
+        """Get the optional OCR fallback provider."""
+        value = str(self.settings.value('ocrFallbackProvider', '', type=str))
+        normalized = (value or '').strip().lower()
+        if normalized in OCR_FALLBACK_PROVIDERS:
+            return normalized
+
+        if bool(self.settings.value('ocrFallbackEnabled', True, type=bool)):
+            return OCR_PROVIDER_AZURE_TESSERACT
+        return OCR_PROVIDER_NONE
+
+    def set_ocr_fallback_provider(self, provider: str) -> None:
+        """Set the optional OCR fallback provider."""
+        normalized = (provider or '').strip().lower()
+        if normalized != OCR_PROVIDER_NONE:
+            normalized = normalize_ocr_provider(normalized)
+        if normalized not in OCR_FALLBACK_PROVIDERS:
+            normalized = OCR_PROVIDER_AZURE_TESSERACT
+        self.settings.setValue('ocrFallbackProvider', normalized)
+        self.settings.setValue('ocrFallbackEnabled', normalized != OCR_PROVIDER_NONE)
+
     def get_ocr_fallback_enabled(self) -> bool:
-        """Get whether GLM-OCR falls back to Azure/Tesseract OCR."""
-        return bool(self.settings.value('ocrFallbackEnabled', True, type=bool))
+        """Get whether a secondary OCR provider is configured."""
+        return self.get_ocr_fallback_provider() != OCR_PROVIDER_NONE
 
     def set_ocr_fallback_enabled(self, enabled: bool) -> None:
-        """Set whether GLM-OCR falls back to Azure/Tesseract OCR."""
-        self.settings.setValue('ocrFallbackEnabled', enabled)
+        """Set whether Azure/Tesseract is used as OCR fallback."""
+        self.set_ocr_fallback_provider(
+            OCR_PROVIDER_AZURE_TESSERACT if enabled else OCR_PROVIDER_NONE
+        )
 
     def get_glmocr_mode(self) -> str:
         """Get the configured GLM-OCR mode."""
@@ -272,6 +319,54 @@ class SettingsManager:
         """Set the GLM-OCR SDK server parse endpoint."""
         normalized = (url or '').strip() or DEFAULT_GLMOCR_SDK_SERVER_URL
         self.settings.setValue('glmocrSdkServerUrl', normalized)
+
+    def get_http_ocr_endpoint(self) -> str:
+        """Get the generic HTTP OCR endpoint."""
+        return str(self.settings.value('httpOcrEndpoint', '', type=str)).strip()
+
+    def set_http_ocr_endpoint(self, endpoint: str) -> None:
+        """Set the generic HTTP OCR endpoint."""
+        self.settings.setValue('httpOcrEndpoint', (endpoint or '').strip())
+
+    def get_http_ocr_model(self) -> str:
+        """Get the optional generic HTTP OCR model name."""
+        return str(self.settings.value('httpOcrModel', '', type=str)).strip()
+
+    def set_http_ocr_model(self, model: str) -> None:
+        """Set the optional generic HTTP OCR model name."""
+        self.settings.setValue('httpOcrModel', (model or '').strip())
+
+    def get_http_ocr_api_key_env(self) -> str:
+        """Get the environment variable used for generic HTTP OCR auth."""
+        value = str(
+            self.settings.value(
+                'httpOcrApiKeyEnv',
+                DEFAULT_HTTP_OCR_API_KEY_ENV,
+                type=str,
+            )
+        ).strip()
+        return value or DEFAULT_HTTP_OCR_API_KEY_ENV
+
+    def set_http_ocr_api_key_env(self, env_var: str) -> None:
+        """Set the environment variable used for generic HTTP OCR auth."""
+        normalized = (env_var or '').strip() or DEFAULT_HTTP_OCR_API_KEY_ENV
+        self.settings.setValue('httpOcrApiKeyEnv', normalized)
+
+    def get_http_ocr_timeout_seconds(self) -> int:
+        """Get the generic HTTP OCR request timeout."""
+        timeout = int(
+            self.settings.value(
+                'httpOcrTimeoutSeconds',
+                DEFAULT_HTTP_OCR_TIMEOUT_SECONDS,
+                type=int,
+            )
+        )
+        return max(1, min(3600, timeout))
+
+    def set_http_ocr_timeout_seconds(self, timeout_seconds: int) -> None:
+        """Set the generic HTTP OCR request timeout."""
+        normalized = max(1, min(3600, int(timeout_seconds)))
+        self.settings.setValue('httpOcrTimeoutSeconds', normalized)
 
     def get_docintel_endpoint(self) -> str:
         """Get the configured Azure Document Intelligence endpoint."""

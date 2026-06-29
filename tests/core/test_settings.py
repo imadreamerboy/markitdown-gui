@@ -118,15 +118,24 @@ def test_ocr_settings(settings_manager):
     settings_manager.set_preserve_docx_images(True)
     assert settings_manager.get_preserve_docx_images()
 
-    assert settings_manager.get_ocr_provider() == "legacy"
+    assert settings_manager.get_ocr_provider() == "azure_tesseract"
     settings_manager.set_ocr_provider(" glmocr ")
     assert settings_manager.get_ocr_provider() == "glmocr"
     settings_manager.set_ocr_provider("invalid")
-    assert settings_manager.get_ocr_provider() == "legacy"
+    assert settings_manager.get_ocr_provider() == "azure_tesseract"
+    settings_manager.settings.setValue("ocrProvider", "legacy")
+    assert settings_manager.get_ocr_provider() == "azure_tesseract"
 
     assert settings_manager.get_ocr_fallback_enabled()
+    assert settings_manager.get_ocr_fallback_provider() == "azure_tesseract"
+    settings_manager.set_ocr_fallback_provider("none")
+    assert settings_manager.get_ocr_fallback_provider() == "none"
+    assert not settings_manager.get_ocr_fallback_enabled()
+    settings_manager.set_ocr_fallback_provider("legacy")
+    assert settings_manager.get_ocr_fallback_provider() == "azure_tesseract"
     settings_manager.set_ocr_fallback_enabled(False)
     assert not settings_manager.get_ocr_fallback_enabled()
+    assert settings_manager.get_ocr_fallback_provider() == "none"
 
     assert settings_manager.get_glmocr_mode() == "maas"
     settings_manager.set_glmocr_mode(" ollama ")
@@ -151,6 +160,27 @@ def test_ocr_settings(settings_manager):
     assert settings_manager.get_glmocr_sdk_server_url() == "http://127.0.0.1:5002/glmocr/parse"
     settings_manager.set_glmocr_sdk_server_url(" http://localhost:5002/glmocr/parse ")
     assert settings_manager.get_glmocr_sdk_server_url() == "http://localhost:5002/glmocr/parse"
+
+    settings_manager.set_ocr_provider(" http_ocr ")
+    assert settings_manager.get_ocr_provider() == "http"
+    settings_manager.set_ocr_fallback_provider("http")
+    assert settings_manager.get_ocr_fallback_provider() == "http"
+
+    assert settings_manager.get_http_ocr_endpoint() == ""
+    settings_manager.set_http_ocr_endpoint(" http://localhost:8000/ocr ")
+    assert settings_manager.get_http_ocr_endpoint() == "http://localhost:8000/ocr"
+
+    assert settings_manager.get_http_ocr_model() == ""
+    settings_manager.set_http_ocr_model(" surya ")
+    assert settings_manager.get_http_ocr_model() == "surya"
+
+    assert settings_manager.get_http_ocr_api_key_env() == "OCR_HTTP_API_KEY"
+    settings_manager.set_http_ocr_api_key_env(" CUSTOM_OCR_KEY ")
+    assert settings_manager.get_http_ocr_api_key_env() == "CUSTOM_OCR_KEY"
+
+    assert settings_manager.get_http_ocr_timeout_seconds() == 300
+    settings_manager.set_http_ocr_timeout_seconds(9999)
+    assert settings_manager.get_http_ocr_timeout_seconds() == 3600
 
     assert settings_manager.get_docintel_endpoint() == ""
     settings_manager.set_docintel_endpoint(" https://example.cognitiveservices.azure.com/ ")

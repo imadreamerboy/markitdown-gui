@@ -37,6 +37,7 @@ class ResultItem:
             "azure": "Azure OCR",
             "defuddle": "Defuddle",
             "glmocr": "GLM-OCR",
+            "http-ocr": "HTTP OCR",
             "local": "Tesseract",
             "native": "Native",
             "docx-images": "DOCX assets",

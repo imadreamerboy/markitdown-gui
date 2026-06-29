@@ -9,7 +9,11 @@ from typing import Any
 from PySide6.QtCore import QObject, Property, QUrl, Signal, Slot
 from PySide6.QtGui import QDesktopServices, QGuiApplication, QPalette, QTextDocument
 
-from markitdowngui.core.conversion import ConversionOptions, ConversionWorker
+from markitdowngui.core.conversion import (
+    ConversionOptions,
+    ConversionWorker,
+    get_ocr_provider_specs,
+)
 from markitdowngui.core.file_utils import FileManager
 from markitdowngui.core.input_sources import (
     is_web_url,
@@ -27,6 +31,7 @@ from markitdowngui.core.markdown_assets import (
 from markitdowngui.core.settings import SettingsManager
 from markitdowngui.ui_qml.models import QueueModel, ResultModel
 from markitdowngui.utils.logger import AppLogger
+from markitdowngui.utils.source_updater import build_source_update_command
 from markitdowngui.utils.translations import DEFAULT_LANG, get_translation
 from markitdowngui.utils.update_checker import UpdateChecker
 
@@ -72,6 +77,8 @@ class AppController(QObject):
         self._update_checker: UpdateChecker | None = None
         self._update_check_manual = False
         self._available_update_version = ""
+        self._available_release_url = ""
+        self._available_release_assets: list[dict[str, object]] = []
 
     @Property(QObject, constant=True)
     def queueModel(self) -> QueueModel:
@@ -224,6 +231,10 @@ class AppController(QObject):
         return self.settings.get_ocr_fallback_enabled()
 
     @Property(str, notify=settingsChanged)
+    def ocrFallbackProvider(self) -> str:
+        return self.settings.get_ocr_fallback_provider()
+
+    @Property(str, notify=settingsChanged)
     def glmocrMode(self) -> str:
         return self.settings.get_glmocr_mode()
 
@@ -244,6 +255,36 @@ class AppController(QObject):
         return self.settings.get_glmocr_sdk_server_url()
 
     @Property(str, notify=settingsChanged)
+    def httpOcrEndpoint(self) -> str:
+        return self.settings.get_http_ocr_endpoint()
+
+    @Property(str, notify=settingsChanged)
+    def httpOcrModel(self) -> str:
+        return self.settings.get_http_ocr_model()
+
+    @Property(str, notify=settingsChanged)
+    def httpOcrApiKeyEnv(self) -> str:
+        return self.settings.get_http_ocr_api_key_env()
+
+    @Property(int, notify=settingsChanged)
+    def httpOcrTimeoutSeconds(self) -> int:
+        return self.settings.get_http_ocr_timeout_seconds()
+
+    @Property("QVariant", constant=True)
+    def ocrProviderOptions(self) -> list[dict[str, object]]:
+        return [
+            {
+                "id": spec.provider_id,
+                "label": spec.label,
+                "detail": spec.detail,
+                "capabilities": list(spec.capabilities),
+                "settingsGroup": spec.settings_group,
+                "fallbackAllowed": spec.fallback_allowed,
+            }
+            for spec in get_ocr_provider_specs()
+        ]
+
+    @Property(str, notify=settingsChanged)
     def docintelEndpoint(self) -> str:
         return self.settings.get_docintel_endpoint()
 
@@ -262,6 +303,18 @@ class AppController(QObject):
     @Property(str, notify=updateNotificationChanged)
     def availableUpdateVersion(self) -> str:
         return self._available_update_version
+
+    @Property(str, notify=updateNotificationChanged)
+    def availableReleaseUrl(self) -> str:
+        return self._available_release_url
+
+    @Property("QVariant", notify=updateNotificationChanged)
+    def availableReleaseAssets(self) -> list[dict[str, object]]:
+        return self._available_release_assets
+
+    @Property(str, constant=True)
+    def sourceUpdateCommand(self) -> str:
+        return build_source_update_command()
 
     @Slot("QVariant")
     def addFiles(self, values: Any) -> None:
@@ -541,6 +594,11 @@ class AppController(QObject):
         self.settingsChanged.emit()
 
     @Slot(str)
+    def setOcrFallbackProvider(self, provider: str) -> None:
+        self.settings.set_ocr_fallback_provider(provider)
+        self.settingsChanged.emit()
+
+    @Slot(str)
     def setGlmocrMode(self, mode: str) -> None:
         self.settings.set_glmocr_mode(mode)
         self.settingsChanged.emit()
@@ -563,6 +621,26 @@ class AppController(QObject):
     @Slot(str)
     def setGlmocrSdkServerUrl(self, value: str) -> None:
         self.settings.set_glmocr_sdk_server_url(value)
+        self.settingsChanged.emit()
+
+    @Slot(str)
+    def setHttpOcrEndpoint(self, value: str) -> None:
+        self.settings.set_http_ocr_endpoint(value)
+        self.settingsChanged.emit()
+
+    @Slot(str)
+    def setHttpOcrModel(self, value: str) -> None:
+        self.settings.set_http_ocr_model(value)
+        self.settingsChanged.emit()
+
+    @Slot(str)
+    def setHttpOcrApiKeyEnv(self, value: str) -> None:
+        self.settings.set_http_ocr_api_key_env(value)
+        self.settingsChanged.emit()
+
+    @Slot(int)
+    def setHttpOcrTimeoutSeconds(self, value: int) -> None:
+        self.settings.set_http_ocr_timeout_seconds(value)
         self.settingsChanged.emit()
 
     @Slot(str)
@@ -594,6 +672,8 @@ class AppController(QObject):
         if not self._available_update_version:
             return
         self._available_update_version = ""
+        self._available_release_url = ""
+        self._available_release_assets = []
         self.updateNotificationChanged.emit()
 
     @Slot()
@@ -605,8 +685,31 @@ class AppController(QObject):
 
     @Slot()
     def openReleases(self) -> None:
-        self.openExternalUrl("https://github.com/imadreamerboy/markitdown-gui/releases")
+        self.openExternalUrl(
+            self._available_release_url
+            or "https://github.com/imadreamerboy/markitdown-gui/releases"
+        )
         self.dismissUpdateNotification()
+
+    @Slot(str)
+    def openReleaseAsset(self, url: str) -> None:
+        if not url:
+            self.openReleases()
+            return
+        self.openExternalUrl(url)
+        self.dismissUpdateNotification()
+
+    @Slot()
+    def copySourceUpdateCommand(self) -> None:
+        command = self.sourceUpdateCommand
+        if not command:
+            self.toastRequested.emit(
+                "error",
+                "No Git source checkout found for this installation.",
+            )
+            return
+        QGuiApplication.clipboard().setText(command)
+        self.toastRequested.emit("success", "Source update command copied.")
 
     @Slot(str)
     def openExternalUrl(self, url: str) -> None:
@@ -652,6 +755,16 @@ class AppController(QObject):
 
     def _on_update_available(self, version: str) -> None:
         self._available_update_version = version
+        release = getattr(self._update_checker, "latest_release", None)
+        self._available_release_url = getattr(release, "html_url", "") if release else ""
+        self._available_release_assets = [
+            {
+                "name": asset.name,
+                "url": asset.browser_download_url,
+                "size": asset.size,
+            }
+            for asset in (getattr(release, "assets", ()) if release else ())
+        ]
         self.updateNotificationChanged.emit()
         if self._update_check_manual:
             self.toastRequested.emit("success", f"Update {version} is available.")
@@ -686,6 +799,7 @@ class AppController(QObject):
             preserve_docx_images=preserve_docx_images,
             ocr_provider=self.settings.get_ocr_provider(),
             ocr_fallback_enabled=self.settings.get_ocr_fallback_enabled(),
+            ocr_fallback_provider=self.settings.get_ocr_fallback_provider(),
             docintel_endpoint=self.settings.get_docintel_endpoint(),
             ocr_languages=self.settings.get_ocr_languages(),
             tesseract_path=self.settings.get_tesseract_path(),
@@ -696,6 +810,10 @@ class AppController(QObject):
             glmocr_ollama_port=self.settings.get_glmocr_ollama_port(),
             glmocr_ollama_model=self.settings.get_glmocr_ollama_model(),
             glmocr_sdk_server_url=self.settings.get_glmocr_sdk_server_url(),
+            http_ocr_endpoint=self.settings.get_http_ocr_endpoint(),
+            http_ocr_model=self.settings.get_http_ocr_model(),
+            http_ocr_api_key_env=self.settings.get_http_ocr_api_key_env(),
+            http_ocr_timeout_seconds=self.settings.get_http_ocr_timeout_seconds(),
         )
 
     def _handle_progress(self, progress: int, current_source: str) -> None:

@@ -17,13 +17,24 @@ It focuses on fast multi-file conversion to Markdown with a modern, native-style
 - Preview modes: rendered Markdown view and raw Markdown view.
 - Save modes: export as one combined file or separate files.
 - Quick actions: copy Markdown, save output, back to queue, start over.
-- Optional OCR for scanned PDFs and image files, with selectable `Azure/Tesseract OCR` and `GLM-OCR` providers.
+- Optional OCR for scanned PDFs and image files, with selectable `Azure + Tesseract`, `GLM-OCR`, and generic `HTTP OCR` providers.
 - Settings for output folder, save mode, source-folder saves, batch size, OCR, and theme mode (light/dark/system).
 - Help view with project links, OCR references, conversion references, and keyboard shortcuts.
 
 ## Installation
 
 Download prebuilt binaries from [Releases](https://github.com/imadreamerboy/markitdown-gui/releases), or run from source.
+
+### Updating
+
+- Packaged desktop builds are updated from [Releases](https://github.com/imadreamerboy/markitdown-gui/releases). The in-app update check reads the latest GitHub release and opens release assets directly when packaged binaries are attached.
+- Source checkouts can update in place:
+
+```sh
+python -m markitdowngui.utils.source_updater
+```
+
+The source updater runs `git pull --ff-only` in the checkout, then reinstalls the app in editable mode with `uv` when available or `pip` otherwise. Restart the app after it finishes.
 
 ### Prerequisites
 
@@ -45,8 +56,10 @@ pip install -e .[dev]
 ### OCR Notes
 
 - OCR is optional and disabled by default.
-- `Azure/Tesseract OCR` uses Azure Document Intelligence first when configured, then local Tesseract fallback.
-- `GLM-OCR` is available as a separate OCR provider for PDFs and images. It runs first and can fall back to Azure/Tesseract OCR if enabled in Settings.
+- `Azure + Tesseract` uses Azure Document Intelligence first when configured, then Tesseract as its local fallback.
+- `GLM-OCR` is available as a separate OCR provider for PDFs and images. It can fall back to another configured provider if selected in Settings.
+- `HTTP OCR` is a generic integration point for local or self-hosted OCR servers. The app sends a multipart `POST` with a `file` part, optional `model` field, and optional `Authorization: Bearer ...` header read from the configured environment variable. JSON responses can use `markdown`, `text`, `result`, `content`, or `output`; plain text responses are used directly.
+- Preserved PDF images keep using the existing image-preservation pipeline. With `Azure + Tesseract`, OCR runs inside that helper. With `GLM-OCR` or `HTTP OCR`, the app preserves images first and appends OCR text from the selected provider.
 - GLM-OCR offers three modes in Settings:
   - `Official API`: easiest zero-setup path, reads `ZHIPU_API_KEY` or `GLMOCR_API_KEY` from the environment.
   - `Ollama`: easiest local path. The GUI calls Ollama's native `/api/generate` endpoint directly, with defaults `127.0.0.1:11434` and `glm-ocr:latest`.

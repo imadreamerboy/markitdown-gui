@@ -471,7 +471,7 @@ def test_convert_pdf_with_preserved_images_and_local_ocr_uses_plugin(
     assert captured["ocr_languages"] == "eng+deu"
 
 
-def test_convert_pdf_with_preserved_images_and_glmocr_uses_plugin(
+def test_convert_pdf_with_preserved_images_and_glmocr_preserves_assets_then_uses_provider(
     monkeypatch,
     conversion,
     tmp_path,
@@ -486,8 +486,9 @@ def test_convert_pdf_with_preserved_images_and_glmocr_uses_plugin(
     monkeypatch.setattr(
         conversion,
         "_convert_pdf_with_glmocr",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(
-            AssertionError("GLM-OCR routing should not run")
+        lambda *_args, **_kwargs: conversion.ConversionOutcome(
+            markdown="glm pdf text",
+            backend=conversion.BACKEND_GLMOCR,
         ),
     )
 
@@ -503,7 +504,8 @@ def test_convert_pdf_with_preserved_images_and_glmocr_uses_plugin(
     )
 
     assert outcome.backend == conversion.BACKEND_PDF_IMAGES
-    assert captured["ocr_enabled"] is True
+    assert outcome.markdown == "ocr pdf text\n\nglm pdf text"
+    assert captured["ocr_enabled"] is False
     assert captured["tesseract_path"] == "/usr/bin/tesseract"
 
 
@@ -705,11 +707,53 @@ def test_convert_pdf_falls_back_to_azure_tesseract_ocr_after_glmocr_failure(
             ocr_enabled=True,
             ocr_provider=conversion.OCR_PROVIDER_GLMOCR,
             ocr_fallback_enabled=True,
+            ocr_fallback_provider=conversion.OCR_PROVIDER_AZURE_TESSERACT,
         ),
     )
 
     assert outcome.markdown == "Azure/Tesseract PDF text"
     assert outcome.backend == conversion.BACKEND_NATIVE
+
+
+def test_convert_pdf_skips_fallback_when_fallback_provider_is_none(
+    monkeypatch,
+    conversion,
+):
+    class FakeGlmOcr:
+        def __init__(self, **_kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def parse(self, _file_path):
+            raise RuntimeError("glm unavailable")
+
+    _install_fake_glmocr(monkeypatch, FakeGlmOcr)
+    monkeypatch.setenv("ZHIPU_API_KEY", "secret")
+    monkeypatch.setattr(
+        conversion,
+        "_convert_pdf_with_azure_tesseract_ocr",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("Fallback OCR should not run")
+        ),
+    )
+
+    with pytest.raises(RuntimeError) as exc_info:
+        conversion.convert_file(
+            "scan.pdf",
+            conversion.ConversionOptions(
+                ocr_enabled=True,
+                ocr_provider=conversion.OCR_PROVIDER_GLMOCR,
+                ocr_fallback_provider=conversion.OCR_PROVIDER_NONE,
+            ),
+        )
+
+    assert "GLM-OCR failed for the PDF" in str(exc_info.value)
+    assert "glm unavailable" in str(exc_info.value)
 
 
 def test_convert_pdf_surfaces_glmocr_failure_without_fallback(monkeypatch, conversion):
@@ -979,6 +1023,101 @@ def test_convert_with_glmocr_ollama_joins_page_results(monkeypatch, conversion):
 
     assert result == "page one\n\npage two"
     assert responses == []
+
+
+def test_convert_image_uses_http_ocr_provider(monkeypatch, conversion, tmp_path):
+    captured = {}
+    image_path = tmp_path / "scan.png"
+    image_path.write_bytes(b"image-bytes")
+
+    class FakeResponse:
+        ok = True
+        status_code = 200
+        text = ""
+        headers = {"content-type": "application/json"}
+
+        def json(self):
+            return {"markdown": "http image text"}
+
+    def fake_post(url, data, files, headers, timeout):
+        file_name, file_obj, content_type = files["file"]
+        captured["url"] = url
+        captured["data"] = data
+        captured["file_name"] = file_name
+        captured["file_bytes"] = file_obj.read()
+        captured["content_type"] = content_type
+        captured["headers"] = headers
+        captured["timeout"] = timeout
+        return FakeResponse()
+
+    monkeypatch.setenv("OCR_HTTP_API_KEY", "secret")
+    monkeypatch.setattr(conversion.requests, "post", fake_post)
+
+    outcome = conversion.convert_file_with_details(
+        str(image_path),
+        conversion.ConversionOptions(
+            ocr_enabled=True,
+            ocr_provider=conversion.OCR_PROVIDER_HTTP,
+            http_ocr_endpoint=" http://localhost:8000/ocr ",
+            http_ocr_model=" surya ",
+            http_ocr_timeout_seconds=45,
+        ),
+    )
+
+    assert outcome.markdown == "http image text"
+    assert outcome.backend == conversion.BACKEND_HTTP_OCR
+    assert captured == {
+        "url": "http://localhost:8000/ocr",
+        "data": {"model": "surya"},
+        "file_name": "scan.png",
+        "file_bytes": b"image-bytes",
+        "content_type": "image/png",
+        "headers": {"Authorization": "Bearer secret"},
+        "timeout": 45,
+    }
+
+
+def test_http_ocr_extracts_nested_response_text(conversion):
+    response = types.SimpleNamespace(
+        headers={"content-type": "application/json; charset=utf-8"},
+        json=lambda: {"result": {"content": "nested text"}},
+    )
+
+    assert conversion._extract_http_ocr_response_text(response) == "nested text"
+
+
+def test_convert_pdf_falls_back_from_http_to_azure_tesseract(
+    monkeypatch,
+    conversion,
+):
+    monkeypatch.setattr(
+        conversion,
+        "_convert_with_http_ocr",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            RuntimeError("http server down")
+        ),
+    )
+    monkeypatch.setattr(
+        conversion,
+        "_convert_pdf_with_azure_tesseract_ocr",
+        lambda *_args, **_kwargs: conversion.ConversionOutcome(
+            markdown="fallback text",
+            backend=conversion.BACKEND_AZURE,
+        ),
+    )
+
+    outcome = conversion.convert_file_with_details(
+        "scan.pdf",
+        conversion.ConversionOptions(
+            ocr_enabled=True,
+            ocr_provider=conversion.OCR_PROVIDER_HTTP,
+            ocr_fallback_provider=conversion.OCR_PROVIDER_AZURE_TESSERACT,
+            http_ocr_endpoint="http://localhost:8000/ocr",
+        ),
+    )
+
+    assert outcome.markdown == "fallback text"
+    assert outcome.backend == conversion.BACKEND_AZURE
 
 
 def test_convert_pdf_surfaces_azure_failure_when_local_ocr_is_unavailable(

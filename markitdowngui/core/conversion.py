@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from itertools import islice
 import base64
+import mimetypes
 import os
 import tempfile
 from io import BytesIO
@@ -40,12 +41,33 @@ CONVERSION_ERROR_PREFIX = "Error converting "
 BACKEND_AZURE = "azure"
 BACKEND_DEFUDDLE = "defuddle"
 BACKEND_GLMOCR = "glmocr"
+BACKEND_HTTP_OCR = "http-ocr"
 BACKEND_LOCAL = "local"
 BACKEND_NATIVE = "native"
 BACKEND_DOCX_IMAGES = "docx-images"
 BACKEND_PDF_IMAGES = "pdf-images"
+OCR_PROVIDER_AZURE_TESSERACT = "azure_tesseract"
 OCR_PROVIDER_GLMOCR = "glmocr"
+OCR_PROVIDER_HTTP = "http"
 OCR_PROVIDER_LEGACY = "legacy"
+OCR_PROVIDER_NONE = "none"
+OCR_PROVIDER_ALIASES = {
+    "azure": OCR_PROVIDER_AZURE_TESSERACT,
+    "azure_tesseract": OCR_PROVIDER_AZURE_TESSERACT,
+    "custom_http": OCR_PROVIDER_HTTP,
+    "legacy": OCR_PROVIDER_AZURE_TESSERACT,
+    "local": OCR_PROVIDER_AZURE_TESSERACT,
+    "tesseract": OCR_PROVIDER_AZURE_TESSERACT,
+    "glmocr": OCR_PROVIDER_GLMOCR,
+    "http": OCR_PROVIDER_HTTP,
+    "http_ocr": OCR_PROVIDER_HTTP,
+}
+OCR_PROVIDERS = {OCR_PROVIDER_AZURE_TESSERACT, OCR_PROVIDER_GLMOCR, OCR_PROVIDER_HTTP}
+OCR_FALLBACK_PROVIDERS = {
+    OCR_PROVIDER_NONE,
+    OCR_PROVIDER_AZURE_TESSERACT,
+    OCR_PROVIDER_HTTP,
+}
 GLMOCR_MODE_MAAS = "maas"
 GLMOCR_MODE_OLLAMA = "ollama"
 GLMOCR_MODE_SDK_SERVER = "sdk_server"
@@ -65,6 +87,46 @@ GLMOCR_OLLAMA_PROMPT = (
 GLMOCR_SDK_SERVER_API_KEY = "markitdown-gui-sdk-server"
 ZHIPU_API_KEY_ENV_VAR = "ZHIPU_API_KEY"
 GLMOCR_API_KEY_ENV_VAR = "GLMOCR_API_KEY"
+DEFAULT_HTTP_OCR_API_KEY_ENV = "OCR_HTTP_API_KEY"
+DEFAULT_HTTP_OCR_TIMEOUT_SECONDS = 300
+
+
+@dataclass(frozen=True)
+class OcrProviderSpec:
+    provider_id: str
+    label: str
+    detail: str
+    capabilities: tuple[str, ...]
+    settings_group: str
+    fallback_allowed: bool = True
+
+
+OCR_PROVIDER_SPECS = {
+    OCR_PROVIDER_AZURE_TESSERACT: OcrProviderSpec(
+        provider_id=OCR_PROVIDER_AZURE_TESSERACT,
+        label="Azure + Tesseract",
+        detail="Azure Document Intelligence first, then local Tesseract.",
+        capabilities=("PDF", "images", "cloud optional", "local fallback"),
+        settings_group="azure_tesseract",
+        fallback_allowed=True,
+    ),
+    OCR_PROVIDER_GLMOCR: OcrProviderSpec(
+        provider_id=OCR_PROVIDER_GLMOCR,
+        label="GLM-OCR",
+        detail="Official API, Ollama, or SDK server for multimodal OCR.",
+        capabilities=("PDF", "images", "API", "Ollama", "server"),
+        settings_group="glmocr",
+        fallback_allowed=False,
+    ),
+    OCR_PROVIDER_HTTP: OcrProviderSpec(
+        provider_id=OCR_PROVIDER_HTTP,
+        label="HTTP OCR",
+        detail="Generic self-hosted endpoint using multipart file upload.",
+        capabilities=("PDF", "images", "server", "model field"),
+        settings_group="http",
+        fallback_allowed=True,
+    ),
+}
 
 
 @dataclass(frozen=True)
@@ -74,8 +136,9 @@ class ConversionOptions:
     ocr_enabled: bool = False
     preserve_pdf_images: bool = False
     preserve_docx_images: bool = False
-    ocr_provider: str = OCR_PROVIDER_LEGACY
+    ocr_provider: str = OCR_PROVIDER_AZURE_TESSERACT
     ocr_fallback_enabled: bool = True
+    ocr_fallback_provider: str = OCR_PROVIDER_AZURE_TESSERACT
     docintel_endpoint: str = ""
     ocr_languages: str = ""
     tesseract_path: str = ""
@@ -86,13 +149,28 @@ class ConversionOptions:
     glmocr_ollama_port: int = DEFAULT_GLMOCR_OLLAMA_PORT
     glmocr_ollama_model: str = DEFAULT_GLMOCR_OLLAMA_MODEL
     glmocr_sdk_server_url: str = DEFAULT_GLMOCR_SDK_SERVER_URL
+    http_ocr_endpoint: str = ""
+    http_ocr_model: str = ""
+    http_ocr_api_key_env: str = DEFAULT_HTTP_OCR_API_KEY_ENV
+    http_ocr_timeout_seconds: int = DEFAULT_HTTP_OCR_TIMEOUT_SECONDS
 
     @property
     def normalized_ocr_provider(self) -> str:
-        provider = self.ocr_provider.strip().lower()
-        if provider in {OCR_PROVIDER_LEGACY, OCR_PROVIDER_GLMOCR}:
-            return provider
-        return OCR_PROVIDER_LEGACY
+        return _normalize_ocr_provider(self.ocr_provider)
+
+    @property
+    def normalized_ocr_fallback_provider(self) -> str:
+        if not self.ocr_fallback_enabled:
+            return OCR_PROVIDER_NONE
+
+        provider = self.ocr_fallback_provider.strip().lower()
+        if provider == OCR_PROVIDER_NONE:
+            return OCR_PROVIDER_NONE
+
+        normalized = _normalize_ocr_provider(provider)
+        if normalized in OCR_FALLBACK_PROVIDERS:
+            return normalized
+        return OCR_PROVIDER_AZURE_TESSERACT
 
     @property
     def normalized_preserve_pdf_images(self) -> bool:
@@ -153,6 +231,22 @@ class ConversionOptions:
     def normalized_glmocr_sdk_server_url(self) -> str:
         return self.glmocr_sdk_server_url.strip() or DEFAULT_GLMOCR_SDK_SERVER_URL
 
+    @property
+    def normalized_http_ocr_endpoint(self) -> str:
+        return self.http_ocr_endpoint.strip()
+
+    @property
+    def normalized_http_ocr_model(self) -> str:
+        return self.http_ocr_model.strip()
+
+    @property
+    def normalized_http_ocr_api_key_env(self) -> str:
+        return self.http_ocr_api_key_env.strip() or DEFAULT_HTTP_OCR_API_KEY_ENV
+
+    @property
+    def normalized_http_ocr_timeout_seconds(self) -> int:
+        return max(1, min(3600, int(self.http_ocr_timeout_seconds)))
+
 
 @dataclass(frozen=True)
 class ConversionAsset:
@@ -178,6 +272,49 @@ def format_conversion_error(file_path: str, error: Exception) -> str:
 def _summarize_error(error: Exception) -> str:
     message = str(error).strip()
     return message or type(error).__name__
+
+
+def _normalize_ocr_provider(
+    provider: str,
+    default: str = OCR_PROVIDER_AZURE_TESSERACT,
+) -> str:
+    normalized = (provider or "").strip().lower()
+    return OCR_PROVIDER_ALIASES.get(normalized, default)
+
+
+def get_ocr_provider_specs() -> tuple[OcrProviderSpec, ...]:
+    """Return UI-safe OCR provider metadata in display order."""
+    return (
+        OCR_PROVIDER_SPECS[OCR_PROVIDER_AZURE_TESSERACT],
+        OCR_PROVIDER_SPECS[OCR_PROVIDER_GLMOCR],
+        OCR_PROVIDER_SPECS[OCR_PROVIDER_HTTP],
+    )
+
+
+def _ocr_provider_label(provider: str) -> str:
+    spec = OCR_PROVIDER_SPECS.get(provider)
+    return spec.label if spec else provider
+
+
+def _raise_provider_failure(
+    file_label: str,
+    *,
+    provider: str,
+    provider_error: Exception,
+    fallback_provider: str = OCR_PROVIDER_NONE,
+    fallback_error: Exception | None = None,
+) -> str:
+    provider_label = _ocr_provider_label(provider)
+    if fallback_error is not None:
+        fallback_label = _ocr_provider_label(fallback_provider)
+        raise RuntimeError(
+            f"{provider_label} failed for the {file_label} ({_summarize_error(provider_error)}), "
+            f"and {fallback_label} fallback also failed ({_summarize_error(fallback_error)})."
+        ) from provider_error
+
+    raise RuntimeError(
+        f"{provider_label} failed for the {file_label}: {_summarize_error(provider_error)}"
+    ) from provider_error
 
 
 def _raise_ocr_failure(
@@ -233,7 +370,7 @@ def _raise_glmocr_failure(
     if fallback_error is not None:
         raise RuntimeError(
             f"GLM-OCR failed for the {file_label} ({_summarize_error(glm_error)}), "
-            f"and Azure/Tesseract OCR fallback also failed ({_summarize_error(fallback_error)})."
+            f"and fallback OCR also failed ({_summarize_error(fallback_error)})."
         ) from glm_error
 
     raise RuntimeError(
@@ -341,10 +478,55 @@ def _convert_image_with_ocr(
     options: ConversionOptions,
     extension: str,
 ) -> ConversionOutcome:
-    if options.normalized_ocr_provider == OCR_PROVIDER_GLMOCR:
-        return _convert_image_with_glmocr(file_path, options, extension)
+    provider = options.normalized_ocr_provider
+    try:
+        return _convert_image_with_ocr_provider(
+            file_path,
+            options,
+            extension,
+            provider,
+        )
+    except Exception as exc:
+        fallback_provider = options.normalized_ocr_fallback_provider
+        if fallback_provider in {OCR_PROVIDER_NONE, provider}:
+            if provider == OCR_PROVIDER_AZURE_TESSERACT:
+                raise
+            return _raise_provider_failure(
+                "image",
+                provider=provider,
+                provider_error=exc,
+            )
 
-    return _convert_image_with_azure_tesseract_ocr(file_path, options, extension)
+        try:
+            return _convert_image_with_ocr_provider(
+                file_path,
+                options,
+                extension,
+                fallback_provider,
+            )
+        except Exception as fallback_error:
+            return _raise_provider_failure(
+                "image",
+                provider=provider,
+                provider_error=exc,
+                fallback_provider=fallback_provider,
+                fallback_error=fallback_error,
+            )
+
+
+def _convert_image_with_ocr_provider(
+    file_path: str,
+    options: ConversionOptions,
+    extension: str,
+    provider: str,
+) -> ConversionOutcome:
+    if provider == OCR_PROVIDER_GLMOCR:
+        return _convert_image_with_glmocr(file_path, options, extension)
+    if provider == OCR_PROVIDER_AZURE_TESSERACT:
+        return _convert_image_with_azure_tesseract_ocr(file_path, options, extension)
+    if provider == OCR_PROVIDER_HTTP:
+        return _convert_image_with_http_ocr(file_path, options)
+    raise RuntimeError(f"Unsupported OCR provider: {provider}")
 
 
 def _convert_image_with_glmocr(
@@ -352,23 +534,10 @@ def _convert_image_with_glmocr(
     options: ConversionOptions,
     extension: str,
 ) -> ConversionOutcome:
-    try:
-        markdown = _convert_with_glmocr(file_path, options)
-        if markdown.strip():
-            return ConversionOutcome(markdown=markdown, backend=BACKEND_GLMOCR)
-        raise RuntimeError("GLM-OCR did not extract any text from the image.")
-    except Exception as exc:
-        if not options.ocr_fallback_enabled:
-            return _raise_glmocr_failure("image", glm_error=exc)
-
-        try:
-            return _convert_image_with_azure_tesseract_ocr(file_path, options, extension)
-        except Exception as fallback_error:
-            return _raise_glmocr_failure(
-                "image",
-                glm_error=exc,
-                fallback_error=fallback_error,
-            )
+    markdown = _convert_with_glmocr(file_path, options)
+    if markdown.strip():
+        return ConversionOutcome(markdown=markdown, backend=BACKEND_GLMOCR)
+    raise RuntimeError("GLM-OCR did not extract any text from the image.")
 
 
 def _convert_image_with_azure_tesseract_ocr(
@@ -415,10 +584,48 @@ def _convert_pdf_with_ocr(
     file_path: str,
     options: ConversionOptions,
 ) -> ConversionOutcome:
-    if options.normalized_ocr_provider == OCR_PROVIDER_GLMOCR:
-        return _convert_pdf_with_glmocr(file_path, options)
+    provider = options.normalized_ocr_provider
+    try:
+        return _convert_pdf_with_ocr_provider(
+            file_path,
+            options,
+            provider,
+        )
+    except Exception as exc:
+        fallback_provider = options.normalized_ocr_fallback_provider
+        if fallback_provider in {OCR_PROVIDER_NONE, provider}:
+            if provider == OCR_PROVIDER_AZURE_TESSERACT:
+                raise
+            return _raise_provider_failure(
+                "PDF",
+                provider=provider,
+                provider_error=exc,
+            )
 
-    return _convert_pdf_with_azure_tesseract_ocr(file_path, options)
+        try:
+            return _convert_pdf_with_ocr_provider(file_path, options, fallback_provider)
+        except Exception as fallback_error:
+            return _raise_provider_failure(
+                "PDF",
+                provider=provider,
+                provider_error=exc,
+                fallback_provider=fallback_provider,
+                fallback_error=fallback_error,
+            )
+
+
+def _convert_pdf_with_ocr_provider(
+    file_path: str,
+    options: ConversionOptions,
+    provider: str,
+) -> ConversionOutcome:
+    if provider == OCR_PROVIDER_GLMOCR:
+        return _convert_pdf_with_glmocr(file_path, options)
+    if provider == OCR_PROVIDER_AZURE_TESSERACT:
+        return _convert_pdf_with_azure_tesseract_ocr(file_path, options)
+    if provider == OCR_PROVIDER_HTTP:
+        return _convert_pdf_with_http_ocr(file_path, options)
+    raise RuntimeError(f"Unsupported OCR provider: {provider}")
 
 
 def _convert_pdf_with_preserved_images(
@@ -438,21 +645,49 @@ def _convert_pdf_with_preserved_images(
             "Preserve PDF images requires the `markitdown-pdf-images` package to be installed."
         ) from exc
 
+    plugin_ocr_enabled = (
+        options.ocr_enabled
+        and options.normalized_ocr_provider == OCR_PROVIDER_AZURE_TESSERACT
+    )
     result = convert_pdf(
         file_path,
         preserve_images=True,
         image_mode="external",
         artifacts_dir=artifacts_dir,
         path_mode="absolute",
-        ocr_enabled=options.ocr_enabled,
+        ocr_enabled=plugin_ocr_enabled,
         tesseract_path=options.normalized_tesseract_path or None,
         ocr_languages=options.normalized_ocr_languages,
     )
+    markdown = result.markdown
+
+    if options.ocr_enabled and not plugin_ocr_enabled:
+        ocr_outcome = _convert_pdf_with_ocr(file_path, options)
+        markdown = _merge_preserved_pdf_markdown_with_provider_ocr(
+            markdown,
+            ocr_outcome.markdown,
+        )
+
     return ConversionOutcome(
-        markdown=result.markdown,
+        markdown=markdown,
         backend=BACKEND_PDF_IMAGES,
         assets=_map_pdf_assets(getattr(result, "assets", [])),
     )
+
+
+def _merge_preserved_pdf_markdown_with_provider_ocr(
+    preserved_markdown: str,
+    ocr_markdown: str,
+) -> str:
+    preserved = preserved_markdown.strip()
+    ocr_text = ocr_markdown.strip()
+    if not ocr_text:
+        return preserved
+    if not preserved:
+        return ocr_text
+    if ocr_text in preserved:
+        return preserved
+    return f"{preserved}\n\n{ocr_text}"
 
 
 def _convert_docx_with_preserved_images(
@@ -564,23 +799,10 @@ def _convert_pdf_with_glmocr(
     file_path: str,
     options: ConversionOptions,
 ) -> ConversionOutcome:
-    try:
-        markdown = _convert_with_glmocr(file_path, options)
-        if markdown.strip():
-            return ConversionOutcome(markdown=markdown, backend=BACKEND_GLMOCR)
-        raise RuntimeError("GLM-OCR did not extract any text from the PDF.")
-    except Exception as exc:
-        if not options.ocr_fallback_enabled:
-            return _raise_glmocr_failure("PDF", glm_error=exc)
-
-        try:
-            return _convert_pdf_with_azure_tesseract_ocr(file_path, options)
-        except Exception as fallback_error:
-            return _raise_glmocr_failure(
-                "PDF",
-                glm_error=exc,
-                fallback_error=fallback_error,
-            )
+    markdown = _convert_with_glmocr(file_path, options)
+    if markdown.strip():
+        return ConversionOutcome(markdown=markdown, backend=BACKEND_GLMOCR)
+    raise RuntimeError("GLM-OCR did not extract any text from the PDF.")
 
 
 def _convert_pdf_with_azure_tesseract_ocr(
@@ -698,6 +920,107 @@ def _convert_with_glmocr_ollama(
                 image.close()
 
     return "\n\n".join(page_markdowns).strip()
+
+
+def _convert_image_with_http_ocr(
+    file_path: str,
+    options: ConversionOptions,
+) -> ConversionOutcome:
+    markdown = _convert_with_http_ocr(file_path, options)
+    if markdown.strip():
+        return ConversionOutcome(markdown=markdown, backend=BACKEND_HTTP_OCR)
+    raise RuntimeError("HTTP OCR did not extract any text from the image.")
+
+
+def _convert_pdf_with_http_ocr(
+    file_path: str,
+    options: ConversionOptions,
+) -> ConversionOutcome:
+    markdown = _convert_with_http_ocr(file_path, options)
+    if markdown.strip():
+        return ConversionOutcome(markdown=markdown, backend=BACKEND_HTTP_OCR)
+    raise RuntimeError("HTTP OCR did not extract any text from the PDF.")
+
+
+def _convert_with_http_ocr(file_path: str, options: ConversionOptions) -> str:
+    endpoint = options.normalized_http_ocr_endpoint
+    if not endpoint:
+        raise RuntimeError("Set an HTTP OCR endpoint in Settings first.")
+
+    path = Path(file_path)
+    content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+    data: dict[str, str] = {}
+    if options.normalized_http_ocr_model:
+        data["model"] = options.normalized_http_ocr_model
+
+    headers: dict[str, str] = {}
+    api_key_env = options.normalized_http_ocr_api_key_env
+    api_key = os.getenv(api_key_env, "").strip() if api_key_env else ""
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+
+    try:
+        with path.open("rb") as file_obj:
+            response = requests.post(
+                endpoint,
+                data=data,
+                files={"file": (path.name, file_obj, content_type)},
+                headers=headers,
+                timeout=options.normalized_http_ocr_timeout_seconds,
+            )
+    except requests.Timeout as exc:
+        raise RuntimeError("HTTP OCR request timed out.") from exc
+    except requests.RequestException as exc:
+        raise RuntimeError(f"HTTP OCR request failed: {exc}") from exc
+
+    if not response.ok:
+        message = response.text.strip()
+        raise RuntimeError(
+            message or f"HTTP OCR request failed with status {response.status_code}."
+        )
+
+    return _extract_http_ocr_response_text(response)
+
+
+def _extract_http_ocr_response_text(response: requests.Response) -> str:
+    content_type = response.headers.get("content-type", "").lower()
+    if "application/json" not in content_type:
+        return response.text.strip()
+
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        raise RuntimeError("HTTP OCR returned an invalid JSON response.") from exc
+
+    extracted = _find_text_in_http_ocr_payload(payload)
+    if extracted is None:
+        raise RuntimeError(
+            "HTTP OCR JSON response did not include markdown, text, result, content, or output."
+        )
+    return extracted.strip()
+
+
+def _find_text_in_http_ocr_payload(payload: object) -> str | None:
+    if isinstance(payload, str):
+        return payload
+    if isinstance(payload, dict):
+        for key in ("markdown", "text", "result", "content", "output"):
+            value = payload.get(key)
+            if isinstance(value, str):
+                return value
+            if isinstance(value, dict):
+                nested = _find_text_in_http_ocr_payload(value)
+                if nested is not None:
+                    return nested
+        return None
+    if isinstance(payload, list):
+        parts = [
+            value
+            for value in (_find_text_in_http_ocr_payload(item) for item in payload)
+            if value
+        ]
+        return "\n\n".join(parts) if parts else None
+    return None
 
 
 def _iter_glmocr_ollama_images(file_path: str):
