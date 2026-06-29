@@ -151,7 +151,7 @@ pydantic-core==2.41.5
     # via pydantic
 pygments==2.20.0
     # via rich
-pyjwt==2.11.0
+pyjwt==2.13.0
     # via msal
 pypdfium2==5.6.0
     # via
