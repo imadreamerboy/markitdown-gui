@@ -18,6 +18,13 @@ RowLayout {
     signal toggled(bool checked)
 
     spacing: 12
+    opacity: enabled ? 1 : 0.64
+
+    Behavior on opacity {
+        NumberAnimation {
+            duration: 120
+        }
+    }
 
     ColumnLayout {
         spacing: 2

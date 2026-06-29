@@ -466,6 +466,7 @@ ApplicationWindow {
 
                 AppTextField {
                     id: compactUrlInput
+                    enabled: !app.converting
                     placeholderText: urlBar.compact ? "Add webpage URL" : "Paste webpage URL"
                     surfaceColor: colors.input
                     borderColor: colors.border
@@ -481,7 +482,8 @@ ApplicationWindow {
 
                 AppButton {
                     text: "Add webpage"
-                    primary: !app.hasResults
+                    enabled: !app.converting
+                    primary: !app.hasResults && !app.converting
                     iconName: "link"
                     accentColor: colors.action
                     primaryTextColor: colors.onAction
@@ -595,15 +597,20 @@ ApplicationWindow {
 
                         AppButton {
                             text: "Add files"
-                            primary: true
+                            enabled: !app.converting
+                            primary: !app.converting
                             iconName: "folder-plus"
                             accentColor: colors.action
                             primaryTextColor: colors.onAction
+                            surfaceColor: colors.surfaceAlt
+                            borderColor: colors.border
+                            textColor: colors.text
                             onClicked: openFileDialog.open()
                         }
 
                         AppButton {
                             text: "Clear"
+                            enabled: !app.converting
                             subtle: true
                             iconName: "x"
                             textColor: colors.muted
@@ -683,6 +690,7 @@ ApplicationWindow {
 
                                 AppButton {
                                     text: "Remove"
+                                    enabled: !app.converting
                                     subtle: true
                                     iconName: "trash-2"
                                     textColor: colors.muted
@@ -783,6 +791,7 @@ ApplicationWindow {
                         ThemeToggleRow {
                             title: "OCR"
                             detail: "Provider: " + (app.ocrProvider === "glmocr" ? "GLM-OCR" : "Azure/Tesseract") + ". Use for scanned or image-heavy inputs."
+                            enabled: !app.converting
                             checked: app.ocrEnabled
                             textColor: colors.text
                             mutedTextColor: colors.muted
@@ -793,6 +802,7 @@ ApplicationWindow {
                         ThemeToggleRow {
                             title: "Preserve PDF images"
                             detail: "Extract PDF page images and keep relative asset links on export."
+                            enabled: !app.converting
                             checked: app.preservePdfImages
                             textColor: colors.text
                             mutedTextColor: colors.muted
@@ -803,6 +813,7 @@ ApplicationWindow {
                         ThemeToggleRow {
                             title: "Preserve DOCX images"
                             detail: "Extract embedded document images and keep relative asset links on export."
+                            enabled: !app.converting
                             checked: app.preserveDocxImages
                             textColor: colors.text
                             mutedTextColor: colors.muted
