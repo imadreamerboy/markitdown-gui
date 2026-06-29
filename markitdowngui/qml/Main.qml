@@ -1094,17 +1094,18 @@ ApplicationWindow {
                         required property bool failed
                         required property int wordCount
                         property bool selected: index === resultList.currentIndex
+                        property color emphasisColor: failed ? colors.danger : colors.accent
 
                         width: resultList.width
                         height: 68
                         radius: 9
                         color: selected
-                            ? Qt.rgba(colors.accent.r, colors.accent.g, colors.accent.b, dark ? 0.10 : 0.08)
+                            ? Qt.rgba(emphasisColor.r, emphasisColor.g, emphasisColor.b, dark ? 0.12 : 0.08)
                             : rowMouse.containsMouse
-                                ? Qt.rgba(colors.accent.r, colors.accent.g, colors.accent.b, dark ? 0.08 : 0.06)
+                                ? Qt.rgba(emphasisColor.r, emphasisColor.g, emphasisColor.b, dark ? 0.08 : 0.06)
                                 : colors.surfaceAlt
                         border.color: selected
-                            ? Qt.rgba(colors.accent.r, colors.accent.g, colors.accent.b, dark ? 0.70 : 0.62)
+                            ? Qt.rgba(emphasisColor.r, emphasisColor.g, emphasisColor.b, dark ? 0.70 : 0.62)
                             : colors.border
 
                         MouseArea {
@@ -1119,7 +1120,7 @@ ApplicationWindow {
                             width: 3
                             height: parent.height - 18
                             radius: 2
-                            color: colors.accent
+                            color: resultRow.emphasisColor
                             anchors.left: parent.left
                             anchors.leftMargin: 8
                             anchors.verticalCenter: parent.verticalCenter
