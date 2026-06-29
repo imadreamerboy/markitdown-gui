@@ -13,9 +13,17 @@ from PySide6.QtGui import QDesktopServices, QGuiApplication, QPalette, QTextDocu
 from markitdowngui.core.conversion import (
     AZURE_OCR_API_KEY_ENV_VAR,
     DEFAULT_HTTP_OCR_API_KEY_ENV,
+    DEFAULT_HTTP_OCR_TIMEOUT_SECONDS,
+    DEFAULT_GLMOCR_OLLAMA_HOST,
+    DEFAULT_GLMOCR_OLLAMA_MODEL,
+    DEFAULT_GLMOCR_OLLAMA_PORT,
+    DEFAULT_GLMOCR_SDK_SERVER_URL,
     GLMOCR_API_KEY_ENV_VAR,
+    GLMOCR_MODE_OLLAMA,
+    GLMOCR_MODE_SDK_SERVER,
     OCR_PROVIDER_GLMOCR,
     OCR_PROVIDER_HTTP,
+    OCR_PROVIDER_NONE,
     ZHIPU_API_KEY_ENV_VAR,
     ConversionOptions,
     ConversionWorker,
@@ -76,6 +84,7 @@ _PREVIEW_HEADING_MARGINS = {
 _MARKDOWN_LINK_RE = re.compile(r"\[([^\]]+)\]\([^)]+\)")
 _MARKDOWN_DECORATION_RE = re.compile(r"[*_`>#]")
 _SOURCE_UPDATE_COMPLETE_MESSAGE = "Source update complete. Restart the app."
+_DEFAULT_HTTP_OCR_ENDPOINT = "http://127.0.0.1:8000/ocr"
 
 class PackagedUpdateInstaller(QThread):
     progressChanged = Signal(str, int)
@@ -383,6 +392,26 @@ class AppController(QObject):
                 "fallbackAllowed": spec.fallback_allowed,
             }
             for spec in get_ocr_provider_specs()
+        ]
+
+    @Property("QVariant", constant=True)
+    def ocrPresetActions(self) -> list[dict[str, str]]:
+        return [
+            {
+                "id": "glmocr_ollama",
+                "label": "GLM-OCR Ollama",
+                "detail": "Use local Ollama at 127.0.0.1:11434 with glm-ocr:latest.",
+            },
+            {
+                "id": "glmocr_sdk_server",
+                "label": "GLM-OCR SDK server",
+                "detail": "Use the local /glmocr/parse SDK server endpoint.",
+            },
+            {
+                "id": "http_local",
+                "label": "HTTP OCR local",
+                "detail": "Use a local multipart OCR endpoint at 127.0.0.1:8000.",
+            },
         ]
 
     @Property("QVariant", notify=settingsChanged)
@@ -854,6 +883,41 @@ class AppController(QObject):
         self.settings.set_tesseract_path(value)
         self.settingsChanged.emit()
         self.diagnosticsChanged.emit()
+
+    @Slot(str)
+    def applyOcrPreset(self, preset_id: str) -> None:
+        if preset_id == "glmocr_ollama":
+            self.settings.set_ocr_enabled(True)
+            self.settings.set_ocr_provider(OCR_PROVIDER_GLMOCR)
+            self.settings.set_ocr_fallback_provider(OCR_PROVIDER_NONE)
+            self.settings.set_glmocr_mode(GLMOCR_MODE_OLLAMA)
+            self.settings.set_glmocr_ollama_host(DEFAULT_GLMOCR_OLLAMA_HOST)
+            self.settings.set_glmocr_ollama_port(DEFAULT_GLMOCR_OLLAMA_PORT)
+            self.settings.set_glmocr_ollama_model(DEFAULT_GLMOCR_OLLAMA_MODEL)
+            message = "GLM-OCR Ollama preset applied. Run Test connection next."
+        elif preset_id == "glmocr_sdk_server":
+            self.settings.set_ocr_enabled(True)
+            self.settings.set_ocr_provider(OCR_PROVIDER_GLMOCR)
+            self.settings.set_ocr_fallback_provider(OCR_PROVIDER_NONE)
+            self.settings.set_glmocr_mode(GLMOCR_MODE_SDK_SERVER)
+            self.settings.set_glmocr_sdk_server_url(DEFAULT_GLMOCR_SDK_SERVER_URL)
+            message = "GLM-OCR SDK server preset applied. Run Test connection next."
+        elif preset_id == "http_local":
+            self.settings.set_ocr_enabled(True)
+            self.settings.set_ocr_provider(OCR_PROVIDER_HTTP)
+            self.settings.set_ocr_fallback_provider(OCR_PROVIDER_NONE)
+            self.settings.set_http_ocr_endpoint(_DEFAULT_HTTP_OCR_ENDPOINT)
+            self.settings.set_http_ocr_model("")
+            self.settings.set_http_ocr_api_key_env(DEFAULT_HTTP_OCR_API_KEY_ENV)
+            self.settings.set_http_ocr_timeout_seconds(DEFAULT_HTTP_OCR_TIMEOUT_SECONDS)
+            message = "HTTP OCR local preset applied. Run Test connection next."
+        else:
+            self.toastRequested.emit("error", "Unknown OCR preset.")
+            return
+
+        self.settingsChanged.emit()
+        self.diagnosticsChanged.emit()
+        self.toastRequested.emit("success", message)
 
     @Slot()
     def validateOcrSetup(self) -> None:
@@ -1434,7 +1498,7 @@ class AppController(QObject):
         ]
 
     def _http_ocr_curl_template(self) -> str:
-        endpoint = self.settings.get_http_ocr_endpoint() or "http://127.0.0.1:8000/ocr"
+        endpoint = self.settings.get_http_ocr_endpoint() or _DEFAULT_HTTP_OCR_ENDPOINT
         parts = ["curl", "-X", "POST", "-F", '"file=@sample.pdf"']
         model = self.settings.get_http_ocr_model()
         if model:

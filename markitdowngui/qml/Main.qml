@@ -1941,6 +1941,58 @@ ApplicationWindow {
                 }
 
                 FieldGroup {
+                    label: "OCR presets"
+                    detail: "Apply common provider defaults, then run Test connection."
+                    Layout.fillWidth: true
+
+                    ColumnLayout {
+                        spacing: 8
+                        Layout.fillWidth: true
+
+                        Repeater {
+                            model: app.ocrPresetActions
+
+                            delegate: RowLayout {
+                                spacing: 10
+                                Layout.fillWidth: true
+
+                                ColumnLayout {
+                                    spacing: 2
+                                    Layout.fillWidth: true
+
+                                    Label {
+                                        text: modelData.label
+                                        color: colors.text
+                                        font.pixelSize: 12
+                                        font.weight: Font.DemiBold
+                                        elide: Text.ElideRight
+                                        Layout.fillWidth: true
+                                    }
+
+                                    Label {
+                                        text: modelData.detail
+                                        color: colors.muted
+                                        font.pixelSize: 11
+                                        wrapMode: Text.WordWrap
+                                        Layout.fillWidth: true
+                                    }
+                                }
+
+                                AppButton {
+                                    text: "Apply"
+                                    iconName: "file-check"
+                                    accentColor: colors.action
+                                    surfaceColor: colors.surfaceAlt
+                                    borderColor: colors.border
+                                    textColor: colors.text
+                                    onClicked: app.applyOcrPreset(modelData.id)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                FieldGroup {
                     label: "Primary provider"
                     detail: "Choose the OCR engine used first. A fallback can be configured for model failures."
                     visible: app.ocrEnabled

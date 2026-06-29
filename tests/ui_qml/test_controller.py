@@ -700,6 +700,80 @@ def test_controller_exposes_provider_specific_ocr_setup_actions(controller):
     )
 
 
+def test_controller_applies_ocr_ollama_preset(controller):
+    messages: list[tuple[str, str]] = []
+    signals: list[str] = []
+    controller.toastRequested.connect(lambda kind, message: messages.append((kind, message)))
+    controller.settingsChanged.connect(lambda: signals.append("settings"))
+    controller.diagnosticsChanged.connect(lambda: signals.append("diagnostics"))
+
+    controller.setOcrEnabled(False)
+    signals.clear()
+    controller.applyOcrPreset("glmocr_ollama")
+
+    assert controller.ocrEnabled is True
+    assert controller.ocrProvider == "glmocr"
+    assert controller.ocrFallbackProvider == "none"
+    assert controller.glmocrMode == "ollama"
+    assert controller.glmocrOllamaHost == "127.0.0.1"
+    assert controller.glmocrOllamaPort == 11434
+    assert controller.glmocrOllamaModel == "glm-ocr:latest"
+    assert signals == ["settings", "diagnostics"]
+    assert messages[-1] == (
+        "success",
+        "GLM-OCR Ollama preset applied. Run Test connection next.",
+    )
+
+
+def test_controller_applies_ocr_sdk_server_preset(controller):
+    messages: list[tuple[str, str]] = []
+    controller.toastRequested.connect(lambda kind, message: messages.append((kind, message)))
+
+    controller.applyOcrPreset("glmocr_sdk_server")
+
+    assert controller.ocrEnabled is True
+    assert controller.ocrProvider == "glmocr"
+    assert controller.ocrFallbackProvider == "none"
+    assert controller.glmocrMode == "sdk_server"
+    assert controller.glmocrSdkServerUrl == "http://127.0.0.1:5002/glmocr/parse"
+    assert messages[-1] == (
+        "success",
+        "GLM-OCR SDK server preset applied. Run Test connection next.",
+    )
+
+
+def test_controller_applies_http_local_ocr_preset(controller):
+    messages: list[tuple[str, str]] = []
+    controller.toastRequested.connect(lambda kind, message: messages.append((kind, message)))
+    controller.setHttpOcrEndpoint("https://example.com/old")
+    controller.setHttpOcrModel("old-model")
+    controller.setHttpOcrApiKeyEnv("OLD_KEY")
+    controller.setHttpOcrTimeoutSeconds(5)
+
+    controller.applyOcrPreset("http_local")
+
+    assert controller.ocrEnabled is True
+    assert controller.ocrProvider == "http"
+    assert controller.ocrFallbackProvider == "none"
+    assert controller.httpOcrEndpoint == "http://127.0.0.1:8000/ocr"
+    assert controller.httpOcrModel == ""
+    assert controller.httpOcrApiKeyEnv == "OCR_HTTP_API_KEY"
+    assert controller.httpOcrTimeoutSeconds == 300
+    assert messages[-1] == (
+        "success",
+        "HTTP OCR local preset applied. Run Test connection next.",
+    )
+
+
+def test_controller_reports_unknown_ocr_preset(controller):
+    messages: list[tuple[str, str]] = []
+    controller.toastRequested.connect(lambda kind, message: messages.append((kind, message)))
+
+    controller.applyOcrPreset("unknown")
+
+    assert messages == [("error", "Unknown OCR preset.")]
+
+
 def test_controller_runs_ocr_setup_actions(controller, monkeypatch):
     opened: list[str] = []
     copied: list[str] = []
