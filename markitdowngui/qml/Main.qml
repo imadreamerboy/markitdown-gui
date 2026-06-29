@@ -162,6 +162,26 @@ ApplicationWindow {
         onAccepted: app.setOutputFolderFromUrl(selectedFolder)
     }
 
+    FileDialog {
+        id: exportSettingsProfileDialog
+        title: "Export settings profile"
+        fileMode: FileDialog.SaveFile
+        defaultSuffix: "json"
+        currentFolder: app.outputFolderUrl
+        selectedFile: app.outputFolderUrl ? app.outputFolderUrl + "/markitdown-settings-profile.json" : ""
+        nameFilters: ["JSON files (*.json)"]
+        onAccepted: app.exportSettingsProfile(selectedFile)
+    }
+
+    FileDialog {
+        id: importSettingsProfileDialog
+        title: "Import settings profile"
+        fileMode: FileDialog.OpenFile
+        currentFolder: app.outputFolderUrl
+        nameFilters: ["JSON files (*.json)", "All files (*)"]
+        onAccepted: app.importSettingsProfile(selectedFile)
+    }
+
     Connections {
         target: app
         function onToastRequested(kind, message) {
@@ -2326,6 +2346,53 @@ ApplicationWindow {
                         placeholderColor: colors.subtle
                         Layout.fillWidth: true
                         onEditingFinished: app.setHttpOcrApiKeyEnv(text)
+                    }
+                }
+            }
+
+            SectionPanel {
+                title: "Settings profile"
+                subtitle: "Move OCR, update, and conversion preferences without recent file paths."
+                surfaceColor: colors.surface
+                borderColor: colors.border
+                textColor: colors.text
+                mutedTextColor: colors.muted
+                panelPadding: 14
+                contentSpacing: 10
+                bodySpacing: 9
+                borderOpacity: dark ? 0.90 : 0.72
+                Layout.fillWidth: true
+
+                RowLayout {
+                    spacing: 10
+                    Layout.fillWidth: true
+
+                    Label {
+                        text: "Profiles include provider endpoints and env var names, but exclude recent files, outputs, window state, and default output folders."
+                        color: colors.muted
+                        font.pixelSize: 12
+                        wrapMode: Text.WordWrap
+                        Layout.fillWidth: true
+                    }
+
+                    AppButton {
+                        text: "Export"
+                        iconName: "save"
+                        accentColor: colors.action
+                        surfaceColor: colors.surfaceAlt
+                        borderColor: colors.border
+                        textColor: colors.text
+                        onClicked: exportSettingsProfileDialog.open()
+                    }
+
+                    AppButton {
+                        text: "Import"
+                        iconName: "upload"
+                        accentColor: colors.action
+                        surfaceColor: colors.surfaceAlt
+                        borderColor: colors.border
+                        textColor: colors.text
+                        onClicked: importSettingsProfileDialog.open()
                     }
                 }
             }

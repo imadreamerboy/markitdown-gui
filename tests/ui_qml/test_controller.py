@@ -1061,6 +1061,66 @@ def test_controller_exports_support_bundle(controller, monkeypatch, tmp_path):
     assert opened and opened[0].startswith("file:")
 
 
+def test_controller_exports_settings_profile(controller, tmp_path):
+    messages: list[tuple[str, str]] = []
+    controller.toastRequested.connect(
+        lambda kind, message: messages.append((kind, message))
+    )
+    controller.setOcrEnabled(True)
+    controller.setOcrProvider("http")
+    controller.setHttpOcrEndpoint("http://localhost:8000/ocr")
+    profile_path = tmp_path / "profile"
+
+    controller.exportSettingsProfile(QUrl.fromLocalFile(str(profile_path)).toString())
+
+    exported_path = tmp_path / "profile.json"
+    assert exported_path.is_file()
+    assert messages[-1] == ("success", "Exported profile.json.")
+    assert "http://localhost:8000/ocr" in exported_path.read_text(encoding="utf-8")
+
+
+def test_controller_imports_settings_profile(controller, tmp_path):
+    messages: list[tuple[str, str]] = []
+    changes: list[str] = []
+    controller.toastRequested.connect(
+        lambda kind, message: messages.append((kind, message))
+    )
+    controller.settingsChanged.connect(lambda: changes.append("settings"))
+    controller.themeChanged.connect(lambda: changes.append("theme"))
+    controller.saveDefaultsChanged.connect(lambda: changes.append("save"))
+    controller.diagnosticsChanged.connect(lambda: changes.append("diagnostics"))
+    profile_path = tmp_path / "profile.json"
+    profile_path.write_text(
+        """{
+  "schema": 1,
+  "settings": {
+    "appearance": {"themeMode": "dark"},
+    "output": {"defaultFormat": ".txt", "combinedSaveMode": false},
+    "ocr": {
+      "enabled": true,
+      "provider": "http",
+      "httpEndpoint": "http://localhost:8000/ocr"
+    },
+    "updates": {"notificationsEnabled": false}
+  }
+}
+""",
+        encoding="utf-8",
+    )
+
+    controller.importSettingsProfile(QUrl.fromLocalFile(str(profile_path)).toString())
+
+    assert controller.themeMode == "dark"
+    assert controller.settings.get_default_output_format() == ".txt"
+    assert controller.saveCombined is False
+    assert controller.ocrEnabled is True
+    assert controller.ocrProvider == "http"
+    assert controller.httpOcrEndpoint == "http://localhost:8000/ocr"
+    assert controller.settings.get_update_notifications_enabled() is False
+    assert messages == [("success", "Settings profile imported.")]
+    assert changes == ["settings", "theme", "save", "diagnostics"]
+
+
 def test_controller_reports_support_bundle_error(controller, monkeypatch):
     messages: list[tuple[str, str]] = []
     logged: list[str] = []

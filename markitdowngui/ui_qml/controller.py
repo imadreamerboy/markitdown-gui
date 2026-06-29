@@ -52,6 +52,10 @@ from markitdowngui.utils.source_updater import (
     build_source_update_command,
     run_source_update,
 )
+from markitdowngui.utils.settings_profile import (
+    export_settings_profile,
+    import_settings_profile,
+)
 from markitdowngui.utils.support_bundle import create_support_bundle
 from markitdowngui.utils.translations import DEFAULT_LANG, get_translation
 from markitdowngui.utils.update_checker import (
@@ -1086,6 +1090,38 @@ class AppController(QObject):
             return
         self.toastRequested.emit("success", f"Created {bundle_path.name}.")
         self.openExternalUrl(QUrl.fromLocalFile(str(bundle_path.parent)).toString())
+
+    @Slot(str)
+    def exportSettingsProfile(self, file_url: str) -> None:
+        profile_path = self._path_from_url(file_url)
+        if not profile_path:
+            return
+        if not profile_path.lower().endswith(".json"):
+            profile_path = f"{profile_path}.json"
+        try:
+            exported_path = export_settings_profile(self.settings, profile_path)
+        except Exception as exc:
+            AppLogger.error(f"Failed exporting settings profile: {exc}")
+            self.toastRequested.emit("error", f"Settings export failed: {exc}")
+            return
+        self.toastRequested.emit("success", f"Exported {exported_path.name}.")
+
+    @Slot(str)
+    def importSettingsProfile(self, file_url: str) -> None:
+        profile_path = self._path_from_url(file_url)
+        if not profile_path:
+            return
+        try:
+            import_settings_profile(self.settings, profile_path)
+        except Exception as exc:
+            AppLogger.error(f"Failed importing settings profile: {exc}")
+            self.toastRequested.emit("error", f"Settings import failed: {exc}")
+            return
+        self.settingsChanged.emit()
+        self.themeChanged.emit()
+        self.saveDefaultsChanged.emit()
+        self.diagnosticsChanged.emit()
+        self.toastRequested.emit("success", "Settings profile imported.")
 
     @Slot(str)
     def openExternalUrl(self, url: str) -> None:

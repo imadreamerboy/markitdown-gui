@@ -42,6 +42,10 @@ The source updater runs `git pull --ff-only` in the checkout, then reinstalls th
 
 The Help view shows a compact readiness summary for OCR, packaged updates, source updates, update checks, and logs. Copy diagnostics includes that readiness summary. The view can also export a support bundle for issue reports with a diagnostics report, sanitised settings, and capped recent log tails; raw recent file paths, output paths, and obvious secret values are excluded or redacted.
 
+### Settings profiles
+
+The Settings view can export or import a portable JSON profile for OCR, update, conversion, theme, language, and save-mode preferences. Profiles include provider endpoints and environment variable names, but exclude recent files, recent outputs, window state, and default output folders.
+
 ### Prerequisites
 
 - Python `3.10+`
