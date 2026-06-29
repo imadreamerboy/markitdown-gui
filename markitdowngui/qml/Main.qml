@@ -201,11 +201,23 @@ ApplicationWindow {
             }
 
             AppButton {
-                text: "Dismiss"
+                text: ""
+                subtle: true
+                iconName: "x"
+                accentColor: colors.action
+                textColor: colors.muted
+                ToolTip.visible: hovered
+                ToolTip.delay: 550
+                ToolTip.text: "Dismiss"
+                onClicked: app.dismissUpdateNotification()
+            }
+
+            AppButton {
+                text: "Don't notify"
                 subtle: true
                 accentColor: colors.action
                 textColor: colors.muted
-                onClicked: app.dismissUpdateNotification()
+                onClicked: app.disableUpdateNotifications()
             }
         }
     }

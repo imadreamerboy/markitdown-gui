@@ -154,6 +154,24 @@ def test_controller_dismisses_update_notification(controller, monkeypatch):
     assert controller.availableUpdateVersion == ""
 
 
+def test_controller_disables_update_notifications_from_banner(controller, monkeypatch):
+    messages: list[tuple[str, str]] = []
+    controller.toastRequested.connect(lambda kind, message: messages.append((kind, message)))
+    monkeypatch.setattr(
+        controller,
+        "_create_update_checker",
+        lambda: _FakeUpdateChecker(("available", "v1.2.0")),
+    )
+    controller.startAutomaticUpdateCheck()
+
+    controller.disableUpdateNotifications()
+
+    assert controller.settings.get_update_notifications_enabled() is False
+    assert controller.hasUpdateNotification is False
+    assert controller.availableUpdateVersion == ""
+    assert messages == [("success", "Update notifications disabled.")]
+
+
 def test_controller_locks_queue_mutations_while_converting(controller, tmp_path):
     source_a = str(tmp_path / "a.pdf")
     source_b = str(tmp_path / "b.pdf")

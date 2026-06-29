@@ -597,6 +597,13 @@ class AppController(QObject):
         self.updateNotificationChanged.emit()
 
     @Slot()
+    def disableUpdateNotifications(self) -> None:
+        self.settings.set_update_notifications_enabled(False)
+        self.settingsChanged.emit()
+        self.dismissUpdateNotification()
+        self.toastRequested.emit("success", "Update notifications disabled.")
+
+    @Slot()
     def openReleases(self) -> None:
         self.openExternalUrl("https://github.com/imadreamerboy/markitdown-gui/releases")
         self.dismissUpdateNotification()
