@@ -7,6 +7,7 @@ from PySide6.QtCore import QSettings, QUrl
 from markitdowngui.core.conversion import ConversionOutcome
 from markitdowngui.core.settings import SettingsManager
 from markitdowngui.ui_qml.controller import AppController
+from markitdowngui.utils.packaged_updater import PackagedUpdatePlan
 from markitdowngui.utils.update_checker import ReleaseAsset, ReleaseInfo
 
 
@@ -156,6 +157,10 @@ def test_controller_exposes_release_assets_for_packaged_updates(controller, monk
             "size": 41,
             "platform": "Linux",
             "sha256": "",
+            "installSupported": False,
+            "installMode": "source",
+            "installLabel": "Download",
+            "installReason": "Packaged install is available only in packaged builds.",
         },
         {
             "name": "MarkItDown-Windows.zip",
@@ -163,6 +168,10 @@ def test_controller_exposes_release_assets_for_packaged_updates(controller, monk
             "size": 42,
             "platform": "Windows",
             "sha256": "abc123",
+            "installSupported": False,
+            "installMode": "source",
+            "installLabel": "Download",
+            "installReason": "Packaged install is available only in packaged builds.",
         }
     ]
     if controller.preferredReleaseAsset:
@@ -175,6 +184,73 @@ def test_controller_exposes_release_assets_for_packaged_updates(controller, monk
 
     assert opened == ["https://example.com/windows.zip"]
     assert controller.hasUpdateNotification is False
+
+
+def test_controller_installs_supported_preferred_update(controller, monkeypatch):
+    release = ReleaseInfo(
+        tag_name="v1.2.0",
+        html_url="https://github.com/example/releases/tag/v1.2.0",
+        assets=(
+            ReleaseAsset(
+                name="MarkItDown-Windows.zip",
+                browser_download_url="https://example.com/windows.zip",
+                platform="Windows",
+            ),
+        ),
+    )
+    messages: list[tuple[str, str]] = []
+    installed: list[dict[str, object]] = []
+    quit_called: list[None] = []
+    controller.toastRequested.connect(lambda kind, message: messages.append((kind, message)))
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.build_packaged_update_plan",
+        lambda _asset: PackagedUpdatePlan(True, "zip", "Install update"),
+    )
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.install_packaged_update",
+        lambda asset: installed.append(asset),
+    )
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.QGuiApplication.quit",
+        lambda: quit_called.append(None),
+    )
+    monkeypatch.setattr(
+        controller,
+        "_create_update_checker",
+        lambda: _FakeUpdateChecker(("available", "v1.2.0"), release),
+    )
+
+    controller.startAutomaticUpdateCheck()
+    assert controller.canInstallPreferredUpdate is True
+
+    controller.installPreferredUpdate()
+
+    assert installed and installed[0]["url"] == "https://example.com/windows.zip"
+    assert quit_called == [None]
+    assert messages == [("success", "Update installer started. Closing app.")]
+    assert controller.hasUpdateNotification is False
+
+
+def test_controller_blocks_update_install_while_converting(controller, monkeypatch):
+    messages: list[tuple[str, str]] = []
+    installed: list[dict[str, object]] = []
+    controller.toastRequested.connect(lambda kind, message: messages.append((kind, message)))
+    controller._preferred_release_asset = {
+        "url": "https://example.com/windows.zip",
+        "installSupported": True,
+    }
+    controller._converting = True
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.install_packaged_update",
+        lambda asset: installed.append(asset),
+    )
+
+    controller.installPreferredUpdate()
+
+    assert installed == []
+    assert messages == [
+        ("error", "Wait for conversion to finish before installing an update.")
+    ]
 
 
 def test_controller_manual_update_check_reports_no_update(controller, monkeypatch):

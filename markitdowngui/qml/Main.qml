@@ -220,7 +220,9 @@ ApplicationWindow {
                 }
 
                 Label {
-                    text: "Use Releases for packaged builds, or the source updater for Git checkouts."
+                    text: app.canInstallPreferredUpdate
+                        ? "Install can run after download and will restart the app."
+                        : "Use Releases for packaged builds, or the source updater for Git checkouts."
                     color: colors.muted
                     font.pixelSize: 12
                     elide: Text.ElideRight
@@ -229,12 +231,16 @@ ApplicationWindow {
             }
 
             AppButton {
-                text: app.preferredReleaseAsset.url ? "Download" : "Releases"
+                text: app.canInstallPreferredUpdate
+                    ? "Install"
+                    : app.preferredReleaseAsset.url ? app.preferredReleaseAsset.installLabel || "Download" : "Releases"
                 primary: true
-                iconName: "external-link"
+                iconName: app.canInstallPreferredUpdate ? "rotate-ccw" : "external-link"
                 accentColor: colors.action
                 primaryTextColor: colors.onAction
-                onClicked: app.preferredReleaseAsset.url
+                onClicked: app.canInstallPreferredUpdate
+                    ? app.installPreferredUpdate()
+                    : app.preferredReleaseAsset.url
                     ? app.openReleaseAsset(app.preferredReleaseAsset.url)
                     : app.openReleases()
             }

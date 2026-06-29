@@ -31,9 +31,18 @@ from markitdowngui.core.markdown_assets import (
 from markitdowngui.core.settings import SettingsManager
 from markitdowngui.ui_qml.models import QueueModel, ResultModel
 from markitdowngui.utils.logger import AppLogger, build_diagnostic_report
+from markitdowngui.utils.packaged_updater import (
+    PackagedUpdateError,
+    build_packaged_update_plan,
+    install_packaged_update,
+)
 from markitdowngui.utils.source_updater import build_source_update_command
 from markitdowngui.utils.translations import DEFAULT_LANG, get_translation
-from markitdowngui.utils.update_checker import UpdateChecker, select_release_asset
+from markitdowngui.utils.update_checker import (
+    ReleaseAsset,
+    UpdateChecker,
+    select_release_asset,
+)
 
 
 _PREVIEW_HEADING_RE = re.compile(r'<h([1-3]) style="([^"]*)"><span style="([^"]*)">')
@@ -316,6 +325,10 @@ class AppController(QObject):
     @Property("QVariant", notify=updateNotificationChanged)
     def preferredReleaseAsset(self) -> dict[str, object]:
         return self._preferred_release_asset
+
+    @Property(bool, notify=updateNotificationChanged)
+    def canInstallPreferredUpdate(self) -> bool:
+        return bool(self._preferred_release_asset.get("installSupported"))
 
     @Property(str, constant=True)
     def sourceUpdateCommand(self) -> str:
@@ -706,6 +719,32 @@ class AppController(QObject):
         self.dismissUpdateNotification()
 
     @Slot()
+    def installPreferredUpdate(self) -> None:
+        if self._converting:
+            self.toastRequested.emit(
+                "error",
+                "Wait for conversion to finish before installing an update.",
+            )
+            return
+        if not self._preferred_release_asset:
+            self.openReleases()
+            return
+        if not self._preferred_release_asset.get("installSupported"):
+            reason = str(self._preferred_release_asset.get("installReason") or "")
+            if reason:
+                self.toastRequested.emit("error", reason)
+            self.openReleaseAsset(str(self._preferred_release_asset.get("url") or ""))
+            return
+        try:
+            install_packaged_update(self._preferred_release_asset)
+        except PackagedUpdateError as exc:
+            self.toastRequested.emit("error", str(exc))
+            return
+        self.toastRequested.emit("success", "Update installer started. Closing app.")
+        self.dismissUpdateNotification()
+        QGuiApplication.quit()
+
+    @Slot()
     def copySourceUpdateCommand(self) -> None:
         command = self.sourceUpdateCommand
         if not command:
@@ -770,29 +809,37 @@ class AppController(QObject):
     def _create_update_checker(self) -> UpdateChecker:
         return UpdateChecker(self)
 
+    @staticmethod
+    def _release_asset_to_dict(asset: ReleaseAsset) -> dict[str, object]:
+        value = {
+            "name": asset.name,
+            "url": asset.browser_download_url,
+            "size": asset.size,
+            "platform": asset.platform,
+            "sha256": asset.sha256,
+        }
+        plan = build_packaged_update_plan(value)
+        value.update(
+            {
+                "installSupported": plan.supported,
+                "installMode": plan.mode,
+                "installLabel": plan.label,
+                "installReason": plan.reason,
+            }
+        )
+        return value
+
     def _on_update_available(self, version: str) -> None:
         self._available_update_version = version
         release = getattr(self._update_checker, "latest_release", None)
         preferred_asset = select_release_asset(release)
         self._available_release_url = getattr(release, "html_url", "") if release else ""
         self._available_release_assets = [
-            {
-                "name": asset.name,
-                "url": asset.browser_download_url,
-                "size": asset.size,
-                "platform": asset.platform,
-                "sha256": asset.sha256,
-            }
+            self._release_asset_to_dict(asset)
             for asset in (getattr(release, "assets", ()) if release else ())
         ]
         self._preferred_release_asset = (
-            {
-                "name": preferred_asset.name,
-                "url": preferred_asset.browser_download_url,
-                "size": preferred_asset.size,
-                "platform": preferred_asset.platform,
-                "sha256": preferred_asset.sha256,
-            }
+            self._release_asset_to_dict(preferred_asset)
             if preferred_asset
             else {}
         )

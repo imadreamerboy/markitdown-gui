@@ -27,8 +27,9 @@ Download prebuilt binaries from [Releases](https://github.com/imadreamerboy/mark
 
 ### Updating
 
-- Packaged desktop builds are updated from [Releases](https://github.com/imadreamerboy/markitdown-gui/releases). The in-app update check reads the latest GitHub release, prefers the asset for the current operating system, and opens release assets directly when packaged binaries are attached.
-- Release builds publish a `markitdown-release-manifest.json` with platform, size, and SHA256 metadata for each package. This is the verification foundation for a future in-app replace-and-restart updater.
+- Packaged desktop builds are updated from [Releases](https://github.com/imadreamerboy/markitdown-gui/releases). The in-app update check reads the latest GitHub release and prefers the asset for the current operating system.
+- Windows and Linux packaged builds can start an in-app install when the preferred asset is a `.zip`: the app downloads the archive, verifies SHA256 when release metadata is available, prepares an external helper, closes, replaces the app folder, restarts, and rolls back if replacement fails. macOS `.dmg` updates open for manual installation.
+- Release builds publish a `markitdown-release-manifest.json` with platform, size, and SHA256 metadata for each package.
 - Source checkouts can update in place:
 
 ```sh
