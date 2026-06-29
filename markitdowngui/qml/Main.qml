@@ -39,7 +39,7 @@ ApplicationWindow {
         actionSoft: dark ? Qt.color("#415867") : Qt.color("#E8EBC8"),
         onAccent: dark ? Qt.color("#2E3440") : Qt.color("#073642"),
         onAction: dark ? Qt.color("#2E3440") : Qt.color("#FDF6E3"),
-        danger: dark ? Qt.color("#BF616A") : Qt.color("#DC322F"),
+        danger: dark ? Qt.color("#E8949C") : Qt.color("#DC322F"),
         success: dark ? Qt.color("#A3BE8C") : Qt.color("#397D54"),
         warning: dark ? Qt.color("#EBCB8B") : Qt.color("#B58900")
     })
@@ -365,9 +365,9 @@ ApplicationWindow {
         MetricPill {
             label: "FILES"
             value: app.queueCount.toString()
-            backgroundColor: colors.surfaceAlt
+            backgroundColor: "transparent"
             borderColor: colors.border
-            borderOpacity: dark ? 0.70 : 0.56
+            borderOpacity: 0
             textColor: colors.text
             mutedTextColor: colors.muted
         }
@@ -375,9 +375,9 @@ ApplicationWindow {
         MetricPill {
             label: "DONE"
             value: app.progress + "%"
-            backgroundColor: colors.surfaceAlt
+            backgroundColor: "transparent"
             borderColor: colors.border
-            borderOpacity: dark ? 0.70 : 0.56
+            borderOpacity: 0
             textColor: colors.text
             mutedTextColor: colors.muted
         }
@@ -385,9 +385,9 @@ ApplicationWindow {
         MetricPill {
             label: "SAVE"
             value: app.saveCombined ? "Combined" : "Separate"
-            backgroundColor: colors.surfaceAlt
+            backgroundColor: "transparent"
             borderColor: colors.border
-            borderOpacity: dark ? 0.70 : 0.56
+            borderOpacity: 0
             textColor: colors.text
             mutedTextColor: colors.muted
         }
@@ -1313,13 +1313,12 @@ ApplicationWindow {
                         AppButton {
                             visible: !previewToolbar.compactActions
                             text: app.selectedResultFailed ? "Copy details" : "Copy"
-                            primary: app.selectedResultFailed
                             iconName: "copy"
-                            accentColor: colors.action
+                            accentColor: app.selectedResultFailed ? colors.danger : colors.action
                             primaryTextColor: colors.onAction
                             surfaceColor: colors.surfaceAlt
-                            borderColor: colors.border
-                            textColor: colors.text
+                            borderColor: app.selectedResultFailed ? colors.danger : colors.border
+                            textColor: app.selectedResultFailed ? colors.danger : colors.text
                             onClicked: app.copySelectedMarkdown()
                         }
 
@@ -1348,13 +1347,12 @@ ApplicationWindow {
 
                         AppButton {
                             text: app.selectedResultFailed ? "Copy details" : "Copy"
-                            primary: app.selectedResultFailed
                             iconName: "copy"
-                            accentColor: colors.action
+                            accentColor: app.selectedResultFailed ? colors.danger : colors.action
                             primaryTextColor: colors.onAction
                             surfaceColor: colors.surfaceAlt
-                            borderColor: colors.border
-                            textColor: colors.text
+                            borderColor: app.selectedResultFailed ? colors.danger : colors.border
+                            textColor: app.selectedResultFailed ? colors.danger : colors.text
                             onClicked: app.copySelectedMarkdown()
                         }
 
