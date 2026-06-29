@@ -341,6 +341,13 @@ ApplicationWindow {
     }
 
     Shortcut {
+        sequence: "Ctrl+R"
+        context: Qt.ApplicationShortcut
+        enabled: root.pageIndex === 0 && app.hasFailedResults && !app.converting
+        onActivated: app.retryFailedResults()
+    }
+
+    Shortcut {
         sequence: "Ctrl+L"
         context: Qt.ApplicationShortcut
         enabled: !app.converting
@@ -2905,6 +2912,7 @@ ApplicationWindow {
                             { key: "Ctrl+P", action: "Pause or resume" },
                             { key: "Ctrl+S", action: "Save Markdown" },
                             { key: "Ctrl+C", action: "Copy selected result" },
+                            { key: "Ctrl+R", action: "Retry failed conversions" },
                             { key: "Ctrl+L", action: "Clear queue" },
                             { key: "Ctrl+K", action: "Open Help" },
                             { key: "Esc", action: "Cancel conversion" }
