@@ -1281,6 +1281,7 @@ ApplicationWindow {
                 FieldGroup {
                     label: "Provider"
                     detail: "GLM-OCR is best for image-heavy pages; Azure/Tesseract keeps the legacy path."
+                    visible: app.ocrEnabled
                     Layout.fillWidth: true
 
                     ThemeComboBox {
@@ -1293,6 +1294,7 @@ ApplicationWindow {
 
                 FieldGroup {
                     label: "Azure endpoint"
+                    visible: app.ocrEnabled && app.ocrProvider !== "glmocr"
                     Layout.fillWidth: true
 
                     AppTextField {
@@ -1310,6 +1312,7 @@ ApplicationWindow {
 
                 FieldGroup {
                     label: "Tesseract languages"
+                    visible: app.ocrEnabled && app.ocrProvider !== "glmocr"
                     Layout.fillWidth: true
 
                     AppTextField {
@@ -1327,6 +1330,7 @@ ApplicationWindow {
 
                 FieldGroup {
                     label: "Tesseract executable"
+                    visible: app.ocrEnabled && app.ocrProvider !== "glmocr"
                     Layout.fillWidth: true
 
                     AppTextField {
@@ -1350,6 +1354,7 @@ ApplicationWindow {
                 borderColor: colors.border
                 textColor: colors.text
                 mutedTextColor: colors.muted
+                visible: app.ocrEnabled && app.ocrProvider === "glmocr"
                 Layout.fillWidth: true
 
                 ThemeToggleRow {
