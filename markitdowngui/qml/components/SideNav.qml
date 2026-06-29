@@ -128,6 +128,18 @@ Item {
                     : (workspaceButton.hovered ? root.utilityHoverColor : "transparent")
                 border.color: workspaceButton.activeFocus ? root.focusColor : (root.currentIndex === 0 ? root.borderColor : "transparent")
                 border.width: workspaceButton.activeFocus ? 2 : 1
+
+                Behavior on color {
+                    ColorAnimation {
+                        duration: 110
+                    }
+                }
+
+                Behavior on border.color {
+                    ColorAnimation {
+                        duration: 110
+                    }
+                }
             }
         }
 
@@ -199,6 +211,18 @@ Item {
                         : (helpButton.hovered ? root.utilityHoverColor : "transparent")
                     border.color: helpButton.activeFocus ? root.focusColor : (root.currentIndex === 2 ? root.borderColor : "transparent")
                     border.width: helpButton.activeFocus ? 2 : 1
+
+                    Behavior on color {
+                        ColorAnimation {
+                            duration: 110
+                        }
+                    }
+
+                    Behavior on border.color {
+                        ColorAnimation {
+                            duration: 110
+                        }
+                    }
                 }
             }
 
@@ -247,6 +271,18 @@ Item {
                         : (settingsButton.hovered ? root.utilityHoverColor : "transparent")
                     border.color: settingsButton.activeFocus ? root.focusColor : (root.currentIndex === 1 ? root.borderColor : "transparent")
                     border.width: settingsButton.activeFocus ? 2 : 1
+
+                    Behavior on color {
+                        ColorAnimation {
+                            duration: 110
+                        }
+                    }
+
+                    Behavior on border.color {
+                        ColorAnimation {
+                            duration: 110
+                        }
+                    }
                 }
             }
         }

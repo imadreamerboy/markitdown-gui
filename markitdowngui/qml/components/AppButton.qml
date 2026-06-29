@@ -75,6 +75,18 @@ Button {
             ? control.focusColor
             : (control.primary || control.subtle ? "transparent" : control.borderColor)
         border.width: control.activeFocus && control.enabled ? 2 : 1
+
+        Behavior on color {
+            ColorAnimation {
+                duration: 110
+            }
+        }
+
+        Behavior on border.color {
+            ColorAnimation {
+                duration: 110
+            }
+        }
     }
 }
 

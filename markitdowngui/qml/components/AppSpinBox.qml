@@ -39,6 +39,12 @@ SpinBox {
         color: control.up.pressed ? control.hoverColor : control.stepColor
         radius: 8
 
+        Behavior on color {
+            ColorAnimation {
+                duration: 90
+            }
+        }
+
         Rectangle {
             width: 8
             height: parent.height
@@ -62,6 +68,12 @@ SpinBox {
         color: control.down.pressed ? control.hoverColor : control.stepColor
         radius: 8
 
+        Behavior on color {
+            ColorAnimation {
+                duration: 90
+            }
+        }
+
         Rectangle {
             width: 8
             height: parent.height
@@ -82,5 +94,11 @@ SpinBox {
         color: control.surfaceColor
         border.color: control.activeFocus ? control.accentColor : control.borderColor
         border.width: control.activeFocus ? 2 : 1
+
+        Behavior on border.color {
+            ColorAnimation {
+                duration: 110
+            }
+        }
     }
 }

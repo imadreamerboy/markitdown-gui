@@ -1114,6 +1114,18 @@ ApplicationWindow {
                         Accessible.role: Accessible.ListItem
                         Accessible.name: name + (failed ? ", failed conversion" : ", converted") + ", " + wordCount + " words"
 
+                        Behavior on color {
+                            ColorAnimation {
+                                duration: 110
+                            }
+                        }
+
+                        Behavior on border.color {
+                            ColorAnimation {
+                                duration: 110
+                            }
+                        }
+
                         Keys.onReturnPressed: app.selectResult(index)
                         Keys.onEnterPressed: app.selectResult(index)
                         Keys.onSpacePressed: app.selectResult(index)

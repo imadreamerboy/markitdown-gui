@@ -35,6 +35,12 @@ ComboBox {
             color: highlighted
                 ? Qt.rgba(control.accentColor.r, control.accentColor.g, control.accentColor.b, 0.16)
                 : (hovered ? control.hoverColor : "transparent")
+
+            Behavior on color {
+                ColorAnimation {
+                    duration: 110
+                }
+            }
         }
     }
 
@@ -94,6 +100,12 @@ ComboBox {
         color: control.surfaceColor
         border.color: control.activeFocus ? control.accentColor : control.borderColor
         border.width: control.activeFocus ? 2 : 1
+
+        Behavior on border.color {
+            ColorAnimation {
+                duration: 110
+            }
+        }
     }
 
     popup: Popup {

@@ -24,6 +24,12 @@ TextField {
         color: control.surfaceColor
         border.color: control.activeFocus ? control.accentColor : control.borderColor
         border.width: control.activeFocus ? 2 : 1
+
+        Behavior on border.color {
+            ColorAnimation {
+                duration: 110
+            }
+        }
     }
 }
 
