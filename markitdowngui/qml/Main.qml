@@ -407,11 +407,11 @@ ApplicationWindow {
         property bool compact: false
 
         Layout.fillWidth: true
-        implicitHeight: compact ? 44 : 104
+        implicitHeight: 44
 
         Loader {
             anchors.fill: parent
-            sourceComponent: urlBar.compact ? compactUrlBar : expandedUrlBar
+            sourceComponent: compactUrlBar
         }
 
         Component {
@@ -422,7 +422,7 @@ ApplicationWindow {
 
                 AppTextField {
                     id: compactUrlInput
-                    placeholderText: "Add webpage URL"
+                    placeholderText: urlBar.compact ? "Add webpage URL" : "Paste webpage URL"
                     surfaceColor: colors.input
                     borderColor: colors.border
                     accentColor: colors.accent
@@ -451,62 +451,14 @@ ApplicationWindow {
                 }
             }
         }
-
-        Component {
-            id: expandedUrlBar
-
-            SectionPanel {
-                title: "Add a webpage"
-                subtitle: "Paste a URL when the source is already online."
-                surfaceColor: colors.surface
-                borderColor: colors.border
-                textColor: colors.text
-                mutedTextColor: colors.muted
-
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 10
-
-                    AppTextField {
-                        id: expandedUrlInput
-                        placeholderText: "https://example.com/article"
-                        surfaceColor: colors.input
-                        borderColor: colors.border
-                        accentColor: colors.accent
-                        textColor: colors.text
-                        placeholderColor: colors.subtle
-                        Layout.fillWidth: true
-                        onAccepted: {
-                            app.addUrl(text)
-                            text = ""
-                        }
-                    }
-
-                    AppButton {
-                        text: "Add webpage"
-                        primary: true
-                        iconName: "link"
-                        accentColor: colors.action
-                        primaryTextColor: colors.onAction
-                        surfaceColor: colors.surfaceAlt
-                        borderColor: colors.border
-                        textColor: colors.text
-                        onClicked: {
-                            app.addUrl(expandedUrlInput.text)
-                            expandedUrlInput.text = ""
-                        }
-                    }
-                }
-            }
-        }
     }
 
     Component {
         id: emptyView
 
         SectionPanel {
-            title: "Drop or choose documents"
-            subtitle: "Drop files anywhere in this window, choose from your system, or add a webpage above."
+            title: ""
+            subtitle: ""
             surfaceColor: colors.surface
             borderColor: colors.border
             textColor: colors.text
@@ -520,12 +472,12 @@ ApplicationWindow {
 
                 ColumnLayout {
                     anchors.centerIn: parent
-                    width: Math.min(parent.width - 80, 560)
-                    spacing: 14
+                    width: Math.min(parent.width - 80, 520)
+                    spacing: 16
 
                     Rectangle {
-                        width: 64
-                        height: 64
+                        width: 58
+                        height: 58
                         radius: 8
                         color: colors.actionSoft
                         border.color: Qt.rgba(colors.action.r, colors.action.g, colors.action.b, 0.35)
@@ -540,16 +492,16 @@ ApplicationWindow {
                     }
 
                     Label {
-                        text: "Drop files here to start"
+                        text: "Start with files or a webpage"
                         color: colors.text
-                        font.pixelSize: 18
+                        font.pixelSize: 20
                         font.weight: Font.DemiBold
                         horizontalAlignment: Text.AlignHCenter
                         Layout.fillWidth: true
                     }
 
                     Label {
-                        text: "Office files, PDFs, images, archives, text formats, and webpages can all become Markdown."
+                        text: "Drop files anywhere in this window, choose files from your system, or paste a URL above."
                         color: colors.muted
                         font.pixelSize: 13
                         wrapMode: Text.WordWrap
