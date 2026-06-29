@@ -505,7 +505,7 @@ ApplicationWindow {
                 AppButton {
                     text: "Add webpage"
                     enabled: !app.converting
-                    primary: !app.hasResults && !app.converting
+                    primary: !urlBar.compact && !app.converting
                     iconName: "link"
                     accentColor: colors.action
                     primaryTextColor: colors.onAction
@@ -620,7 +620,6 @@ ApplicationWindow {
                         AppButton {
                             text: "Add files"
                             enabled: !app.converting
-                            primary: !app.converting
                             iconName: "folder-plus"
                             accentColor: colors.action
                             primaryTextColor: colors.onAction
