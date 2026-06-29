@@ -1651,6 +1651,62 @@ def test_controller_finished_status_reports_all_failed(controller):
     assert messages == [("error", "1 conversion failed.")]
 
 
+def test_controller_retries_failed_results(controller):
+    messages: list[tuple[str, str]] = []
+    changes: list[str] = []
+    controller.toastRequested.connect(
+        lambda kind, message: messages.append((kind, message))
+    )
+    controller.queueChanged.connect(lambda: changes.append("queue"))
+    controller.resultsChanged.connect(lambda: changes.append("results"))
+    controller.selectedResultChanged.connect(lambda: changes.append("selected"))
+    controller.addFiles(["C:/tmp/original.pdf"])
+    changes.clear()
+    controller.result_model.set_results(
+        {
+            "C:/tmp/ok.pdf": ConversionOutcome("# Converted", backend="native"),
+            "C:/tmp/broken-a.pdf": ConversionOutcome("A failed", backend="native"),
+            "https://example.com/broken": ConversionOutcome("B failed", backend="defuddle"),
+        },
+        {"C:/tmp/broken-a.pdf", "https://example.com/broken"},
+    )
+    controller.selectResult(1)
+    changes.clear()
+
+    assert controller.hasFailedResults is True
+    assert controller.failedResultCount == 2
+
+    controller.retryFailedResults()
+
+    assert controller.queue_model.sources() == [
+        "C:/tmp/broken-a.pdf",
+        "https://example.com/broken",
+    ]
+    assert controller.hasResults is False
+    assert controller.selectedResultIndex == -1
+    assert controller.statusText == "Queued 2 failed inputs for retry"
+    assert messages == [("success", "Queued 2 failed inputs for retry.")]
+    assert changes == ["results", "selected", "queue"]
+
+
+def test_controller_retry_failed_results_reports_when_none_failed(controller):
+    messages: list[tuple[str, str]] = []
+    controller.toastRequested.connect(
+        lambda kind, message: messages.append((kind, message))
+    )
+    controller.result_model.set_results(
+        {"C:/tmp/ok.pdf": ConversionOutcome("# Converted", backend="native")}
+    )
+
+    controller.retryFailedResults()
+
+    assert controller.queue_model.sources() == []
+    assert controller.hasResults is True
+    assert controller.hasFailedResults is False
+    assert controller.failedResultCount == 0
+    assert messages == [("error", "No failed conversions to retry.")]
+
+
 def test_controller_separate_save_falls_back_when_source_folder_is_not_writable(
     controller,
     monkeypatch,

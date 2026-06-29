@@ -1302,6 +1302,16 @@ ApplicationWindow {
                         }
                     }
 
+                    AppButton {
+                        visible: app.hasFailedResults
+                        text: "Retry"
+                        subtle: true
+                        iconName: "rotate-ccw"
+                        accentColor: colors.danger
+                        textColor: colors.danger
+                        onClicked: app.retryFailedResults()
+                    }
+
                     Item {
                         Layout.fillWidth: true
                     }
@@ -1672,6 +1682,30 @@ ApplicationWindow {
                                             color: colors.input
                                             radius: 8
                                             border.color: colors.border
+                                        }
+                                    }
+
+                                    RowLayout {
+                                        Layout.fillWidth: true
+
+                                        Label {
+                                            text: app.failedResultCount === 1
+                                                ? "Retry the failed input after adjusting settings."
+                                                : "Retry " + app.failedResultCount + " failed inputs after adjusting settings."
+                                            color: colors.muted
+                                            font.pixelSize: 12
+                                            wrapMode: Text.WordWrap
+                                            Layout.fillWidth: true
+                                        }
+
+                                        AppButton {
+                                            text: "Retry failed"
+                                            iconName: "rotate-ccw"
+                                            accentColor: colors.danger
+                                            surfaceColor: colors.surfaceAlt
+                                            borderColor: colors.danger
+                                            textColor: colors.danger
+                                            onClicked: app.retryFailedResults()
                                         }
                                     }
                                 }

@@ -230,6 +230,14 @@ class AppController(QObject):
     def hasSuccessfulResults(self) -> bool:
         return bool(self._successful_result_items())
 
+    @Property(bool, notify=resultsChanged)
+    def hasFailedResults(self) -> bool:
+        return bool(self._failed_result_items())
+
+    @Property(int, notify=resultsChanged)
+    def failedResultCount(self) -> int:
+        return len(self._failed_result_items())
+
     @Property(int, notify=selectedResultChanged)
     def selectedResultIndex(self) -> int:
         return self._selected_result_index
@@ -574,6 +582,27 @@ class AppController(QObject):
         self.selectedResultChanged.emit()
         self.progressChanged.emit()
         self.saveDefaultsChanged.emit()
+
+    @Slot()
+    def retryFailedResults(self) -> None:
+        if self._queue_change_locked():
+            return
+        failed_sources = [item.source for item in self._failed_result_items()]
+        if not failed_sources:
+            self.toastRequested.emit("error", "No failed conversions to retry.")
+            return
+
+        self.queue_model.clear()
+        added = self.queue_model.add_sources(failed_sources)
+        self.clearResults()
+        self.queueChanged.emit()
+        self._set_status(
+            f"Queued {added} failed input{'s' if added != 1 else ''} for retry"
+        )
+        self.toastRequested.emit(
+            "success",
+            f"Queued {added} failed input{'s' if added != 1 else ''} for retry.",
+        )
 
     @Slot()
     def convert(self) -> None:
@@ -1872,6 +1901,10 @@ class AppController(QObject):
     def _successful_result_items(self, items: list[Any] | None = None) -> list[Any]:
         result_items = self.result_model.items() if items is None else items
         return [item for item in result_items if not item.failed]
+
+    def _failed_result_items(self, items: list[Any] | None = None) -> list[Any]:
+        result_items = self.result_model.items() if items is None else items
+        return [item for item in result_items if item.failed]
 
     @staticmethod
     def _folder_url(folder: str) -> str:
