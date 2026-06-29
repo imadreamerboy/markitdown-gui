@@ -303,6 +303,7 @@ ApplicationWindow {
             }
 
             Pill {
+                visible: root.pageIndex === 0 || app.converting
                 text: app.statusText
                 tint: app.converting ? colors.accent : colors.muted
             }
