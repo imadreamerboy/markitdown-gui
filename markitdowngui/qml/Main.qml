@@ -243,18 +243,25 @@ ApplicationWindow {
     component Pill: Rectangle {
         property string text: ""
         property color tint: colors.accent
-        implicitWidth: label.implicitWidth + 18
+        property int maxWidth: 260
+
+        implicitWidth: Math.min(maxWidth, label.implicitWidth + 18)
         implicitHeight: 26
         radius: 13
         color: Qt.rgba(tint.r, tint.g, tint.b, 0.12)
 
         Label {
             id: label
-            anchors.centerIn: parent
+            anchors.fill: parent
+            anchors.leftMargin: 9
+            anchors.rightMargin: 9
             text: parent.text
             color: parent.tint
             font.pixelSize: 12
             font.weight: Font.Medium
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+            elide: Text.ElideMiddle
         }
     }
 
@@ -306,6 +313,7 @@ ApplicationWindow {
                 visible: root.pageIndex === 0 || app.converting
                 text: app.statusText
                 tint: app.converting ? colors.accent : colors.muted
+                maxWidth: Math.min(300, Math.max(180, root.width * 0.30))
             }
         }
     }
