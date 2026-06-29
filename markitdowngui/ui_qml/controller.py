@@ -241,6 +241,7 @@ class AppController(QObject):
         sources = [path for path in self._paths_from_variant(values) if path]
         added = self.queue_model.add_sources(sources)
         if added:
+            self._clear_results_after_queue_change()
             self._set_status(f"Added {added} input{'s' if added != 1 else ''}")
             self.queueChanged.emit()
 
@@ -256,7 +257,10 @@ class AppController(QObject):
     def removeQueued(self, row: int) -> None:
         if self._queue_change_locked():
             return
+        sources_before = self.queue_model.sources()
         self.queue_model.remove(row)
+        if self.queue_model.sources() != sources_before:
+            self._clear_results_after_queue_change()
         self.queueChanged.emit()
 
     @Slot()
@@ -264,6 +268,7 @@ class AppController(QObject):
         if self._queue_change_locked():
             return
         self.queue_model.clear()
+        self._clear_results_after_queue_change()
         self.queueChanged.emit()
         self._set_status("Queue cleared")
 
@@ -624,6 +629,11 @@ class AppController(QObject):
             "Wait for conversion to finish before changing the queue.",
         )
         return True
+
+    def _clear_results_after_queue_change(self) -> None:
+        if self.result_model.rowCount() == 0:
+            return
+        self.clearResults()
 
     def _cleanup_temp_assets(self) -> None:
         cleanup_temp_asset_root(self._temp_asset_root)

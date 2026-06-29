@@ -60,6 +60,66 @@ def test_controller_locks_queue_mutations_while_converting(controller, tmp_path)
     ]
 
 
+def test_controller_add_files_invalidates_stale_results(controller, tmp_path):
+    source_a = str(tmp_path / "a.pdf")
+    source_b = str(tmp_path / "b.pdf")
+    controller.addFiles([source_a])
+    controller.result_model.set_results(
+        {source_a: ConversionOutcome("# Converted", backend="native")}
+    )
+    controller.selectResult(0)
+
+    controller.addFiles([source_b])
+
+    assert controller.result_model.rowCount() == 0
+    assert controller.selectedResultIndex == -1
+    assert controller.queue_model.sources() == [source_a, source_b]
+
+
+def test_controller_remove_queued_invalidates_stale_results(controller, tmp_path):
+    source_a = str(tmp_path / "a.pdf")
+    source_b = str(tmp_path / "b.pdf")
+    controller.addFiles([source_a, source_b])
+    controller.result_model.set_results(
+        {source_a: ConversionOutcome("# Converted", backend="native")}
+    )
+    controller.selectResult(0)
+
+    controller.removeQueued(0)
+
+    assert controller.result_model.rowCount() == 0
+    assert controller.selectedResultIndex == -1
+    assert controller.queue_model.sources() == [source_b]
+
+
+def test_controller_clear_queue_invalidates_stale_results(controller, tmp_path):
+    source = str(tmp_path / "a.pdf")
+    controller.addFiles([source])
+    controller.result_model.set_results(
+        {source: ConversionOutcome("# Converted", backend="native")}
+    )
+    controller.selectResult(0)
+
+    controller.clearQueue()
+
+    assert controller.result_model.rowCount() == 0
+    assert controller.selectedResultIndex == -1
+    assert controller.queue_model.sources() == []
+
+
+def test_controller_clear_empty_queue_invalidates_stale_results(controller):
+    controller.result_model.set_results(
+        {"C:/tmp/a.pdf": ConversionOutcome("# Converted", backend="native")}
+    )
+    controller.selectResult(0)
+
+    controller.clearQueue()
+
+    assert controller.result_model.rowCount() == 0
+    assert controller.selectedResultIndex == -1
+    assert controller.queue_model.sources() == []
+
+
 def test_controller_notifies_before_save_dialog_when_no_output(controller):
     messages: list[tuple[str, str]] = []
     controller.toastRequested.connect(lambda kind, message: messages.append((kind, message)))
