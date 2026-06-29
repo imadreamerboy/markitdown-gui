@@ -38,6 +38,10 @@ python -m markitdowngui.utils.source_updater
 
 The source updater runs `git pull --ff-only` in the checkout, then reinstalls the app in editable mode with `uv` when available or `pip` otherwise. Restart the app after it finishes.
 
+### Support bundles
+
+The Help view can export a support bundle for issue reports. It includes a compact diagnostics report, sanitised settings, and capped recent log tails; raw recent file paths, output paths, and obvious secret values are excluded or redacted.
+
 ### Prerequisites
 
 - Python `3.10+`

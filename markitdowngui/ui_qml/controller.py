@@ -38,6 +38,7 @@ from markitdowngui.utils.packaged_updater import (
     install_packaged_update,
 )
 from markitdowngui.utils.source_updater import build_source_update_command
+from markitdowngui.utils.support_bundle import create_support_bundle
 from markitdowngui.utils.translations import DEFAULT_LANG, get_translation
 from markitdowngui.utils.update_checker import (
     ReleaseAsset,
@@ -824,6 +825,17 @@ class AppController(QObject):
     def copyDiagnostics(self) -> None:
         QGuiApplication.clipboard().setText(build_diagnostic_report())
         self.toastRequested.emit("success", "Diagnostics copied.")
+
+    @Slot()
+    def exportSupportBundle(self) -> None:
+        try:
+            bundle_path = create_support_bundle(self.settings)
+        except Exception as exc:
+            AppLogger.error(f"Failed creating support bundle: {exc}")
+            self.toastRequested.emit("error", f"Support bundle failed: {exc}")
+            return
+        self.toastRequested.emit("success", f"Created {bundle_path.name}.")
+        self.openExternalUrl(QUrl.fromLocalFile(str(bundle_path.parent)).toString())
 
     @Slot(str)
     def openExternalUrl(self, url: str) -> None:

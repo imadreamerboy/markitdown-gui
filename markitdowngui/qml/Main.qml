@@ -2453,7 +2453,7 @@ ApplicationWindow {
                     Layout.fillWidth: true
 
                     Label {
-                        text: "Open logs or copy a compact system report for issue reports."
+                        text: "Open logs, copy diagnostics, or export a redacted support bundle."
                         color: colors.muted
                         font.pixelSize: 12
                         wrapMode: Text.WordWrap
@@ -2478,6 +2478,16 @@ ApplicationWindow {
                         borderColor: colors.border
                         textColor: colors.text
                         onClicked: app.copyDiagnostics()
+                    }
+
+                    AppButton {
+                        text: "Export bundle"
+                        iconName: "save"
+                        accentColor: colors.action
+                        surfaceColor: colors.surfaceAlt
+                        borderColor: colors.border
+                        textColor: colors.text
+                        onClicked: app.exportSupportBundle()
                     }
                 }
             }

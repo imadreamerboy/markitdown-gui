@@ -464,6 +464,42 @@ def test_controller_opens_log_folder(controller, monkeypatch, tmp_path):
     assert opened and opened[0].startswith("file:")
 
 
+def test_controller_exports_support_bundle(controller, monkeypatch, tmp_path):
+    messages: list[tuple[str, str]] = []
+    opened: list[str] = []
+    bundle = tmp_path / "markitdown-support.zip"
+    controller.toastRequested.connect(lambda kind, message: messages.append((kind, message)))
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.create_support_bundle",
+        lambda settings: bundle,
+    )
+    monkeypatch.setattr(controller, "openExternalUrl", lambda url: opened.append(url))
+
+    controller.exportSupportBundle()
+
+    assert messages == [("success", "Created markitdown-support.zip.")]
+    assert opened and opened[0].startswith("file:")
+
+
+def test_controller_reports_support_bundle_error(controller, monkeypatch):
+    messages: list[tuple[str, str]] = []
+    logged: list[str] = []
+    controller.toastRequested.connect(lambda kind, message: messages.append((kind, message)))
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.create_support_bundle",
+        lambda settings: (_ for _ in ()).throw(RuntimeError("disk full")),
+    )
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.AppLogger.error",
+        lambda message: logged.append(message),
+    )
+
+    controller.exportSupportBundle()
+
+    assert messages == [("error", "Support bundle failed: disk full")]
+    assert logged == ["Failed creating support bundle: disk full"]
+
+
 def test_controller_dismisses_update_notification(controller, monkeypatch):
     monkeypatch.setattr(
         controller,
