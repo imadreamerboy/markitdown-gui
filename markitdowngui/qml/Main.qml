@@ -1099,20 +1099,33 @@ ApplicationWindow {
                         width: resultList.width
                         height: 68
                         radius: 9
+                        activeFocusOnTab: true
                         color: selected
                             ? Qt.rgba(emphasisColor.r, emphasisColor.g, emphasisColor.b, dark ? 0.12 : 0.08)
                             : rowMouse.containsMouse
                                 ? Qt.rgba(emphasisColor.r, emphasisColor.g, emphasisColor.b, dark ? 0.08 : 0.06)
                                 : colors.surfaceAlt
-                        border.color: selected
-                            ? Qt.rgba(emphasisColor.r, emphasisColor.g, emphasisColor.b, dark ? 0.70 : 0.62)
-                            : colors.border
+                        border.color: activeFocus
+                            ? Qt.rgba(emphasisColor.r, emphasisColor.g, emphasisColor.b, dark ? 0.92 : 0.76)
+                            : selected
+                                ? Qt.rgba(emphasisColor.r, emphasisColor.g, emphasisColor.b, dark ? 0.70 : 0.62)
+                                : colors.border
+                        border.width: activeFocus ? 2 : 1
+                        Accessible.role: Accessible.ListItem
+                        Accessible.name: name + (failed ? ", failed conversion" : ", converted") + ", " + wordCount + " words"
+
+                        Keys.onReturnPressed: app.selectResult(index)
+                        Keys.onEnterPressed: app.selectResult(index)
+                        Keys.onSpacePressed: app.selectResult(index)
 
                         MouseArea {
                             id: rowMouse
                             anchors.fill: parent
                             hoverEnabled: true
-                            onClicked: app.selectResult(index)
+                            onClicked: {
+                                resultRow.forceActiveFocus()
+                                app.selectResult(index)
+                            }
                         }
 
                         Rectangle {
