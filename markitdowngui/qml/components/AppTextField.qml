@@ -23,7 +23,7 @@ TextField {
         radius: 8
         color: control.surfaceColor
         border.color: control.activeFocus ? control.accentColor : control.borderColor
-        border.width: 1
+        border.width: control.activeFocus ? 2 : 1
     }
 }
 

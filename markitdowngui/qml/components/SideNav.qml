@@ -12,6 +12,7 @@ Item {
     property color mutedTextColor: "#647283"
     property color accentColor: "#138A87"
     property color borderColor: "#D8E1E8"
+    property color focusColor: accentColor
     property color utilityHoverColor: Qt.rgba(0.5, 0.6, 0.7, 0.12)
     property color accentTextColor: "#FFFFFF"
     signal pageRequested(int index)
@@ -125,8 +126,8 @@ Item {
                 color: root.currentIndex === 0
                     ? root.activeColor
                     : (workspaceButton.hovered ? root.utilityHoverColor : "transparent")
-                border.color: root.currentIndex === 0 ? root.borderColor : "transparent"
-                border.width: 1
+                border.color: workspaceButton.activeFocus ? root.focusColor : (root.currentIndex === 0 ? root.borderColor : "transparent")
+                border.width: workspaceButton.activeFocus ? 2 : 1
             }
         }
 
@@ -196,8 +197,8 @@ Item {
                     color: root.currentIndex === 2
                         ? root.activeColor
                         : (helpButton.hovered ? root.utilityHoverColor : "transparent")
-                    border.color: root.currentIndex === 2 ? root.borderColor : "transparent"
-                    border.width: 1
+                    border.color: helpButton.activeFocus ? root.focusColor : (root.currentIndex === 2 ? root.borderColor : "transparent")
+                    border.width: helpButton.activeFocus ? 2 : 1
                 }
             }
 
@@ -244,8 +245,8 @@ Item {
                     color: root.currentIndex === 1
                         ? root.activeColor
                         : (settingsButton.hovered ? root.utilityHoverColor : "transparent")
-                    border.color: root.currentIndex === 1 ? root.borderColor : "transparent"
-                    border.width: 1
+                    border.color: settingsButton.activeFocus ? root.focusColor : (root.currentIndex === 1 ? root.borderColor : "transparent")
+                    border.width: settingsButton.activeFocus ? 2 : 1
                 }
             }
         }

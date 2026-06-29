@@ -9,6 +9,7 @@ Button {
     property color accentColor: "#138A87"
     property color surfaceColor: "#FFFFFF"
     property color borderColor: "#D8E1E8"
+    property color focusColor: primary ? textColor : accentColor
     property color textColor: "#18212B"
     property color primaryTextColor: "#FFFFFF"
     property color disabledTextColor: "#8A96A3"
@@ -70,8 +71,10 @@ Button {
                 return control.hovered ? Qt.rgba(0.5, 0.6, 0.7, 0.12) : "transparent"
             return control.hovered ? Qt.rgba(0.5, 0.6, 0.7, 0.14) : control.surfaceColor
         }
-        border.color: control.primary || control.subtle ? "transparent" : control.borderColor
-        border.width: 1
+        border.color: control.activeFocus && control.enabled
+            ? control.focusColor
+            : (control.primary || control.subtle ? "transparent" : control.borderColor)
+        border.width: control.activeFocus && control.enabled ? 2 : 1
     }
 }
 
