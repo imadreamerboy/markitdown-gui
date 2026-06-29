@@ -1052,6 +1052,7 @@ ApplicationWindow {
                 }
 
                 AppButton {
+                    visible: !app.converting
                     text: app.converting
                         ? "Converting"
                         : "Convert " + app.queueCount + " item" + (app.queueCount === 1 ? "" : "s")
