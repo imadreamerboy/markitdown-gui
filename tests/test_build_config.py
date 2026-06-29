@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from markitdowngui import build_config
 
 
@@ -88,3 +90,22 @@ def test_build_excludes_contains_default_and_optional_ml_packages():
     assert "transformers" in excludes
     assert "glmocr.server" in excludes
     assert "glmocr.pipeline" in excludes
+
+
+def test_spec_defines_macos_app_bundle():
+    spec = Path("MarkItDown.spec").read_text(encoding="utf-8")
+
+    assert 'if sys.platform == "darwin":' in spec
+    assert "BUNDLE(" in spec
+    assert 'name="MarkItDown.app"' in spec
+    assert 'bundle_identifier="com.imadreamerboy.markitdown-gui"' in spec
+
+
+def test_release_workflow_packages_signed_macos_app_bundle():
+    workflow = Path(".github/workflows/release.yml").read_text(encoding="utf-8")
+
+    assert 'APP_PATH="dist/MarkItDown.app"' in workflow
+    assert 'codesign --force --deep --timestamp=none --sign "$SIGN_IDENTITY" "$APP_PATH"' in workflow
+    assert 'codesign --force --deep --timestamp --sign "$SIGN_IDENTITY" "$APP_PATH"' in workflow
+    assert "ln -s /Applications dmg_root/Applications" in workflow
+    assert "hdiutil create -volname \"MarkItDown\" -srcfolder dmg_root" in workflow

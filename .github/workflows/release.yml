@@ -66,13 +66,29 @@ jobs:
           VERSION="${VERSION#.}"
           mkdir -p dist_output
           if [ "${{ runner.os }}" = "macOS" ]; then
-            hdiutil create -volname "MarkItDown" -srcfolder "dist/MarkItDown" -ov -format UDZO "dist_output/MarkItDown-macOS-${VERSION}.dmg"
+            APP_PATH="dist/MarkItDown.app"
+            if [ ! -d "$APP_PATH" ]; then
+              echo "Expected macOS app bundle at $APP_PATH" >&2
+              exit 1
+            fi
+            SIGN_IDENTITY="${MACOS_CODESIGN_IDENTITY:--}"
+            if [ "$SIGN_IDENTITY" = "-" ]; then
+              codesign --force --deep --timestamp=none --sign "$SIGN_IDENTITY" "$APP_PATH"
+            else
+              codesign --force --deep --timestamp --sign "$SIGN_IDENTITY" "$APP_PATH"
+            fi
+            mkdir -p dmg_root
+            cp -R "$APP_PATH" dmg_root/
+            ln -s /Applications dmg_root/Applications
+            hdiutil create -volname "MarkItDown" -srcfolder dmg_root -ov -format UDZO "dist_output/MarkItDown-macOS-${VERSION}.dmg"
           else
             ARTIFACT_NAME="MarkItDown-${{ runner.os }}-${VERSION}.zip"
             cd dist
             python -m zipfile -c "../dist_output/${ARTIFACT_NAME}" MarkItDown
           fi
         shell: bash
+        env:
+          MACOS_CODESIGN_IDENTITY: ${{ secrets.MACOS_CODESIGN_IDENTITY }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

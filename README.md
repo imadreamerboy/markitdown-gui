@@ -184,8 +184,8 @@ uv pip install -e .[dev]
 pyinstaller MarkItDown.spec --clean --noconfirm
 ```
 
-The default spec builds an `onedir` app in `dist/MarkItDown/`.
-Release workflows package Windows and Linux builds into platform-specific `.zip` artifacts and macOS builds into a `.dmg`. Each release also includes `markitdown-release-manifest.json` for update metadata and checksums.
+The default spec builds an `onedir` app in `dist/MarkItDown/`. On macOS it also emits `dist/MarkItDown.app`.
+Release workflows package Windows and Linux builds into platform-specific `.zip` artifacts and macOS builds into a drag-to-Applications `.dmg` from the `.app` bundle. The macOS bundle is signed with `MACOS_CODESIGN_IDENTITY` when configured, otherwise it uses ad-hoc signing. Each release also includes `markitdown-release-manifest.json` for update metadata and checksums.
 That build intentionally excludes the GLM-OCR self-hosted runtime stack; local hosting stays external to the GUI.
 
 ## License

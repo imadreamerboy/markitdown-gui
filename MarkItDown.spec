@@ -1,7 +1,9 @@
 # -*- mode: python ; coding: utf-8 -*-
 import os
+import sys
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 from markitdowngui.build_config import build_datas, build_excludes, build_hiddenimports
+from markitdowngui import __version__
 
 hiddenimports = build_hiddenimports(collect_submodules, warn=print)
 datas = build_datas(collect_data_files, warn=print)
@@ -53,3 +55,18 @@ coll = COLLECT(
     upx_exclude=[],
     name="MarkItDown",
 )
+
+if sys.platform == "darwin":
+    app = BUNDLE(
+        coll,
+        name="MarkItDown.app",
+        icon=None,
+        bundle_identifier="com.imadreamerboy.markitdown-gui",
+        info_plist={
+            "CFBundleName": "MarkItDown",
+            "CFBundleDisplayName": "MarkItDown",
+            "CFBundleShortVersionString": __version__,
+            "CFBundleVersion": __version__,
+            "NSHighResolutionCapable": True,
+        },
+    )
