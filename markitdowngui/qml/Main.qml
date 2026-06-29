@@ -2422,8 +2422,23 @@ ApplicationWindow {
                         surfaceColor: colors.surfaceAlt
                         borderColor: colors.border
                         textColor: colors.text
-                        enabled: app.canRunSourceUpdate
+                        enabled: app.canRunSourceUpdate && !app.converting
                         onClicked: app.runSourceUpdate()
+                    }
+
+                    AppButton {
+                        text: "Restart app"
+                        iconName: "rotate-ccw"
+                        accentColor: colors.action
+                        surfaceColor: colors.surfaceAlt
+                        borderColor: colors.border
+                        textColor: colors.text
+                        visible: app.sourceUpdateNeedsRestart
+                        enabled: app.sourceUpdateNeedsRestart
+                            && !app.sourceUpdateRunning
+                            && !app.updateInstallRunning
+                            && !app.converting
+                        onClicked: app.restartApp()
                     }
 
                     AppButton {

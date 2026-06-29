@@ -635,7 +635,70 @@ def test_controller_runs_source_update_from_help(controller, monkeypatch):
     assert controller.sourceUpdateRunning is False
     assert controller.sourceUpdateProgress == 100
     assert controller.sourceUpdateStatus == "Source update complete. Restart the app."
+    assert controller.sourceUpdateNeedsRestart is True
+    assert controller.canRunSourceUpdate is False
     assert messages == [("success", "Source update complete. Restart the app.")]
+
+
+def test_controller_blocks_source_update_after_success_until_restart(
+    controller, monkeypatch
+):
+    messages: list[tuple[str, str]] = []
+    controller.toastRequested.connect(
+        lambda kind, message: messages.append((kind, message))
+    )
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.build_source_update_command",
+        lambda: "git -C repo pull --ff-only && uv pip install -e repo",
+    )
+    controller._source_update_status = "Source update complete. Restart the app."
+    controller._source_update_progress = 100
+
+    controller.runSourceUpdate()
+
+    assert messages == [("success", "Restart the app to finish updating.")]
+
+
+def test_controller_restarts_app(controller, monkeypatch):
+    messages: list[tuple[str, str]] = []
+    started: list[None] = []
+    quit_calls: list[None] = []
+    controller.toastRequested.connect(
+        lambda kind, message: messages.append((kind, message))
+    )
+    monkeypatch.setattr(
+        controller,
+        "_start_restart_process",
+        lambda: started.append(None) or True,
+    )
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.QGuiApplication.quit",
+        lambda: quit_calls.append(None),
+    )
+
+    controller.restartApp()
+
+    assert started == [None]
+    assert quit_calls == [None]
+    assert messages == [("success", "Restarting app.")]
+
+
+def test_controller_reports_restart_failure(controller, monkeypatch):
+    messages: list[tuple[str, str]] = []
+    quit_calls: list[None] = []
+    controller.toastRequested.connect(
+        lambda kind, message: messages.append((kind, message))
+    )
+    monkeypatch.setattr(controller, "_start_restart_process", lambda: False)
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.QGuiApplication.quit",
+        lambda: quit_calls.append(None),
+    )
+
+    controller.restartApp()
+
+    assert quit_calls == []
+    assert messages == [("error", "Could not restart the app.")]
 
 
 def test_controller_reports_source_update_error(controller, monkeypatch):

@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import os
 import re
+import sys
 import tempfile
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QObject, Property, QThread, QUrl, Signal, Slot
+from PySide6.QtCore import QObject, Property, QProcess, QThread, QUrl, Signal, Slot
 from PySide6.QtGui import QDesktopServices, QGuiApplication, QPalette, QTextDocument
 
 from markitdowngui.core.conversion import (
@@ -61,6 +62,7 @@ _PREVIEW_HEADING_MARGINS = {
 }
 _MARKDOWN_LINK_RE = re.compile(r"\[([^\]]+)\]\([^)]+\)")
 _MARKDOWN_DECORATION_RE = re.compile(r"[*_`>#]")
+_SOURCE_UPDATE_COMPLETE_MESSAGE = "Source update complete. Restart the app."
 
 class PackagedUpdateInstaller(QThread):
     progressChanged = Signal(str, int)
@@ -436,8 +438,13 @@ class AppController(QObject):
         return bool(
             self.sourceUpdateCommand
             and not self._source_update_running
+            and not self._source_update_needs_restart()
             and not self._update_install_running
         )
+
+    @Property(bool, notify=sourceUpdateChanged)
+    def sourceUpdateNeedsRestart(self) -> bool:
+        return self._source_update_needs_restart()
 
     @Property(bool, notify=sourceUpdateChanged)
     def sourceUpdateRunning(self) -> bool:
@@ -940,6 +947,9 @@ class AppController(QObject):
         if self._source_update_running:
             self.toastRequested.emit("success", "Source update already running.")
             return
+        if self._source_update_needs_restart():
+            self.toastRequested.emit("success", "Restart the app to finish updating.")
+            return
         if self._update_install_running:
             self.toastRequested.emit(
                 "error",
@@ -971,6 +981,26 @@ class AppController(QObject):
         self._source_update_runner.updateFinished.connect(self._on_source_update_finished)
         self._source_update_runner.finished.connect(self._clear_source_update_runner)
         self._source_update_runner.start()
+
+    @Slot()
+    def restartApp(self) -> None:
+        if self._converting:
+            self.toastRequested.emit(
+                "error",
+                "Wait for conversion to finish before restarting.",
+            )
+            return
+        if self._update_install_running or self._source_update_running:
+            self.toastRequested.emit(
+                "error",
+                "Wait for the current update to finish before restarting.",
+            )
+            return
+        if not self._start_restart_process():
+            self.toastRequested.emit("error", "Could not restart the app.")
+            return
+        self.toastRequested.emit("success", "Restarting app.")
+        QGuiApplication.quit()
 
     @Slot()
     def openLogFolder(self) -> None:
@@ -1068,6 +1098,9 @@ class AppController(QObject):
 
     def _create_source_update_runner(self) -> SourceUpdateInstaller:
         return SourceUpdateInstaller(self)
+
+    def _start_restart_process(self) -> bool:
+        return QProcess.startDetached(sys.executable, list(sys.argv))
 
     def _on_update_install_progress(self, status: str, progress: int) -> None:
         self._update_install_status = status
@@ -1242,11 +1275,11 @@ class AppController(QObject):
 
     def _on_source_update_finished(self) -> None:
         self._source_update_running = False
-        self._source_update_status = "Source update complete. Restart the app."
+        self._source_update_status = _SOURCE_UPDATE_COMPLETE_MESSAGE
         self._source_update_progress = 100
         self.sourceUpdateChanged.emit()
         self.diagnosticsChanged.emit()
-        self.toastRequested.emit("success", "Source update complete. Restart the app.")
+        self.toastRequested.emit("success", _SOURCE_UPDATE_COMPLETE_MESSAGE)
 
     def _clear_source_update_runner(self) -> None:
         if self._source_update_running:
@@ -1254,6 +1287,13 @@ class AppController(QObject):
             self.sourceUpdateChanged.emit()
             self.diagnosticsChanged.emit()
         self._source_update_runner = None
+
+    def _source_update_needs_restart(self) -> bool:
+        return (
+            not self._source_update_running
+            and self._source_update_progress == 100
+            and self._source_update_status == _SOURCE_UPDATE_COMPLETE_MESSAGE
+        )
 
     @staticmethod
     def _release_asset_to_dict(asset: ReleaseAsset) -> dict[str, object]:

@@ -36,7 +36,7 @@ Download prebuilt binaries from [Releases](https://github.com/imadreamerboy/mark
 python -m markitdowngui.utils.source_updater
 ```
 
-The source updater runs `git pull --ff-only` in the checkout, then reinstalls the app in editable mode with `uv` when available or `pip` otherwise. Restart the app after it finishes.
+The source updater runs `git pull --ff-only` in the checkout, then reinstalls the app in editable mode with `uv` when available or `pip` otherwise. The Help view shows a restart action after it finishes.
 
 ### Support bundles
 
