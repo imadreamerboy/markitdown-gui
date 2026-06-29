@@ -6,7 +6,11 @@ from PySide6.QtCore import QSettings, QUrl
 
 from markitdowngui.core.conversion import ConversionOutcome
 from markitdowngui.core.settings import SettingsManager
-from markitdowngui.ui_qml.controller import AppController, PackagedUpdateInstaller
+from markitdowngui.ui_qml.controller import (
+    AppController,
+    PackagedUpdateInstaller,
+    SourceUpdateInstaller,
+)
 from markitdowngui.utils.packaged_updater import PackagedUpdatePlan
 from markitdowngui.utils.update_checker import ReleaseAsset, ReleaseInfo
 
@@ -75,6 +79,34 @@ class _FakeUpdateInstaller:
         else:
             self.progressChanged.emit("Starting restart helper", 98)
             self.installStarted.emit()
+        self.finished.emit()
+
+    def isRunning(self):
+        return self.started and not self.waited
+
+    def wait(self, _timeout):
+        self.waited = True
+        return True
+
+
+class _FakeSourceUpdateRunner:
+    def __init__(self, action: str = "success"):
+        self.action = action
+        self.progressChanged = _FakeSignal()
+        self.updateFinished = _FakeSignal()
+        self.updateError = _FakeSignal()
+        self.finished = _FakeSignal()
+        self.started = False
+        self.waited = False
+
+    def start(self):
+        self.started = True
+        self.progressChanged.emit("Pulling latest source", 15)
+        if self.action == "error":
+            self.updateError.emit("Source update failed with exit code 1.")
+        else:
+            self.progressChanged.emit("Source update complete", 100)
+            self.updateFinished.emit()
         self.finished.emit()
 
     def isRunning(self):
@@ -429,6 +461,137 @@ def test_controller_copies_source_update_command(controller, monkeypatch):
 
     assert copied == ["git -C repo pull --ff-only && uv pip install -e repo"]
     assert messages == [("success", "Source update command copied.")]
+
+
+def test_source_update_installer_emits_progress_and_success(monkeypatch):
+    progress: list[tuple[str, int]] = []
+    finished: list[None] = []
+    errors: list[str] = []
+
+    def fake_update(progress_callback):
+        progress_callback("Pulling latest source", 15)
+        progress_callback("Source update complete", 100)
+        return 0
+
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.run_source_update",
+        fake_update,
+    )
+    installer = SourceUpdateInstaller()
+    installer.progressChanged.connect(
+        lambda status, value: progress.append((status, value))
+    )
+    installer.updateFinished.connect(lambda: finished.append(None))
+    installer.updateError.connect(lambda message: errors.append(message))
+
+    installer.run()
+
+    assert progress == [("Pulling latest source", 15), ("Source update complete", 100)]
+    assert finished == [None]
+    assert errors == []
+
+
+def test_controller_runs_source_update_from_help(controller, monkeypatch):
+    messages: list[tuple[str, str]] = []
+    controller.toastRequested.connect(
+        lambda kind, message: messages.append((kind, message))
+    )
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.build_source_update_command",
+        lambda: "git -C repo pull --ff-only && uv pip install -e repo",
+    )
+    monkeypatch.setattr(
+        controller,
+        "_create_source_update_runner",
+        lambda: _FakeSourceUpdateRunner(),
+    )
+
+    assert controller.canRunSourceUpdate is True
+
+    controller.runSourceUpdate()
+
+    assert controller.sourceUpdateRunning is False
+    assert controller.sourceUpdateProgress == 100
+    assert controller.sourceUpdateStatus == "Source update complete. Restart the app."
+    assert messages == [("success", "Source update complete. Restart the app.")]
+
+
+def test_controller_reports_source_update_error(controller, monkeypatch):
+    messages: list[tuple[str, str]] = []
+    controller.toastRequested.connect(
+        lambda kind, message: messages.append((kind, message))
+    )
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.build_source_update_command",
+        lambda: "git -C repo pull --ff-only && uv pip install -e repo",
+    )
+    monkeypatch.setattr(
+        controller,
+        "_create_source_update_runner",
+        lambda: _FakeSourceUpdateRunner("error"),
+    )
+
+    controller.runSourceUpdate()
+
+    assert controller.sourceUpdateRunning is False
+    assert controller.sourceUpdateProgress == 0
+    assert controller.sourceUpdateStatus == "Source update failed with exit code 1."
+    assert messages == [("error", "Source update failed with exit code 1.")]
+
+
+def test_controller_blocks_source_update_while_converting(controller, monkeypatch):
+    messages: list[tuple[str, str]] = []
+    created: list[None] = []
+    controller.toastRequested.connect(
+        lambda kind, message: messages.append((kind, message))
+    )
+    controller._converting = True
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.build_source_update_command",
+        lambda: "git -C repo pull --ff-only && uv pip install -e repo",
+    )
+    monkeypatch.setattr(
+        controller,
+        "_create_source_update_runner",
+        lambda: created.append(None) or _FakeSourceUpdateRunner(),
+    )
+
+    controller.runSourceUpdate()
+
+    assert created == []
+    assert messages == [
+        ("error", "Wait for conversion to finish before updating the source checkout.")
+    ]
+
+
+def test_controller_blocks_source_update_while_packaged_update_runs(
+    controller,
+    monkeypatch,
+):
+    messages: list[tuple[str, str]] = []
+    created: list[None] = []
+    controller.toastRequested.connect(
+        lambda kind, message: messages.append((kind, message))
+    )
+    controller._update_install_running = True
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.build_source_update_command",
+        lambda: "git -C repo pull --ff-only && uv pip install -e repo",
+    )
+    monkeypatch.setattr(
+        controller,
+        "_create_source_update_runner",
+        lambda: created.append(None) or _FakeSourceUpdateRunner(),
+    )
+
+    assert controller.canRunSourceUpdate is False
+
+    controller.runSourceUpdate()
+
+    assert created == []
+    assert messages == [
+        ("error", "Wait for packaged update install to finish before updating source.")
+    ]
 
 
 def test_controller_copies_diagnostics(controller, monkeypatch):
@@ -900,6 +1063,24 @@ def test_controller_shutdown_rejects_close_during_update_install(controller):
     assert accepted is False
     assert messages == [
         ("error", "Update install is still preparing. Close after it finishes.")
+    ]
+
+
+def test_controller_shutdown_rejects_close_during_source_update(controller):
+    runner = _FakeSourceUpdateRunner()
+    runner.started = True
+    controller._source_update_runner = runner
+    controller._source_update_running = True
+    messages: list[tuple[str, str]] = []
+    controller.toastRequested.connect(
+        lambda kind, message: messages.append((kind, message))
+    )
+
+    accepted = controller.shutdown()
+
+    assert accepted is False
+    assert messages == [
+        ("error", "Source update is still running. Close after it finishes.")
     ]
 
 

@@ -3,7 +3,15 @@ from __future__ import annotations
 import shutil
 import subprocess
 import sys
+from collections.abc import Callable
 from pathlib import Path
+
+ProgressCallback = Callable[[str, int], None]
+
+
+def _emit_progress(callback: ProgressCallback | None, status: str, progress: int) -> None:
+    if callback is not None:
+        callback(status, max(0, min(100, progress)))
 
 
 def find_source_root(start: Path | None = None) -> Path | None:
@@ -48,20 +56,35 @@ def build_source_update_command(
     return f"{git_command} && {install_command}"
 
 
-def run_source_update(source_root: Path | None = None) -> int:
+def run_source_update(
+    source_root: Path | None = None,
+    *,
+    progress_callback: ProgressCallback | None = None,
+) -> int:
     root = source_root or find_source_root()
     if root is None:
         print("No Git source checkout found for this installation.", file=sys.stderr)
         return 2
 
-    subprocess.run(["git", "-C", str(root), "pull", "--ff-only"], check=True)
+    try:
+        _emit_progress(progress_callback, "Pulling latest source", 15)
+        subprocess.run(["git", "-C", str(root), "pull", "--ff-only"], check=True)
 
-    uv_path = shutil.which("uv")
-    if uv_path:
-        subprocess.run([uv_path, "pip", "install", "-e", str(root)], check=True)
-    else:
-        subprocess.run([sys.executable, "-m", "pip", "install", "-e", str(root)], check=True)
+        _emit_progress(progress_callback, "Reinstalling app", 70)
+        uv_path = shutil.which("uv")
+        if uv_path:
+            subprocess.run([uv_path, "pip", "install", "-e", str(root)], check=True)
+        else:
+            subprocess.run(
+                [sys.executable, "-m", "pip", "install", "-e", str(root)],
+                check=True,
+            )
+    except subprocess.CalledProcessError as exc:
+        command = " ".join(str(part) for part in exc.cmd)
+        print(f"Source update failed while running: {command}", file=sys.stderr)
+        return exc.returncode or 1
 
+    _emit_progress(progress_callback, "Source update complete", 100)
     print("Source update complete. Restart MarkItDown GUI.")
     return 0
 

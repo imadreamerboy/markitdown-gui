@@ -2393,8 +2393,10 @@ ApplicationWindow {
                     Layout.fillWidth: true
 
                     Label {
-                        text: app.sourceUpdateCommand
-                            ? "For source checkouts, copy a command that pulls the checkout and reinstalls the app."
+                        text: app.sourceUpdateRunning
+                            ? app.sourceUpdateStatus
+                            : app.sourceUpdateCommand
+                            ? "For source checkouts, pull the checkout and reinstall the app in place."
                             : "Source updater is available only when the app runs from a Git checkout."
                         color: colors.muted
                         font.pixelSize: 12
@@ -2403,15 +2405,35 @@ ApplicationWindow {
                     }
 
                     AppButton {
-                        text: "Copy source update"
+                        text: app.sourceUpdateRunning ? "Updating" : "Run source update"
+                        iconName: "rotate-ccw"
+                        accentColor: colors.action
+                        surfaceColor: colors.surfaceAlt
+                        borderColor: colors.border
+                        textColor: colors.text
+                        enabled: app.canRunSourceUpdate
+                        onClicked: app.runSourceUpdate()
+                    }
+
+                    AppButton {
+                        text: "Copy command"
                         iconName: "copy"
                         accentColor: colors.action
                         surfaceColor: colors.surfaceAlt
                         borderColor: colors.border
                         textColor: colors.text
-                        enabled: !!app.sourceUpdateCommand
+                        enabled: !!app.sourceUpdateCommand && !app.sourceUpdateRunning
                         onClicked: app.copySourceUpdateCommand()
                     }
+                }
+
+                ProgressBar {
+                    visible: app.sourceUpdateRunning
+                    from: 0
+                    to: 100
+                    value: app.sourceUpdateProgress
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 4
                 }
 
                 GridLayout {

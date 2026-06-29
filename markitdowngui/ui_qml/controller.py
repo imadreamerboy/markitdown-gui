@@ -37,7 +37,10 @@ from markitdowngui.utils.packaged_updater import (
     build_packaged_update_plan,
     install_packaged_update,
 )
-from markitdowngui.utils.source_updater import build_source_update_command
+from markitdowngui.utils.source_updater import (
+    build_source_update_command,
+    run_source_update,
+)
 from markitdowngui.utils.support_bundle import create_support_bundle
 from markitdowngui.utils.translations import DEFAULT_LANG, get_translation
 from markitdowngui.utils.update_checker import (
@@ -78,6 +81,26 @@ class PackagedUpdateInstaller(QThread):
         self.installStarted.emit()
 
 
+class SourceUpdateInstaller(QThread):
+    progressChanged = Signal(str, int)
+    updateFinished = Signal()
+    updateError = Signal(str)
+
+    def run(self) -> None:
+        try:
+            result = run_source_update(progress_callback=self.progressChanged.emit)
+        except Exception as exc:
+            self.updateError.emit(f"Source update failed: {exc}")
+            return
+        if result == 0:
+            self.updateFinished.emit()
+            return
+        if result == 2:
+            self.updateError.emit("No Git source checkout found for this installation.")
+            return
+        self.updateError.emit(f"Source update failed with exit code {result}.")
+
+
 class AppController(QObject):
     statusChanged = Signal()
     progressChanged = Signal()
@@ -92,6 +115,7 @@ class AppController(QObject):
     saveDefaultsChanged = Signal()
     updateNotificationChanged = Signal()
     updateInstallChanged = Signal()
+    sourceUpdateChanged = Signal()
     toastRequested = Signal(str, str)
 
     def __init__(self) -> None:
@@ -119,6 +143,10 @@ class AppController(QObject):
         self._update_install_running = False
         self._update_install_progress = 0
         self._update_install_status = ""
+        self._source_update_runner: SourceUpdateInstaller | None = None
+        self._source_update_running = False
+        self._source_update_progress = 0
+        self._source_update_status = ""
 
     @Property(QObject, constant=True)
     def queueModel(self) -> QueueModel:
@@ -378,6 +406,26 @@ class AppController(QObject):
     @Property(str, constant=True)
     def sourceUpdateCommand(self) -> str:
         return build_source_update_command()
+
+    @Property(bool, notify=sourceUpdateChanged)
+    def canRunSourceUpdate(self) -> bool:
+        return bool(
+            self.sourceUpdateCommand
+            and not self._source_update_running
+            and not self._update_install_running
+        )
+
+    @Property(bool, notify=sourceUpdateChanged)
+    def sourceUpdateRunning(self) -> bool:
+        return self._source_update_running
+
+    @Property(int, notify=sourceUpdateChanged)
+    def sourceUpdateProgress(self) -> int:
+        return self._source_update_progress
+
+    @Property(str, notify=sourceUpdateChanged)
+    def sourceUpdateStatus(self) -> str:
+        return self._source_update_status
 
     @Slot("QVariant")
     def addFiles(self, values: Any) -> None:
@@ -793,6 +841,7 @@ class AppController(QObject):
         self._update_install_status = "Preparing update"
         self.updateInstallChanged.emit()
         self.updateNotificationChanged.emit()
+        self.sourceUpdateChanged.emit()
 
         self._update_installer = self._create_update_installer(
             dict(self._preferred_release_asset)
@@ -814,6 +863,42 @@ class AppController(QObject):
             return
         QGuiApplication.clipboard().setText(command)
         self.toastRequested.emit("success", "Source update command copied.")
+
+    @Slot()
+    def runSourceUpdate(self) -> None:
+        if self._source_update_running:
+            self.toastRequested.emit("success", "Source update already running.")
+            return
+        if self._update_install_running:
+            self.toastRequested.emit(
+                "error",
+                "Wait for packaged update install to finish before updating source.",
+            )
+            return
+        if self._converting:
+            self.toastRequested.emit(
+                "error",
+                "Wait for conversion to finish before updating the source checkout.",
+            )
+            return
+        if not self.sourceUpdateCommand:
+            self.toastRequested.emit(
+                "error",
+                "No Git source checkout found for this installation.",
+            )
+            return
+
+        self._source_update_running = True
+        self._source_update_progress = 0
+        self._source_update_status = "Preparing source update"
+        self.sourceUpdateChanged.emit()
+
+        self._source_update_runner = self._create_source_update_runner()
+        self._source_update_runner.progressChanged.connect(self._on_source_update_progress)
+        self._source_update_runner.updateError.connect(self._on_source_update_error)
+        self._source_update_runner.updateFinished.connect(self._on_source_update_finished)
+        self._source_update_runner.finished.connect(self._clear_source_update_runner)
+        self._source_update_runner.start()
 
     @Slot()
     def openLogFolder(self) -> None:
@@ -868,6 +953,14 @@ class AppController(QObject):
                 )
                 return False
             self._update_installer.wait(2000)
+        if self._source_update_runner and self._source_update_runner.isRunning():
+            if self._source_update_running:
+                self.toastRequested.emit(
+                    "error",
+                    "Source update is still running. Close after it finishes.",
+                )
+                return False
+            self._source_update_runner.wait(2000)
         return True
 
     def _start_update_check(self, manual: bool) -> None:
@@ -893,6 +986,9 @@ class AppController(QObject):
     ) -> PackagedUpdateInstaller:
         return PackagedUpdateInstaller(asset, self)
 
+    def _create_source_update_runner(self) -> SourceUpdateInstaller:
+        return SourceUpdateInstaller(self)
+
     def _on_update_install_progress(self, status: str, progress: int) -> None:
         self._update_install_status = status
         self._update_install_progress = max(0, min(100, int(progress)))
@@ -904,6 +1000,7 @@ class AppController(QObject):
         self._update_install_progress = 0
         self.updateInstallChanged.emit()
         self.updateNotificationChanged.emit()
+        self.sourceUpdateChanged.emit()
         self.toastRequested.emit("error", message)
 
     def _on_update_install_started(self) -> None:
@@ -912,6 +1009,7 @@ class AppController(QObject):
         self._update_install_progress = 100
         self.updateInstallChanged.emit()
         self.updateNotificationChanged.emit()
+        self.sourceUpdateChanged.emit()
         self.toastRequested.emit("success", "Update installer started. Closing app.")
         self.dismissUpdateNotification()
         QGuiApplication.quit()
@@ -921,7 +1019,33 @@ class AppController(QObject):
             self._update_install_running = False
             self.updateInstallChanged.emit()
             self.updateNotificationChanged.emit()
+            self.sourceUpdateChanged.emit()
         self._update_installer = None
+
+    def _on_source_update_progress(self, status: str, progress: int) -> None:
+        self._source_update_status = status
+        self._source_update_progress = max(0, min(100, int(progress)))
+        self.sourceUpdateChanged.emit()
+
+    def _on_source_update_error(self, message: str) -> None:
+        self._source_update_running = False
+        self._source_update_status = message
+        self._source_update_progress = 0
+        self.sourceUpdateChanged.emit()
+        self.toastRequested.emit("error", message)
+
+    def _on_source_update_finished(self) -> None:
+        self._source_update_running = False
+        self._source_update_status = "Source update complete. Restart the app."
+        self._source_update_progress = 100
+        self.sourceUpdateChanged.emit()
+        self.toastRequested.emit("success", "Source update complete. Restart the app.")
+
+    def _clear_source_update_runner(self) -> None:
+        if self._source_update_running:
+            self._source_update_running = False
+            self.sourceUpdateChanged.emit()
+        self._source_update_runner = None
 
     @staticmethod
     def _release_asset_to_dict(asset: ReleaseAsset) -> dict[str, object]:
