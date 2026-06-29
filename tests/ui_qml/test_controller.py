@@ -67,6 +67,7 @@ class _FakeUpdateInstaller:
         self.action = action
         self.progressChanged = _FakeSignal()
         self.installStarted = _FakeSignal()
+        self.manualInstallOpened = _FakeSignal()
         self.installError = _FakeSignal()
         self.finished = _FakeSignal()
         self.started = False
@@ -77,6 +78,9 @@ class _FakeUpdateInstaller:
         self.progressChanged.emit("Downloading update", 25)
         if self.action == "error":
             self.installError.emit("Download failed")
+        elif self.action == "manual":
+            self.progressChanged.emit("DMG opened", 100)
+            self.manualInstallOpened.emit("C:/Users/test/Downloads/MarkItDown.dmg")
         else:
             self.progressChanged.emit("Starting restart helper", 98)
             self.installStarted.emit()
@@ -303,6 +307,28 @@ def test_controller_exposes_preflight_for_manual_release_asset(controller):
     assert rows["Restart"] == "Install from the mounted DMG, then reopen the app."
 
 
+def test_controller_exposes_preflight_for_supported_dmg_update(controller):
+    controller._preferred_release_asset = {
+        "name": "MarkItDown-macOS.dmg",
+        "url": "https://example.com/macos.dmg",
+        "size": 12 * 1024 * 1024,
+        "platform": "macOS",
+        "sha256": "abc123",
+        "installSupported": True,
+        "installMode": "dmg",
+        "installLabel": "Download DMG",
+        "installReason": "The app will download, verify, and open the DMG.",
+    }
+
+    rows = {
+        item["label"]: item["value"]
+        for item in controller.preferredReleaseAssetPreflightItems
+    }
+
+    assert rows["Action"] == "Download and open DMG"
+    assert rows["Restart"] == "Install from the mounted DMG, then reopen the app."
+
+
 def test_controller_release_notes_excerpt_cleans_markdown_and_caps_length():
     body = "\n".join(
         [
@@ -375,6 +401,7 @@ def test_controller_installs_supported_preferred_update(controller, monkeypatch)
 def test_packaged_update_installer_emits_progress_and_success(monkeypatch):
     progress: list[tuple[str, int]] = []
     started: list[None] = []
+    opened: list[str] = []
     errors: list[str] = []
 
     def fake_install(_asset, progress_callback):
@@ -388,13 +415,86 @@ def test_packaged_update_installer_emits_progress_and_success(monkeypatch):
     installer = PackagedUpdateInstaller({"url": "https://example.com/windows.zip"})
     installer.progressChanged.connect(lambda status, value: progress.append((status, value)))
     installer.installStarted.connect(lambda: started.append(None))
+    installer.manualInstallOpened.connect(lambda path: opened.append(path))
     installer.installError.connect(lambda message: errors.append(message))
 
     installer.run()
 
     assert progress == [("Downloading update", 25), ("Starting restart helper", 98)]
     assert started == [None]
+    assert opened == []
     assert errors == []
+
+
+def test_packaged_update_installer_emits_manual_open_for_dmg(monkeypatch):
+    progress: list[tuple[str, int]] = []
+    started: list[None] = []
+    opened: list[str] = []
+    errors: list[str] = []
+
+    def fake_install(_asset, progress_callback):
+        progress_callback("DMG opened", 100)
+        return "/Users/test/Downloads/MarkItDown.dmg"
+
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.build_packaged_update_plan",
+        lambda _asset: PackagedUpdatePlan(True, "dmg", "Download DMG"),
+    )
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.install_packaged_update",
+        fake_install,
+    )
+    installer = PackagedUpdateInstaller(
+        {"name": "MarkItDown.dmg", "url": "https://example.com/macos.dmg"}
+    )
+    installer.progressChanged.connect(lambda status, value: progress.append((status, value)))
+    installer.installStarted.connect(lambda: started.append(None))
+    installer.manualInstallOpened.connect(lambda path: opened.append(path))
+    installer.installError.connect(lambda message: errors.append(message))
+
+    installer.run()
+
+    assert progress == [("DMG opened", 100)]
+    assert started == []
+    assert opened == ["/Users/test/Downloads/MarkItDown.dmg"]
+    assert errors == []
+
+
+def test_controller_reports_manual_dmg_open_without_quitting(controller, monkeypatch):
+    messages: list[tuple[str, str]] = []
+    quit_called: list[None] = []
+    controller.toastRequested.connect(lambda kind, message: messages.append((kind, message)))
+    controller._preferred_release_asset = {
+        "name": "MarkItDown.dmg",
+        "url": "https://example.com/macos.dmg",
+        "installSupported": True,
+        "installMode": "dmg",
+    }
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.QGuiApplication.quit",
+        lambda: quit_called.append(None),
+    )
+    monkeypatch.setattr(
+        controller,
+        "_create_update_installer",
+        lambda _asset: _FakeUpdateInstaller("manual"),
+    )
+
+    controller.installPreferredUpdate()
+
+    assert controller.updateInstallRunning is False
+    assert controller.updateInstallProgress == 100
+    assert controller.updateInstallStatus == (
+        "DMG downloaded and opened. Drag MarkItDown to Applications."
+    )
+    assert quit_called == []
+    assert messages == [
+        (
+            "success",
+            "DMG opened from C:/Users/test/Downloads/MarkItDown.dmg. "
+            "Drag MarkItDown to Applications.",
+        )
+    ]
 
 
 def test_controller_blocks_update_install_while_converting(controller, monkeypatch):

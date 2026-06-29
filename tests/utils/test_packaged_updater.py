@@ -38,9 +38,21 @@ def test_build_packaged_update_plan_opens_macos_dmg_manually():
         platform="darwin",
     )
 
-    assert plan.supported is False
+    assert plan.supported is True
     assert plan.mode == "dmg"
-    assert plan.label == "Open DMG"
+    assert plan.label == "Download DMG"
+
+
+def test_build_packaged_update_plan_keeps_macos_source_builds_manual():
+    plan = packaged_updater.build_packaged_update_plan(
+        {"name": "MarkItDown-macOS-2.0.0.dmg", "url": "https://example.com/app.dmg"},
+        packaged=False,
+        platform="darwin",
+    )
+
+    assert plan.supported is False
+    assert plan.mode == "source"
+    assert plan.label == "Download"
 
 
 def test_verify_sha256_rejects_mismatched_download(tmp_path):
@@ -199,6 +211,70 @@ def test_install_packaged_update_reports_progress(monkeypatch, tmp_path):
         ("Preparing restart helper", 92),
         ("Starting restart helper", 98),
     ]
+
+
+def test_install_packaged_update_downloads_and_opens_macos_dmg(monkeypatch, tmp_path):
+    dmg = tmp_path / "MarkItDown-macOS-2.0.0.dmg"
+    dmg.write_bytes(b"disk image")
+    digest = hashlib.sha256(dmg.read_bytes()).hexdigest()
+    opened: list[Path] = []
+    progress: list[tuple[str, int]] = []
+    downloads_dir = tmp_path / "Downloads"
+    monkeypatch.setattr(packaged_updater.sys, "platform", "darwin")
+    monkeypatch.setattr(packaged_updater.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(packaged_updater, "default_downloads_dir", lambda: downloads_dir)
+
+    def write_dmg(_url, target, **_kwargs):
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(dmg.read_bytes())
+
+    monkeypatch.setattr(
+        packaged_updater,
+        "download_asset",
+        write_dmg,
+    )
+    monkeypatch.setattr(packaged_updater, "open_file", lambda path: opened.append(path))
+
+    path = packaged_updater.install_packaged_update(
+        {
+            "name": dmg.name,
+            "url": "https://example.com/app.dmg",
+            "sha256": digest,
+        },
+        progress_callback=lambda status, value: progress.append((status, value)),
+    )
+
+    assert path == downloads_dir / dmg.name
+    assert path.read_bytes() == b"disk image"
+    assert opened == [path]
+    assert progress == [
+        ("Downloading update", 5),
+        ("Verifying update", 72),
+        ("Opening DMG", 95),
+        ("DMG opened", 100),
+    ]
+
+
+def test_download_and_open_dmg_uses_unique_filename(monkeypatch, tmp_path):
+    existing = tmp_path / "MarkItDown.dmg"
+    existing.write_bytes(b"old")
+    opened: list[Path] = []
+    monkeypatch.setattr(
+        packaged_updater,
+        "download_asset",
+        lambda _url, target, **_kwargs: target.write_bytes(b"new"),
+    )
+    monkeypatch.setattr(packaged_updater, "open_file", lambda path: opened.append(path))
+
+    path = packaged_updater.download_and_open_dmg(
+        {"name": existing.name, "url": "https://example.com/app.dmg"},
+        downloads_dir=tmp_path,
+    )
+
+    assert path == tmp_path / "MarkItDown-1.dmg"
+    assert existing.read_bytes() == b"old"
+    assert path.read_bytes() == b"new"
+    assert opened == [path]
 
 
 def test_download_asset_reports_content_length_progress(monkeypatch, tmp_path):

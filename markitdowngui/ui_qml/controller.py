@@ -80,6 +80,7 @@ _SOURCE_UPDATE_COMPLETE_MESSAGE = "Source update complete. Restart the app."
 class PackagedUpdateInstaller(QThread):
     progressChanged = Signal(str, int)
     installStarted = Signal()
+    manualInstallOpened = Signal(str)
     installError = Signal(str)
 
     def __init__(self, asset: dict[str, object], parent: QObject | None = None) -> None:
@@ -88,7 +89,8 @@ class PackagedUpdateInstaller(QThread):
 
     def run(self) -> None:
         try:
-            install_packaged_update(
+            plan = build_packaged_update_plan(self.asset)
+            opened_path = install_packaged_update(
                 self.asset,
                 progress_callback=self.progressChanged.emit,
             )
@@ -97,6 +99,9 @@ class PackagedUpdateInstaller(QThread):
             return
         except Exception as exc:
             self.installError.emit(f"Update install failed: {exc}")
+            return
+        if plan.mode == "dmg":
+            self.manualInstallOpened.emit(str(opened_path))
             return
         self.installStarted.emit()
 
@@ -992,6 +997,9 @@ class AppController(QObject):
         )
         self._update_installer.progressChanged.connect(self._on_update_install_progress)
         self._update_installer.installError.connect(self._on_update_install_error)
+        self._update_installer.manualInstallOpened.connect(
+            self._on_manual_update_install_opened
+        )
         self._update_installer.installStarted.connect(self._on_update_install_started)
         self._update_installer.finished.connect(self._clear_update_installer)
         self._update_installer.start()
@@ -1228,6 +1236,21 @@ class AppController(QObject):
         self.dismissUpdateNotification()
         QGuiApplication.quit()
 
+    def _on_manual_update_install_opened(self, path: str) -> None:
+        self._update_install_running = False
+        self._update_install_status = (
+            "DMG downloaded and opened. Drag MarkItDown to Applications."
+        )
+        self._update_install_progress = 100
+        self.updateInstallChanged.emit()
+        self.updateNotificationChanged.emit()
+        self.sourceUpdateChanged.emit()
+        self.diagnosticsChanged.emit()
+        self.toastRequested.emit(
+            "success",
+            f"DMG opened from {path}. Drag MarkItDown to Applications.",
+        )
+
     def _clear_update_installer(self) -> None:
         if self._update_install_running:
             self._update_install_running = False
@@ -1430,7 +1453,10 @@ class AppController(QObject):
         mode = str(asset.get("installMode") or "").strip()
         supported = bool(asset.get("installSupported"))
         reason = str(asset.get("installReason") or "").strip()
-        if supported:
+        if supported and mode == "dmg":
+            action = "Download and open DMG"
+            restart = "Install from the mounted DMG, then reopen the app."
+        elif supported:
             action = "In-app install"
             restart = "Closes, replaces the app folder, then restarts."
         elif mode == "dmg":

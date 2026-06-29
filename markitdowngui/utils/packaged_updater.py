@@ -83,19 +83,19 @@ def build_packaged_update_plan(
 
     if not url:
         return PackagedUpdatePlan(False, "none", "Releases", "No release asset URL.")
-    if platform_name == "darwin" and suffix == ".dmg":
-        return PackagedUpdatePlan(
-            False,
-            "dmg",
-            "Open DMG",
-            "macOS DMG updates are installed outside the running app.",
-        )
     if not frozen:
         return PackagedUpdatePlan(
             False,
             "source",
             "Download",
             "Packaged install is available only in packaged builds.",
+        )
+    if platform_name == "darwin" and suffix == ".dmg":
+        return PackagedUpdatePlan(
+            True,
+            "dmg",
+            "Download DMG",
+            "The app will download, verify, and open the DMG for manual installation.",
         )
     if platform_name.startswith(("win32", "cygwin")) and suffix == ".zip":
         return PackagedUpdatePlan(True, "zip", "Install update")
@@ -126,6 +126,13 @@ def install_packaged_update(
     sha256 = str(asset.get("sha256") or "").strip().lower()
     if not name or not url:
         raise PackagedUpdateError("Release asset is missing a name or download URL.")
+
+    if plan.mode == "dmg":
+        _emit_progress(progress_callback, "Downloading update", 5)
+        return download_and_open_dmg(
+            asset,
+            progress_callback=progress_callback,
+        )
 
     runtime_dir = Path(tempfile.mkdtemp(prefix="markitdown-update-"))
     archive_path = runtime_dir / name
@@ -166,6 +173,58 @@ def install_packaged_update(
         shutil.rmtree(runtime_dir, ignore_errors=True)
         raise
     return helper_path
+
+
+def download_and_open_dmg(
+    asset: dict[str, object],
+    *,
+    downloads_dir: Path | None = None,
+    progress_callback: ProgressCallback | None = None,
+) -> Path:
+    name = str(asset.get("name") or "").strip()
+    url = str(asset.get("url") or asset.get("browser_download_url") or "").strip()
+    sha256 = str(asset.get("sha256") or "").strip().lower()
+    if not name or not url:
+        raise PackagedUpdateError("Release asset is missing a name or download URL.")
+    if Path(name.lower()).suffix != ".dmg":
+        raise PackagedUpdateError("macOS manual install requires a DMG asset.")
+
+    target = unique_download_path(
+        (downloads_dir or default_downloads_dir()) / Path(name).name
+    )
+    try:
+        download_asset(url, target, progress_callback=progress_callback)
+        _emit_progress(progress_callback, "Verifying update", 72)
+        verify_sha256(target, sha256)
+        _emit_progress(progress_callback, "Opening DMG", 95)
+        open_file(target)
+    except Exception:
+        try:
+            target.unlink()
+        except OSError:
+            pass
+        raise
+    _emit_progress(progress_callback, "DMG opened", 100)
+    return target
+
+
+def default_downloads_dir() -> Path:
+    downloads = Path.home() / "Downloads"
+    if downloads.exists():
+        return downloads
+    return Path(tempfile.gettempdir())
+
+
+def unique_download_path(path: Path) -> Path:
+    if not path.exists():
+        return path
+    stem = path.stem
+    suffix = path.suffix
+    for index in range(1, 100):
+        candidate = path.with_name(f"{stem}-{index}{suffix}")
+        if not candidate.exists():
+            return candidate
+    return path.with_name(f"{stem}-{int(time.time())}{suffix}")
 
 
 def download_asset(
@@ -290,6 +349,16 @@ def launch_replace_helper(helper_path: Path) -> None:
         )
         return
     subprocess.Popen([str(helper_path)], close_fds=True, start_new_session=True)
+
+
+def open_file(path: Path) -> None:
+    if sys.platform == "darwin":
+        subprocess.Popen(["open", str(path)], close_fds=True, start_new_session=True)
+        return
+    if sys.platform.startswith("win32") or sys.platform == "cygwin":
+        os.startfile(str(path))  # type: ignore[attr-defined]
+        return
+    subprocess.Popen(["xdg-open", str(path)], close_fds=True, start_new_session=True)
 
 
 def _helper_script_name() -> str:
