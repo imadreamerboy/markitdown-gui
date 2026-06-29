@@ -183,6 +183,7 @@ def test_controller_exposes_release_assets_for_packaged_updates(controller, monk
     release = ReleaseInfo(
         tag_name="v1.2.0",
         html_url="https://github.com/example/releases/tag/v1.2.0",
+        body="## Changes\n\n- Faster updater\n- [Fixes](https://example.com) for OCR",
         assets=(
             ReleaseAsset(
                 name="MarkItDown-Linux.zip",
@@ -210,6 +211,7 @@ def test_controller_exposes_release_assets_for_packaged_updates(controller, monk
     controller.startAutomaticUpdateCheck()
 
     assert controller.availableReleaseUrl == release.html_url
+    assert controller.availableReleaseNotes == "Changes Faster updater Fixes for OCR"
     assert controller.availableReleaseAssets == [
         {
             "name": "MarkItDown-Linux.zip",
@@ -244,6 +246,27 @@ def test_controller_exposes_release_assets_for_packaged_updates(controller, monk
 
     assert opened == ["https://example.com/windows.zip"]
     assert controller.hasUpdateNotification is False
+    assert controller.availableReleaseNotes == ""
+
+
+def test_controller_release_notes_excerpt_cleans_markdown_and_caps_length():
+    body = "\n".join(
+        [
+            "## Release notes",
+            "- **Installer** now shows progress",
+            "- [OCR fix](https://example.com) for setup validation",
+            "- " + ("Long detail " * 80),
+        ]
+    )
+
+    excerpt = AppController._release_notes_excerpt(body, max_chars=80)
+
+    assert "Installer now shows progress" in excerpt
+    assert "OCR fix" in excerpt
+    assert "[" not in excerpt
+    assert "**" not in excerpt
+    assert excerpt.endswith("...")
+    assert len(excerpt) <= 80
 
 
 def test_controller_installs_supported_preferred_update(controller, monkeypatch):
@@ -664,17 +687,24 @@ def test_controller_reports_support_bundle_error(controller, monkeypatch):
 
 
 def test_controller_dismisses_update_notification(controller, monkeypatch):
+    release = ReleaseInfo(
+        tag_name="v1.2.0",
+        html_url="https://github.com/example/releases/tag/v1.2.0",
+        body="- Installer progress\n- OCR setup checks",
+    )
     monkeypatch.setattr(
         controller,
         "_create_update_checker",
-        lambda: _FakeUpdateChecker(("available", "v1.2.0")),
+        lambda: _FakeUpdateChecker(("available", "v1.2.0"), release),
     )
     controller.startAutomaticUpdateCheck()
+    assert controller.availableReleaseNotes == "Installer progress OCR setup checks"
 
     controller.dismissUpdateNotification()
 
     assert controller.hasUpdateNotification is False
     assert controller.availableUpdateVersion == ""
+    assert controller.availableReleaseNotes == ""
 
 
 def test_controller_disables_update_notifications_from_banner(controller, monkeypatch):

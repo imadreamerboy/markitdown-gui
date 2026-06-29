@@ -63,6 +63,7 @@ def test_parse_release_info_extracts_download_assets():
         {
             "tag_name": "v2.0.0",
             "html_url": "https://github.com/example/releases/tag/v2.0.0",
+            "body": "Fixes and installer changes.",
             "assets": [
                 {
                     "name": "MarkItDown-Windows.exe",
@@ -77,6 +78,7 @@ def test_parse_release_info_extracts_download_assets():
     assert release == update_checker.ReleaseInfo(
         tag_name="v2.0.0",
         html_url="https://github.com/example/releases/tag/v2.0.0",
+        body="Fixes and installer changes.",
         assets=(
             update_checker.ReleaseAsset(
                 name="MarkItDown-Windows.exe",

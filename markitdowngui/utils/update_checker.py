@@ -32,6 +32,7 @@ class ReleaseAsset:
 class ReleaseInfo:
     tag_name: str
     html_url: str
+    body: str = ""
     assets: tuple[ReleaseAsset, ...] = ()
 
 
@@ -102,6 +103,7 @@ def parse_release_info(
     return ReleaseInfo(
         tag_name=tag_name,
         html_url=str(payload.get("html_url") or "").strip(),
+        body=str(payload.get("body") or "").strip(),
         assets=tuple(assets),
     )
 

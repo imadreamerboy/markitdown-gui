@@ -2365,6 +2365,17 @@ ApplicationWindow {
                     }
                 }
 
+                Label {
+                    visible: !!app.availableReleaseNotes
+                    text: app.availableReleaseNotes
+                    color: colors.text
+                    font.pixelSize: 12
+                    wrapMode: Text.WordWrap
+                    maximumLineCount: 4
+                    elide: Text.ElideRight
+                    Layout.fillWidth: true
+                }
+
                 GridLayout {
                     visible: app.availableReleaseAssets.length > 0
                     columns: 2

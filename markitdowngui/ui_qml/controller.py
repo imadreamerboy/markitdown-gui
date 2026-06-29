@@ -56,6 +56,8 @@ _PREVIEW_HEADING_MARGINS = {
     "2": "8px",
     "3": "6px",
 }
+_MARKDOWN_LINK_RE = re.compile(r"\[([^\]]+)\]\([^)]+\)")
+_MARKDOWN_DECORATION_RE = re.compile(r"[*_`>#]")
 
 class PackagedUpdateInstaller(QThread):
     progressChanged = Signal(str, int)
@@ -138,6 +140,7 @@ class AppController(QObject):
         self._update_check_manual = False
         self._available_update_version = ""
         self._available_release_url = ""
+        self._available_release_notes = ""
         self._available_release_assets: list[dict[str, object]] = []
         self._preferred_release_asset: dict[str, object] = {}
         self._update_install_running = False
@@ -375,6 +378,10 @@ class AppController(QObject):
     @Property(str, notify=updateNotificationChanged)
     def availableReleaseUrl(self) -> str:
         return self._available_release_url
+
+    @Property(str, notify=updateNotificationChanged)
+    def availableReleaseNotes(self) -> str:
+        return self._available_release_notes
 
     @Property("QVariant", notify=updateNotificationChanged)
     def availableReleaseAssets(self) -> list[dict[str, object]]:
@@ -789,6 +796,7 @@ class AppController(QObject):
             return
         self._available_update_version = ""
         self._available_release_url = ""
+        self._available_release_notes = ""
         self._available_release_assets = []
         self._preferred_release_asset = {}
         self.updateNotificationChanged.emit()
@@ -1072,6 +1080,9 @@ class AppController(QObject):
         release = getattr(self._update_checker, "latest_release", None)
         preferred_asset = select_release_asset(release)
         self._available_release_url = getattr(release, "html_url", "") if release else ""
+        self._available_release_notes = self._release_notes_excerpt(
+            getattr(release, "body", "") if release else ""
+        )
         self._available_release_assets = [
             self._release_asset_to_dict(asset)
             for asset in (getattr(release, "assets", ()) if release else ())
@@ -1084,6 +1095,26 @@ class AppController(QObject):
         self.updateNotificationChanged.emit()
         if self._update_check_manual:
             self.toastRequested.emit("success", f"Update {version} is available.")
+
+    @staticmethod
+    def _release_notes_excerpt(body: str, *, max_chars: int = 360) -> str:
+        lines: list[str] = []
+        for raw_line in body.splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
+            line = line.lstrip("-*0123456789. ")
+            line = _MARKDOWN_LINK_RE.sub(r"\1", line)
+            line = _MARKDOWN_DECORATION_RE.sub("", line).strip()
+            if line:
+                lines.append(line)
+            if len(lines) >= 4:
+                break
+
+        excerpt = " ".join(lines)
+        if len(excerpt) <= max_chars:
+            return excerpt
+        return excerpt[: max(0, max_chars - 3)].rstrip() + "..."
 
     def _on_update_error(self, message: str) -> None:
         if self._update_check_manual:
