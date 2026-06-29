@@ -5,6 +5,7 @@ from itertools import islice
 import base64
 import mimetypes
 import os
+import shutil
 import tempfile
 from io import BytesIO
 from pathlib import Path
@@ -99,6 +100,14 @@ class OcrProviderSpec:
     capabilities: tuple[str, ...]
     settings_group: str
     fallback_allowed: bool = True
+
+
+@dataclass(frozen=True)
+class OcrSetupValidation:
+    ok: bool
+    message: str
+    issues: tuple[str, ...] = ()
+    checked_providers: tuple[str, ...] = ()
 
 
 OCR_PROVIDER_SPECS = {
@@ -289,6 +298,86 @@ def get_ocr_provider_specs() -> tuple[OcrProviderSpec, ...]:
         OCR_PROVIDER_SPECS[OCR_PROVIDER_GLMOCR],
         OCR_PROVIDER_SPECS[OCR_PROVIDER_HTTP],
     )
+
+
+def validate_ocr_setup(options: ConversionOptions) -> OcrSetupValidation:
+    """Validate OCR settings without running an OCR job."""
+    if not options.ocr_enabled:
+        return OcrSetupValidation(
+            ok=False,
+            message="OCR is disabled.",
+            issues=("Enable OCR before validating provider settings.",),
+        )
+
+    providers = [options.normalized_ocr_provider]
+    fallback = options.normalized_ocr_fallback_provider
+    if fallback != OCR_PROVIDER_NONE and fallback not in providers:
+        providers.append(fallback)
+
+    issues: list[str] = []
+    for provider in providers:
+        issues.extend(_ocr_provider_setup_issues(provider, options))
+
+    if issues:
+        return OcrSetupValidation(
+            ok=False,
+            message=issues[0],
+            issues=tuple(issues),
+            checked_providers=tuple(providers),
+        )
+
+    labels = ", ".join(_ocr_provider_label(provider) for provider in providers)
+    return OcrSetupValidation(
+        ok=True,
+        message=f"OCR settings look ready for {labels}.",
+        checked_providers=tuple(providers),
+    )
+
+
+def _ocr_provider_setup_issues(
+    provider: str,
+    options: ConversionOptions,
+) -> list[str]:
+    if provider == OCR_PROVIDER_AZURE_TESSERACT:
+        return _azure_tesseract_setup_issues(options)
+    if provider == OCR_PROVIDER_GLMOCR:
+        return _glmocr_setup_issues(options)
+    if provider == OCR_PROVIDER_HTTP:
+        return _http_ocr_setup_issues(options)
+    return [f"Unknown OCR provider: {provider}."]
+
+
+def _azure_tesseract_setup_issues(options: ConversionOptions) -> list[str]:
+    issues: list[str] = []
+    tesseract_path = options.normalized_tesseract_path
+    if tesseract_path and not Path(tesseract_path).exists():
+        issues.append(f"Tesseract executable was not found: {tesseract_path}")
+
+    has_azure_endpoint = bool(options.normalized_docintel_endpoint)
+    has_tesseract = bool(tesseract_path and Path(tesseract_path).exists()) or bool(
+        shutil.which("tesseract")
+    )
+    if not has_azure_endpoint and not has_tesseract:
+        issues.append(
+            "Azure + Tesseract needs an Azure endpoint or a usable Tesseract executable."
+        )
+    return issues
+
+
+def _glmocr_setup_issues(options: ConversionOptions) -> list[str]:
+    if options.normalized_glmocr_mode == GLMOCR_MODE_MAAS and not _glmocr_api_key_available():
+        return ["GLM-OCR Official API requires ZHIPU_API_KEY or GLMOCR_API_KEY."]
+    if options.normalized_glmocr_mode == GLMOCR_MODE_OLLAMA and not options.normalized_glmocr_ollama_model:
+        return ["GLM-OCR Ollama requires a model name."]
+    if options.normalized_glmocr_mode == GLMOCR_MODE_SDK_SERVER and not options.normalized_glmocr_sdk_server_url:
+        return ["GLM-OCR SDK Server requires an endpoint URL."]
+    return []
+
+
+def _http_ocr_setup_issues(options: ConversionOptions) -> list[str]:
+    if not options.normalized_http_ocr_endpoint:
+        return ["HTTP OCR requires an endpoint URL."]
+    return []
 
 
 def _ocr_provider_label(provider: str) -> str:

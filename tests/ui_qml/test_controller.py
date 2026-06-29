@@ -307,6 +307,32 @@ def test_controller_exposes_ocr_provider_options_and_http_settings(controller):
     assert controller.httpOcrTimeoutSeconds == 45
 
 
+def test_controller_validates_ocr_setup(controller, monkeypatch):
+    messages: list[tuple[str, str]] = []
+    controller.toastRequested.connect(lambda kind, message: messages.append((kind, message)))
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.validate_ocr_setup",
+        lambda _options: SimpleNamespace(ok=True, message="OCR settings look ready."),
+    )
+
+    controller.validateOcrSetup()
+
+    assert messages == [("success", "OCR settings look ready.")]
+
+
+def test_controller_reports_ocr_validation_error(controller, monkeypatch):
+    messages: list[tuple[str, str]] = []
+    controller.toastRequested.connect(lambda kind, message: messages.append((kind, message)))
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.validate_ocr_setup",
+        lambda _options: SimpleNamespace(ok=False, message="HTTP OCR requires an endpoint URL."),
+    )
+
+    controller.validateOcrSetup()
+
+    assert messages == [("error", "HTTP OCR requires an endpoint URL.")]
+
+
 def test_controller_copies_source_update_command(controller, monkeypatch):
     messages: list[tuple[str, str]] = []
     copied: list[str] = []

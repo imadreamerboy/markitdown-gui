@@ -1313,6 +1313,97 @@ def test_test_azure_ocr_connection_requires_api_key(monkeypatch, conversion):
     assert "Set AZURE_OCR_API_KEY" in str(exc_info.value)
 
 
+def test_validate_ocr_setup_reports_disabled_ocr(conversion):
+    result = conversion.validate_ocr_setup(conversion.ConversionOptions())
+
+    assert result.ok is False
+    assert result.message == "OCR is disabled."
+
+
+def test_validate_ocr_setup_accepts_azure_endpoint_without_tesseract(
+    monkeypatch,
+    conversion,
+):
+    monkeypatch.setattr(conversion.shutil, "which", lambda _name: None)
+
+    result = conversion.validate_ocr_setup(
+        conversion.ConversionOptions(
+            ocr_enabled=True,
+            ocr_provider=conversion.OCR_PROVIDER_AZURE_TESSERACT,
+            docintel_endpoint="https://example.cognitiveservices.azure.com/",
+            ocr_fallback_enabled=False,
+        )
+    )
+
+    assert result.ok is True
+    assert result.checked_providers == (conversion.OCR_PROVIDER_AZURE_TESSERACT,)
+
+
+def test_validate_ocr_setup_requires_azure_endpoint_or_tesseract(
+    monkeypatch,
+    conversion,
+):
+    monkeypatch.setattr(conversion.shutil, "which", lambda _name: None)
+
+    result = conversion.validate_ocr_setup(
+        conversion.ConversionOptions(
+            ocr_enabled=True,
+            ocr_provider=conversion.OCR_PROVIDER_AZURE_TESSERACT,
+            ocr_fallback_enabled=False,
+        )
+    )
+
+    assert result.ok is False
+    assert result.message == (
+        "Azure + Tesseract needs an Azure endpoint or a usable Tesseract executable."
+    )
+
+
+def test_validate_ocr_setup_requires_http_endpoint(conversion):
+    result = conversion.validate_ocr_setup(
+        conversion.ConversionOptions(
+            ocr_enabled=True,
+            ocr_provider=conversion.OCR_PROVIDER_HTTP,
+            ocr_fallback_enabled=False,
+        )
+    )
+
+    assert result.ok is False
+    assert result.message == "HTTP OCR requires an endpoint URL."
+
+
+def test_validate_ocr_setup_requires_glmocr_maas_api_key(monkeypatch, conversion):
+    monkeypatch.delenv("ZHIPU_API_KEY", raising=False)
+    monkeypatch.delenv("GLMOCR_API_KEY", raising=False)
+
+    result = conversion.validate_ocr_setup(
+        conversion.ConversionOptions(
+            ocr_enabled=True,
+            ocr_provider=conversion.OCR_PROVIDER_GLMOCR,
+            glmocr_mode=conversion.GLMOCR_MODE_MAAS,
+            ocr_fallback_enabled=False,
+        )
+    )
+
+    assert result.ok is False
+    assert result.message == "GLM-OCR Official API requires ZHIPU_API_KEY or GLMOCR_API_KEY."
+
+
+def test_validate_ocr_setup_deduplicates_duplicate_fallback_provider(conversion):
+    result = conversion.validate_ocr_setup(
+        conversion.ConversionOptions(
+            ocr_enabled=True,
+            ocr_provider=conversion.OCR_PROVIDER_HTTP,
+            http_ocr_endpoint="http://localhost:8000/ocr",
+            ocr_fallback_enabled=True,
+            ocr_fallback_provider=conversion.OCR_PROVIDER_HTTP,
+        )
+    )
+
+    assert result.ok is True
+    assert result.checked_providers == (conversion.OCR_PROVIDER_HTTP,)
+
+
 def test_conversion_worker_tracks_failed_files_separately_from_result_text(
     monkeypatch,
     conversion,

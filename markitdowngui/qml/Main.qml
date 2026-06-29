@@ -2016,6 +2016,30 @@ ApplicationWindow {
                         onEditingFinished: app.setTesseractPath(text)
                     }
                 }
+
+                RowLayout {
+                    visible: app.ocrEnabled
+                    spacing: 10
+                    Layout.fillWidth: true
+
+                    Label {
+                        text: "Check required provider settings before starting a batch."
+                        color: colors.muted
+                        font.pixelSize: 12
+                        wrapMode: Text.WordWrap
+                        Layout.fillWidth: true
+                    }
+
+                    AppButton {
+                        text: "Validate OCR"
+                        iconName: "file-check"
+                        accentColor: colors.action
+                        surfaceColor: colors.surfaceAlt
+                        borderColor: colors.border
+                        textColor: colors.text
+                        onClicked: app.validateOcrSetup()
+                    }
+                }
             }
 
             SectionPanel {

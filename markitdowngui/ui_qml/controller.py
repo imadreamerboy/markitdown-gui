@@ -13,6 +13,7 @@ from markitdowngui.core.conversion import (
     ConversionOptions,
     ConversionWorker,
     get_ocr_provider_specs,
+    validate_ocr_setup,
 )
 from markitdowngui.core.file_utils import FileManager
 from markitdowngui.core.input_sources import (
@@ -675,6 +676,11 @@ class AppController(QObject):
     def setTesseractPath(self, value: str) -> None:
         self.settings.set_tesseract_path(value)
         self.settingsChanged.emit()
+
+    @Slot()
+    def validateOcrSetup(self) -> None:
+        result = validate_ocr_setup(self._build_conversion_options())
+        self.toastRequested.emit("success" if result.ok else "error", result.message)
 
     @Slot()
     def startAutomaticUpdateCheck(self) -> None:
