@@ -20,6 +20,7 @@ from markitdowngui.core.conversion import (
     ConversionOptions,
     ConversionWorker,
     get_ocr_provider_specs,
+    test_ocr_provider_connection,
     validate_ocr_setup,
 )
 from markitdowngui.core.file_utils import FileManager
@@ -842,6 +843,15 @@ class AppController(QObject):
     def validateOcrSetup(self) -> None:
         result = validate_ocr_setup(self._build_ocr_validation_options())
         self.toastRequested.emit("success" if result.ok else "error", result.message)
+
+    @Slot()
+    def testOcrConnection(self) -> None:
+        try:
+            message = test_ocr_provider_connection(self._build_ocr_validation_options())
+        except Exception as exc:
+            self.toastRequested.emit("error", str(exc))
+            return
+        self.toastRequested.emit("success", message)
 
     @Slot(str, str, str)
     def runOcrSetupAction(self, action: str, value: str, label: str) -> None:

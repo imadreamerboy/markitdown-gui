@@ -1313,6 +1313,109 @@ def test_test_azure_ocr_connection_requires_api_key(monkeypatch, conversion):
     assert "Set AZURE_OCR_API_KEY" in str(exc_info.value)
 
 
+def test_test_http_ocr_connection_uses_options_request(monkeypatch, conversion):
+    captured = {}
+
+    class FakeResponse:
+        status_code = 405
+
+    def fake_options(url, timeout):
+        captured["url"] = url
+        captured["timeout"] = timeout
+        return FakeResponse()
+
+    monkeypatch.setattr(conversion.requests, "options", fake_options)
+
+    message = conversion.test_http_ocr_connection(
+        conversion.ConversionOptions(
+            ocr_enabled=True,
+            ocr_provider=conversion.OCR_PROVIDER_HTTP,
+            http_ocr_endpoint="http://localhost:8000/ocr",
+            http_ocr_timeout_seconds=45,
+        )
+    )
+
+    assert message == "HTTP OCR endpoint is reachable."
+    assert captured == {"url": "http://localhost:8000/ocr", "timeout": 10}
+
+
+def test_test_http_ocr_connection_reports_missing_route(monkeypatch, conversion):
+    class FakeResponse:
+        status_code = 404
+
+    monkeypatch.setattr(
+        conversion.requests,
+        "options",
+        lambda _url, timeout: FakeResponse(),
+    )
+
+    with pytest.raises(RuntimeError) as exc_info:
+        conversion.test_http_ocr_connection(
+            conversion.ConversionOptions(
+                ocr_enabled=True,
+                ocr_provider=conversion.OCR_PROVIDER_HTTP,
+                http_ocr_endpoint="http://localhost:8000/missing",
+            )
+        )
+
+    assert "responded with 404" in str(exc_info.value)
+
+
+def test_test_glmocr_ollama_connection_checks_model(monkeypatch, conversion):
+    captured = {}
+
+    class FakeResponse:
+        ok = True
+        text = ""
+
+        def json(self):
+            return {"models": [{"name": "glm-ocr:latest"}]}
+
+    def fake_get(url, timeout):
+        captured["url"] = url
+        captured["timeout"] = timeout
+        return FakeResponse()
+
+    monkeypatch.setattr(conversion.requests, "get", fake_get)
+
+    message = conversion.test_glmocr_ollama_connection(
+        conversion.ConversionOptions(
+            ocr_enabled=True,
+            ocr_provider=conversion.OCR_PROVIDER_GLMOCR,
+            glmocr_mode=conversion.GLMOCR_MODE_OLLAMA,
+            glmocr_ollama_host="localhost",
+            glmocr_ollama_port=11434,
+            glmocr_ollama_model="glm-ocr:latest",
+        )
+    )
+
+    assert message == "GLM-OCR Ollama is reachable and `glm-ocr:latest` is installed."
+    assert captured == {"url": "http://localhost:11434/api/tags", "timeout": 10}
+
+
+def test_test_glmocr_ollama_connection_reports_missing_model(monkeypatch, conversion):
+    class FakeResponse:
+        ok = True
+        text = ""
+
+        def json(self):
+            return {"models": [{"name": "other-model"}]}
+
+    monkeypatch.setattr(conversion.requests, "get", lambda _url, timeout: FakeResponse())
+
+    with pytest.raises(RuntimeError) as exc_info:
+        conversion.test_glmocr_ollama_connection(
+            conversion.ConversionOptions(
+                ocr_enabled=True,
+                ocr_provider=conversion.OCR_PROVIDER_GLMOCR,
+                glmocr_mode=conversion.GLMOCR_MODE_OLLAMA,
+                glmocr_ollama_model="glm-ocr:latest",
+            )
+        )
+
+    assert "model `glm-ocr:latest` is not installed" in str(exc_info.value)
+
+
 def test_validate_ocr_setup_reports_disabled_ocr(conversion):
     result = conversion.validate_ocr_setup(conversion.ConversionOptions())
 

@@ -2110,6 +2110,16 @@ ApplicationWindow {
                         textColor: colors.text
                         onClicked: app.validateOcrSetup()
                     }
+
+                    AppButton {
+                        text: "Test connection"
+                        iconName: "server"
+                        accentColor: colors.action
+                        surfaceColor: colors.surfaceAlt
+                        borderColor: colors.border
+                        textColor: colors.text
+                        onClicked: app.testOcrConnection()
+                    }
                 }
             }
 

@@ -646,6 +646,41 @@ def test_controller_reports_ocr_validation_error(controller, monkeypatch):
     assert messages == [("error", "HTTP OCR requires an endpoint URL.")]
 
 
+def test_controller_tests_ocr_connection(controller, monkeypatch):
+    messages: list[tuple[str, str]] = []
+    controller.toastRequested.connect(
+        lambda kind, message: messages.append((kind, message))
+    )
+    controller.setOcrEnabled(True)
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.test_ocr_provider_connection",
+        lambda _options: "HTTP OCR endpoint is reachable.",
+    )
+
+    controller.testOcrConnection()
+
+    assert messages == [("success", "HTTP OCR endpoint is reachable.")]
+
+
+def test_controller_reports_ocr_connection_error(controller, monkeypatch):
+    messages: list[tuple[str, str]] = []
+    controller.toastRequested.connect(
+        lambda kind, message: messages.append((kind, message))
+    )
+
+    def fake_test(_options):
+        raise RuntimeError("HTTP OCR endpoint responded with 404.")
+
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.test_ocr_provider_connection",
+        fake_test,
+    )
+
+    controller.testOcrConnection()
+
+    assert messages == [("error", "HTTP OCR endpoint responded with 404.")]
+
+
 def test_controller_exposes_diagnostic_readiness_items(controller, monkeypatch):
     monkeypatch.setattr(
         "markitdowngui.ui_qml.controller.build_source_update_command",

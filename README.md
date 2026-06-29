@@ -66,7 +66,7 @@ pip install -e .[dev]
 - `GLM-OCR` is available as a separate OCR provider for PDFs and images. It can fall back to another configured provider if selected in Settings.
 - `HTTP OCR` is a generic integration point for local or self-hosted OCR servers. The app sends a multipart `POST` with a `file` part, optional `model` field, and optional `Authorization: Bearer ...` header read from the configured environment variable. JSON responses can use `markdown`, `text`, `result`, `content`, or `output`; plain text responses are used directly.
 - Preserved PDF images keep using the existing image-preservation pipeline. With `Azure + Tesseract`, OCR runs inside that helper. With `GLM-OCR` or `HTTP OCR`, the app preserves images first and appends OCR text from the selected provider.
-- Settings shows provider-specific setup actions for opening docs or copying safe setup snippets, and **Validate OCR** checks the required fields before a batch starts.
+- Settings shows provider-specific setup actions for opening docs or copying safe setup snippets. **Validate OCR** checks the required fields before a batch starts, and **Test connection** checks live provider connectivity without uploading user documents.
 - GLM-OCR offers three modes in Settings:
   - `Official API`: easiest zero-setup path, reads `ZHIPU_API_KEY` or `GLMOCR_API_KEY` from the environment.
   - `Ollama`: easiest local path. The GUI calls Ollama's native `/api/generate` endpoint directly, with defaults `127.0.0.1:11434` and `glm-ocr:latest`.

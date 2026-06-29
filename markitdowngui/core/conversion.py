@@ -90,6 +90,7 @@ ZHIPU_API_KEY_ENV_VAR = "ZHIPU_API_KEY"
 GLMOCR_API_KEY_ENV_VAR = "GLMOCR_API_KEY"
 DEFAULT_HTTP_OCR_API_KEY_ENV = "OCR_HTTP_API_KEY"
 DEFAULT_HTTP_OCR_TIMEOUT_SECONDS = 300
+OCR_CONNECTION_TEST_TIMEOUT_SECONDS = 10
 
 
 @dataclass(frozen=True)
@@ -516,6 +517,101 @@ def test_azure_ocr_connection(options: ConversionOptions) -> str:
             client.close()
 
     return "api_key"
+
+
+def test_ocr_provider_connection(options: ConversionOptions) -> str:
+    """Run a lightweight provider-specific connectivity check."""
+    if not options.ocr_enabled:
+        raise RuntimeError("Enable OCR before testing provider connectivity.")
+
+    provider = options.normalized_ocr_provider
+    if provider == OCR_PROVIDER_AZURE_TESSERACT:
+        auth_method = test_azure_ocr_connection(options)
+        return f"Azure OCR connection succeeded with {auth_method} auth."
+    if provider == OCR_PROVIDER_HTTP:
+        return test_http_ocr_connection(options)
+    if provider == OCR_PROVIDER_GLMOCR:
+        mode = options.normalized_glmocr_mode
+        if mode == GLMOCR_MODE_OLLAMA:
+            return test_glmocr_ollama_connection(options)
+        if mode == GLMOCR_MODE_SDK_SERVER:
+            return _test_http_endpoint_reachable(
+                options.normalized_glmocr_sdk_server_url,
+                label="GLM-OCR SDK server",
+            )
+        if not _glmocr_api_key_available():
+            raise RuntimeError(
+                "Set ZHIPU_API_KEY or GLMOCR_API_KEY before testing GLM-OCR Official API."
+            )
+        return "GLM-OCR Official API key is configured."
+    raise RuntimeError(f"Unsupported OCR provider: {provider}")
+
+
+def test_http_ocr_connection(options: ConversionOptions) -> str:
+    endpoint = options.normalized_http_ocr_endpoint
+    if not endpoint:
+        raise RuntimeError("Set an HTTP OCR endpoint before testing connectivity.")
+    return _test_http_endpoint_reachable(
+        endpoint,
+        label="HTTP OCR endpoint",
+        timeout=min(
+            OCR_CONNECTION_TEST_TIMEOUT_SECONDS,
+            options.normalized_http_ocr_timeout_seconds,
+        ),
+    )
+
+
+def test_glmocr_ollama_connection(options: ConversionOptions) -> str:
+    tags_url = _build_glmocr_ollama_tags_url(options)
+    try:
+        response = requests.get(tags_url, timeout=OCR_CONNECTION_TEST_TIMEOUT_SECONDS)
+    except requests.Timeout as exc:
+        raise RuntimeError("GLM-OCR Ollama test timed out.") from exc
+    except requests.RequestException as exc:
+        raise RuntimeError(f"GLM-OCR Ollama test could not reach {tags_url}: {exc}") from exc
+
+    if not response.ok:
+        message = response.text.strip()
+        raise RuntimeError(
+            message or f"GLM-OCR Ollama test failed with status {response.status_code}."
+        )
+
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        raise RuntimeError("GLM-OCR Ollama returned an invalid /api/tags response.") from exc
+
+    model = options.normalized_glmocr_ollama_model
+    names = {
+        str(item.get("name") or item.get("model") or "").strip()
+        for item in payload.get("models", [])
+        if isinstance(item, dict)
+    }
+    if model not in names:
+        raise RuntimeError(f"Ollama is reachable, but model `{model}` is not installed.")
+    return f"GLM-OCR Ollama is reachable and `{model}` is installed."
+
+
+def _test_http_endpoint_reachable(
+    endpoint: str,
+    *,
+    label: str,
+    timeout: int = OCR_CONNECTION_TEST_TIMEOUT_SECONDS,
+) -> str:
+    if not endpoint:
+        raise RuntimeError(f"Set a {label} URL before testing connectivity.")
+    try:
+        response = requests.options(endpoint, timeout=timeout)
+    except requests.Timeout as exc:
+        raise RuntimeError(f"{label} test timed out.") from exc
+    except requests.RequestException as exc:
+        raise RuntimeError(f"{label} test could not reach {endpoint}: {exc}") from exc
+
+    if response.status_code == 404:
+        raise RuntimeError(f"{label} responded with 404. Check the configured URL.")
+    if response.status_code >= 500:
+        raise RuntimeError(f"{label} responded with status {response.status_code}.")
+    return f"{label} is reachable."
 
 
 def convert_file_with_details(
@@ -1212,6 +1308,13 @@ def _build_glmocr_ollama_url(options: ConversionOptions) -> str:
     else:
         base_url = f"http://{host}:{options.normalized_glmocr_ollama_port}"
     return f"{base_url}{GLMOCR_OLLAMA_API_PATH}"
+
+
+def _build_glmocr_ollama_tags_url(options: ConversionOptions) -> str:
+    request_url = _build_glmocr_ollama_url(options)
+    if request_url.endswith(GLMOCR_OLLAMA_API_PATH):
+        return request_url[: -len(GLMOCR_OLLAMA_API_PATH)] + "/api/tags"
+    return request_url.rstrip("/") + "/api/tags"
 
 
 def _encode_image_for_ollama(image) -> str:
