@@ -6,7 +6,7 @@ on:
       - 'v*'  # Runs when a tag like v1.0.0 is pushed
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
@@ -55,6 +55,10 @@ jobs:
           PY
         shell: bash
 
+      - name: Run tests
+        run: uv run pytest -q
+        shell: bash
+
       - name: Build executable
         run: uv run pyinstaller MarkItDown.spec --clean --noconfirm
         shell: bash
@@ -100,6 +104,8 @@ jobs:
     name: Create GitHub Release
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
