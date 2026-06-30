@@ -109,3 +109,23 @@ def test_release_workflow_packages_signed_macos_app_bundle():
     assert 'codesign --force --deep --timestamp --sign "$SIGN_IDENTITY" "$APP_PATH"' in workflow
     assert "ln -s /Applications dmg_root/Applications" in workflow
     assert "hdiutil create -volname \"MarkItDown\" -srcfolder dmg_root" in workflow
+
+
+def test_release_workflow_builds_windows_setup_and_linux_appimage():
+    workflow = Path(".github/workflows/release.yml").read_text(encoding="utf-8")
+    inno_script = Path("packaging/windows/MarkItDown.iss").read_text(encoding="utf-8")
+
+    assert "choco install innosetup --no-progress -y" in workflow
+    assert "packaging\\windows\\MarkItDown.iss" in workflow
+    assert "AppId={{9F61B90E-8541-4E0A-A4D7-0C17622E20C2}" in inno_script
+    assert "PrivilegesRequired=lowest" in inno_script
+    assert r"DefaultDirName={localappdata}\Programs\MarkItDown" in inno_script
+    assert "MarkItDown-Windows-Setup-{#AppVersion}" in inno_script
+    assert "{userdesktop}" in inno_script
+    assert "MarkItDown-Linux-${VERSION}.AppImage" in workflow
+    assert "appimagetool-x86_64.AppImage" in workflow
+    assert "Exec=AppRun" in workflow
+    assert '"**/*.exe"' in workflow
+    assert '"**/*.AppImage"' in workflow
+    assert "artifacts/**/*.exe" in workflow
+    assert "artifacts/**/*.AppImage" in workflow

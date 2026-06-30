@@ -176,3 +176,75 @@ def test_select_release_asset_prefers_current_platform():
 
     assert asset is not None
     assert asset.browser_download_url == "https://example.com/windows.zip"
+
+
+def test_select_release_asset_prefers_zip_over_windows_installer():
+    release = update_checker.ReleaseInfo(
+        tag_name="v2.0.0",
+        html_url="",
+        assets=(
+            update_checker.ReleaseAsset(
+                name="MarkItDown-Windows-Setup-2.0.0.exe",
+                browser_download_url="https://example.com/setup.exe",
+                platform="Windows",
+            ),
+            update_checker.ReleaseAsset(
+                name="MarkItDown-Windows-2.0.0.zip",
+                browser_download_url="https://example.com/windows.zip",
+                platform="Windows",
+            ),
+        ),
+    )
+
+    asset = update_checker.select_release_asset(release, platform_label="Windows")
+
+    assert asset is not None
+    assert asset.name == "MarkItDown-Windows-2.0.0.zip"
+
+
+def test_select_release_asset_prefers_zip_over_linux_appimage():
+    release = update_checker.ReleaseInfo(
+        tag_name="v2.0.0",
+        html_url="",
+        assets=(
+            update_checker.ReleaseAsset(
+                name="MarkItDown-Linux-2.0.0.AppImage",
+                browser_download_url="https://example.com/linux.AppImage",
+                platform="Linux",
+            ),
+            update_checker.ReleaseAsset(
+                name="MarkItDown-Linux-2.0.0.zip",
+                browser_download_url="https://example.com/linux.zip",
+                platform="Linux",
+            ),
+        ),
+    )
+
+    asset = update_checker.select_release_asset(release, platform_label="Linux")
+
+    assert asset is not None
+    assert asset.name == "MarkItDown-Linux-2.0.0.zip"
+
+
+def test_select_release_asset_prefers_macos_dmg():
+    release = update_checker.ReleaseInfo(
+        tag_name="v2.0.0",
+        html_url="",
+        assets=(
+            update_checker.ReleaseAsset(
+                name="MarkItDown-macOS-2.0.0.zip",
+                browser_download_url="https://example.com/macos.zip",
+                platform="macOS",
+            ),
+            update_checker.ReleaseAsset(
+                name="MarkItDown-macOS-2.0.0.dmg",
+                browser_download_url="https://example.com/macos.dmg",
+                platform="macOS",
+            ),
+        ),
+    )
+
+    asset = update_checker.select_release_asset(release, platform_label="macOS")
+
+    assert asset is not None
+    assert asset.name == "MarkItDown-macOS-2.0.0.dmg"

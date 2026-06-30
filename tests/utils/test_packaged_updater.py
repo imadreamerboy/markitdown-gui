@@ -55,6 +55,28 @@ def test_build_packaged_update_plan_keeps_macos_source_builds_manual():
     assert plan.label == "Download"
 
 
+@pytest.mark.parametrize(
+    ("asset_name", "platform"),
+    [
+        ("MarkItDown-Windows-Setup-2.0.0.exe", "win32"),
+        ("MarkItDown-Linux-2.0.0.AppImage", "linux"),
+    ],
+)
+def test_build_packaged_update_plan_keeps_installer_assets_manual(
+    asset_name,
+    platform,
+):
+    plan = packaged_updater.build_packaged_update_plan(
+        {"name": asset_name, "url": f"https://example.com/{asset_name}"},
+        packaged=True,
+        platform=platform,
+    )
+
+    assert plan.supported is False
+    assert plan.mode == "manual"
+    assert plan.label == "Download"
+
+
 def test_verify_sha256_rejects_mismatched_download(tmp_path):
     archive = tmp_path / "app.zip"
     archive.write_bytes(b"not the expected archive")

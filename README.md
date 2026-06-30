@@ -31,10 +31,17 @@ More screenshots:
 
 Download prebuilt binaries from [Releases](https://github.com/imadreamerboy/markitdown-gui/releases), or run from source.
 
+### Release assets
+
+- Windows: use `MarkItDown-Windows-Setup-<version>.exe` for the normal installer, or `MarkItDown-Windows-<version>.zip` for a portable folder.
+- Linux: use `MarkItDown-Linux-<version>.AppImage` for a single-file app, or `MarkItDown-Linux-<version>.zip` for a portable folder.
+- macOS: use `MarkItDown-macOS-<version>.dmg` and drag the app into Applications.
+
 ### Updating
 
 - Packaged desktop builds are updated from [Releases](https://github.com/imadreamerboy/markitdown-gui/releases). The in-app update check reads the latest GitHub release, shows a short release-note summary, and prefers the asset for the current operating system. Help shows the selected asset, size, checksum availability, action, and restart behaviour before install.
 - Windows and Linux packaged builds can start an in-app install when the preferred asset is a `.zip`: the app shows install progress, downloads the archive, verifies SHA256 when release metadata is available, prepares an external helper, closes, replaces the app folder, restarts, and rolls back if replacement fails. The helper records the last update result and rollback backup path in Help -> Diagnostics on the next launch, with a direct action to open the backup folder when it still exists. macOS packaged builds download, verify, and open the `.dmg` for manual drag-to-Applications installation.
+- The Windows installer and Linux AppImage are additional first-install download options; the in-app self-update path intentionally keeps using the portable `.zip` asset.
 - Release builds publish a `markitdown-release-manifest.json` with platform, size, and SHA256 metadata for each package.
 - Source checkouts can update in place from the Help view with `Run source update`, or from a terminal:
 
@@ -180,7 +187,7 @@ pyinstaller MarkItDown.spec --clean --noconfirm
 ```
 
 The default spec builds an `onedir` app in `dist/MarkItDown/`. On macOS it also emits `dist/MarkItDown.app`.
-Release workflows package Windows and Linux builds into platform-specific `.zip` artifacts and macOS builds into a drag-to-Applications `.dmg` from the `.app` bundle. The macOS bundle is signed with `MACOS_CODESIGN_IDENTITY` when configured, otherwise it uses ad-hoc signing. Each release also includes `markitdown-release-manifest.json` for update metadata and checksums.
+Release workflows package Windows and Linux builds into platform-specific `.zip` artifacts, add a Windows Inno Setup `.exe` installer, add a Linux `.AppImage`, and package macOS builds into a drag-to-Applications `.dmg` from the `.app` bundle. The macOS bundle is signed with `MACOS_CODESIGN_IDENTITY` when configured, otherwise it uses ad-hoc signing. Each release also includes `markitdown-release-manifest.json` for update metadata and checksums.
 That build intentionally excludes the GLM-OCR self-hosted runtime stack; local hosting stays external to the GUI.
 
 ## License

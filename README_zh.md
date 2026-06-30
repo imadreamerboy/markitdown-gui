@@ -30,11 +30,18 @@
 
 你可以从 [Releases](https://github.com/imadreamerboy/markitdown-gui/releases) 下载预编译版本，或从源码运行。
 
+### Release 制品
+
+- Windows：普通用户使用 `MarkItDown-Windows-Setup-<version>.exe` 安装器；需要便携版时使用 `MarkItDown-Windows-<version>.zip`。
+- Linux：普通用户使用 `MarkItDown-Linux-<version>.AppImage` 单文件应用；需要便携目录时使用 `MarkItDown-Linux-<version>.zip`。
+- macOS：使用 `MarkItDown-macOS-<version>.dmg`，并把应用拖入 Applications。
+
 ### 更新
 
 - 打包版桌面应用从 GitHub Releases 更新。应用内更新检查会读取最新 release，显示简短说明，并优先选择当前系统对应的制品。
 - Windows 和 Linux 打包版在首选制品为 `.zip` 时可启动应用内安装：下载、校验 SHA256（如 release 元数据可用）、准备外部 helper、关闭应用、替换应用目录、重启，并在替换失败时回滚。下一次启动后，帮助页诊断会显示上次更新结果和回滚备份目录。
 - macOS 打包版会下载、校验并打开 `.dmg`，用户再手动拖入 Applications。
+- Windows 安装器和 Linux AppImage 是额外的首次安装下载选项；应用内自更新会继续优先使用便携 `.zip` 制品。
 - Release 会发布 `markitdown-release-manifest.json`，包含平台、大小和 SHA256 元数据。
 - 源码 checkout 可以在帮助页运行 `Run source update`，也可以在终端运行：
 
@@ -180,7 +187,7 @@ pyinstaller MarkItDown.spec --clean --noconfirm
 ```
 
 默认 spec 会在 `dist/MarkItDown/` 生成 `onedir` 应用。macOS 还会生成 `dist/MarkItDown.app`。
-Release workflow 会把 Windows 和 Linux build 打包为平台专属 `.zip`，并把 macOS `.app` bundle 打包为拖入 Applications 的 `.dmg`。如果配置了 `MACOS_CODESIGN_IDENTITY`，macOS bundle 会使用该身份签名，否则使用 ad-hoc signing。每个 release 还会包含 `markitdown-release-manifest.json`，用于更新元数据和校验和。
+Release workflow 会把 Windows 和 Linux build 打包为平台专属 `.zip`，额外生成 Windows Inno Setup `.exe` 安装器和 Linux `.AppImage`，并把 macOS `.app` bundle 打包为拖入 Applications 的 `.dmg`。如果配置了 `MACOS_CODESIGN_IDENTITY`，macOS bundle 会使用该身份签名，否则使用 ad-hoc signing。每个 release 还会包含 `markitdown-release-manifest.json`，用于更新元数据和校验和。
 该构建会刻意排除 GLM-OCR 自托管运行时栈；本地托管仍在 GUI 外部完成。
 
 ## 许可证

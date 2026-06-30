@@ -163,12 +163,30 @@ def select_release_asset(
     if not candidates:
         return None
 
+    def extension_priority(name: str) -> int:
+        if platform == "macos":
+            if name.endswith(".dmg"):
+                return 4
+            if name.endswith(".zip"):
+                return 3
+        if platform in {"windows", "linux"}:
+            if name.endswith(".zip"):
+                return 4
+            if platform == "windows" and name.endswith((".exe", ".msi")):
+                return 3
+            if platform == "linux" and name.endswith(".appimage"):
+                return 3
+        if name.endswith((".zip", ".dmg")):
+            return 2
+        if name.endswith((".msi", ".exe", ".appimage")):
+            return 1
+        return 0
+
     def score(asset: ReleaseAsset) -> tuple[int, int]:
         asset_platform = asset.platform.lower()
         name = asset.name.lower()
         platform_match = int(asset_platform == platform or platform in name)
-        archive_match = int(name.endswith((".zip", ".dmg", ".msi", ".exe", ".appimage")))
-        return platform_match, archive_match
+        return platform_match, extension_priority(name)
 
     return max(candidates, key=score)
 

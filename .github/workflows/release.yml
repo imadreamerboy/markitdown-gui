@@ -34,6 +34,10 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libgl1 libegl1 libxkbcommon-x11-0
 
+      - name: Install Inno Setup
+        if: runner.os == 'Windows'
+        run: choco install innosetup --no-progress -y
+
       - name: Install dependencies
         run: uv sync --extra dev --locked
 
@@ -94,6 +98,58 @@ jobs:
         env:
           MACOS_CODESIGN_IDENTITY: ${{ secrets.MACOS_CODESIGN_IDENTITY }}
 
+      - name: Build Windows installer
+        if: runner.os == 'Windows'
+        run: |
+          $tagName = $env:GITHUB_REF -replace '^refs/tags/', ''
+          $version = ($tagName -replace '^v', '') -replace '^\.', ''
+          $programFilesX86 = [Environment]::GetEnvironmentVariable('ProgramFiles(x86)')
+          $iscc = Join-Path $programFilesX86 'Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path -LiteralPath $iscc)) {
+            throw "Inno Setup compiler not found at $iscc"
+          }
+          $sourceDir = (Resolve-Path -LiteralPath 'dist\MarkItDown').Path
+          $outputDir = (Resolve-Path -LiteralPath 'dist_output').Path
+          & $iscc 'packaging\windows\MarkItDown.iss' "/DAppVersion=$version" "/DSourceDir=$sourceDir" "/DOutputDir=$outputDir"
+
+      - name: Build Linux AppImage
+        if: runner.os == 'Linux'
+        run: |
+          TAG_NAME="${GITHUB_REF#refs/tags/}"
+          VERSION="${TAG_NAME#v}"
+          VERSION="${VERSION#.}"
+          APPDIR="MarkItDown.AppDir"
+          APPIMAGE_TOOL_URL="https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage"
+
+          rm -rf "$APPDIR"
+          mkdir -p "$APPDIR/usr/lib/markitdown"
+          cp -a dist/MarkItDown/. "$APPDIR/usr/lib/markitdown/"
+          cp markitdowngui/resources/markitdown-gui.png "$APPDIR/markitdown-gui.png"
+
+          cat > "$APPDIR/AppRun" <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          HERE="$(dirname "$(readlink -f "$0")")"
+          exec "$HERE/usr/lib/markitdown/MarkItDown" "$@"
+          EOF
+          chmod +x "$APPDIR/AppRun"
+
+          cat > "$APPDIR/MarkItDown.desktop" <<'EOF'
+          [Desktop Entry]
+          Type=Application
+          Name=MarkItDown
+          Exec=AppRun
+          Icon=markitdown-gui
+          Categories=Office;Utility;
+          Terminal=false
+          EOF
+
+          curl -L "$APPIMAGE_TOOL_URL" -o appimagetool.AppImage
+          chmod +x appimagetool.AppImage
+          APPIMAGE_EXTRACT_AND_RUN=1 ./appimagetool.AppImage "$APPDIR" "dist_output/MarkItDown-Linux-${VERSION}.AppImage"
+          chmod +x "dist_output/MarkItDown-Linux-${VERSION}.AppImage"
+        shell: bash
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -125,7 +181,7 @@ jobs:
           assets = []
           for path in sorted(
               candidate
-              for pattern in ("**/*.zip", "**/*.dmg")
+              for pattern in ("**/*.zip", "**/*.dmg", "**/*.exe", "**/*.AppImage")
               for candidate in Path("artifacts").glob(pattern)
           ):
               name = path.name
@@ -162,5 +218,7 @@ jobs:
           files: |
             artifacts/**/*.zip
             artifacts/**/*.dmg
+            artifacts/**/*.exe
+            artifacts/**/*.AppImage
             artifacts/markitdown-release-manifest.json
           token: ${{ secrets.GITHUB_TOKEN }}
