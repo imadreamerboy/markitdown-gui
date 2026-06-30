@@ -391,6 +391,7 @@ $replacementDir = '{_ps(replacement_dir)}'
 $backupDir = '{_ps(backup_dir)}'
 $executableName = '{_ps(executable_name)}'
 $resultPath = '{_ps(result_path)}'
+$backupCreated = $false
 
 function Write-UpdateResult([string]$status, [string]$message) {{
     try {{
@@ -420,16 +421,17 @@ try {{
     }}
 
     Move-Item -LiteralPath $currentDir -Destination $backupDir -Force
+    $backupCreated = $true
     Move-Item -LiteralPath $replacementDir -Destination $currentDir -Force
     Write-UpdateResult "success" "Update installed and app restarted."
     Start-Process -FilePath (Join-Path $currentDir $executableName)
     Start-Sleep -Seconds 2
     Remove-Item -LiteralPath $backupDir -Recurse -Force -ErrorAction SilentlyContinue
 }} catch {{
-    if (Test-Path -LiteralPath $currentDir) {{
+    if ($backupCreated -and (Test-Path -LiteralPath $currentDir)) {{
         Remove-Item -LiteralPath $currentDir -Recurse -Force -ErrorAction SilentlyContinue
     }}
-    if (Test-Path -LiteralPath $backupDir) {{
+    if ($backupCreated -and (Test-Path -LiteralPath $backupDir)) {{
         Move-Item -LiteralPath $backupDir -Destination $currentDir -Force
     }}
     Write-UpdateResult "failed" "Update failed and rollback was attempted: $($_.Exception.Message)"

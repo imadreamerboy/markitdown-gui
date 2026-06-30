@@ -49,10 +49,13 @@ def build_source_update_command(
     git_command = f"git -C {root_arg} pull --ff-only"
 
     uv_path = uv_executable if uv_executable is not None else shutil.which("uv")
+    python_path = python_executable or sys.executable
     if uv_path:
-        install_command = f"{quote_command_arg(uv_path)} pip install -e {root_arg}"
+        python_arg = quote_command_arg(python_path)
+        install_command = (
+            f"{quote_command_arg(uv_path)} pip install --python {python_arg} -e {root_arg}"
+        )
     else:
-        python_path = python_executable or sys.executable
         install_command = (
             f"{quote_command_arg(python_path)} -m pip install -e {root_arg}"
         )
@@ -102,7 +105,18 @@ def run_source_update(
         _emit_progress(progress_callback, "Reinstalling app", 70)
         uv_path = shutil.which("uv")
         if uv_path:
-            subprocess.run([uv_path, "pip", "install", "-e", str(root)], check=True)
+            subprocess.run(
+                [
+                    uv_path,
+                    "pip",
+                    "install",
+                    "--python",
+                    sys.executable,
+                    "-e",
+                    str(root),
+                ],
+                check=True,
+            )
         else:
             subprocess.run(
                 [sys.executable, "-m", "pip", "install", "-e", str(root)],

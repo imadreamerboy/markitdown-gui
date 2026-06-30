@@ -1,4 +1,5 @@
 import json
+import os
 import sys
 from dataclasses import dataclass
 
@@ -147,14 +148,23 @@ def current_platform_label() -> str:
     return sys.platform
 
 
+def is_appimage_runtime() -> bool:
+    return bool(os.environ.get("APPIMAGE"))
+
+
 def select_release_asset(
     release: ReleaseInfo | None,
     platform_label: str | None = None,
+    *,
+    appimage_runtime: bool | None = None,
 ) -> ReleaseAsset | None:
     if release is None:
         return None
 
     platform = (platform_label or current_platform_label()).lower()
+    running_appimage = (
+        is_appimage_runtime() if appimage_runtime is None else appimage_runtime
+    )
     candidates = [
         asset
         for asset in release.assets
@@ -170,6 +180,8 @@ def select_release_asset(
             if name.endswith(".zip"):
                 return 3
         if platform in {"windows", "linux"}:
+            if platform == "linux" and running_appimage and name.endswith(".appimage"):
+                return 5
             if name.endswith(".zip"):
                 return 4
             if platform == "windows" and name.endswith((".exe", ".msi")):

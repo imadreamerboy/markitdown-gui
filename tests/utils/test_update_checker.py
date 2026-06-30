@@ -226,6 +226,34 @@ def test_select_release_asset_prefers_zip_over_linux_appimage():
     assert asset.name == "MarkItDown-Linux-2.0.0.zip"
 
 
+def test_select_release_asset_prefers_appimage_for_appimage_runtime():
+    release = update_checker.ReleaseInfo(
+        tag_name="v2.0.0",
+        html_url="",
+        assets=(
+            update_checker.ReleaseAsset(
+                name="MarkItDown-Linux-2.0.0.zip",
+                browser_download_url="https://example.com/linux.zip",
+                platform="Linux",
+            ),
+            update_checker.ReleaseAsset(
+                name="MarkItDown-Linux-2.0.0.AppImage",
+                browser_download_url="https://example.com/linux.AppImage",
+                platform="Linux",
+            ),
+        ),
+    )
+
+    asset = update_checker.select_release_asset(
+        release,
+        platform_label="Linux",
+        appimage_runtime=True,
+    )
+
+    assert asset is not None
+    assert asset.name == "MarkItDown-Linux-2.0.0.AppImage"
+
+
 def test_select_release_asset_prefers_macos_dmg():
     release = update_checker.ReleaseInfo(
         tag_name="v2.0.0",

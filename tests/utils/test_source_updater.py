@@ -21,12 +21,13 @@ def test_build_source_update_command_prefers_uv(tmp_path):
 
     command = source_updater.build_source_update_command(
         root,
-        python_executable="python",
+        python_executable="C:/Python/python.exe",
         uv_executable="uv",
     )
 
     assert command == (
-        f'git -C "{root}" pull --ff-only && uv pip install -e "{root}"'
+        f'git -C "{root}" pull --ff-only && '
+        f'uv pip install --python C:/Python/python.exe -e "{root}"'
     )
 
 
@@ -80,7 +81,15 @@ def test_run_source_update_reports_progress_with_uv(monkeypatch, tmp_path):
             "--untracked-files=no",
         ],
         ["git", "-C", str(root), "pull", "--ff-only"],
-        ["uv", "pip", "install", "-e", str(root)],
+        [
+            "uv",
+            "pip",
+            "install",
+            "--python",
+            source_updater.sys.executable,
+            "-e",
+            str(root),
+        ],
     ]
     assert progress == [
         ("Checking source checkout", 5),

@@ -1086,6 +1086,18 @@ def test_http_ocr_extracts_nested_response_text(conversion):
     assert conversion._extract_http_ocr_response_text(response) == "nested text"
 
 
+def test_http_ocr_extracts_nested_list_response_text(conversion):
+    response = types.SimpleNamespace(
+        headers={"content-type": "application/json"},
+        json=lambda: {"result": [{"text": "page one"}, {"text": "page two"}]},
+    )
+
+    assert (
+        conversion._extract_http_ocr_response_text(response)
+        == "page one\n\npage two"
+    )
+
+
 def test_convert_pdf_falls_back_from_http_to_azure_tesseract(
     monkeypatch,
     conversion,

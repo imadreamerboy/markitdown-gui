@@ -178,6 +178,9 @@ def test_install_packaged_update_prepares_helper_without_replacing_app(
     assert str(result_path) in script
     assert "Write-UpdateResult" in script
     assert "Backup: $backupDir" in script
+    assert "$backupCreated = $false" in script
+    assert "$backupCreated = $true" in script
+    assert "if ($backupCreated -and (Test-Path -LiteralPath $currentDir))" in script
 
 
 def test_build_posix_replace_helper_writes_update_result(monkeypatch, tmp_path):

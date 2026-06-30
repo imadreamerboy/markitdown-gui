@@ -1193,7 +1193,7 @@ def _find_text_in_http_ocr_payload(payload: object) -> str | None:
             value = payload.get(key)
             if isinstance(value, str):
                 return value
-            if isinstance(value, dict):
+            if isinstance(value, (dict, list)):
                 nested = _find_text_in_http_ocr_payload(value)
                 if nested is not None:
                     return nested
