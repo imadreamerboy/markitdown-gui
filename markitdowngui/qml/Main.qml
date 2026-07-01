@@ -89,9 +89,11 @@ ApplicationWindow {
     }
 
     function ocrFallbackIndex(provider) {
+        if (app.ocrProvider === "http" && provider === "http")
+            return 0
         if (provider === "azure_tesseract")
             return 1
-        if (provider === "http")
+        if (app.ocrProvider !== "http" && provider === "http")
             return 2
         return 0
     }
@@ -99,9 +101,21 @@ ApplicationWindow {
     function ocrFallbackFromIndex(index) {
         if (index === 1)
             return "azure_tesseract"
-        if (index === 2)
+        if (app.ocrProvider !== "http" && index === 2)
             return "http"
         return "none"
+    }
+
+    function ocrFallbackLabels() {
+        if (app.ocrProvider === "http")
+            return ["None", "Azure + Tesseract"]
+        return ["None", "Azure + Tesseract", "HTTP OCR"]
+    }
+
+    function ocrFallbackDetail() {
+        if (app.ocrProvider === "http")
+            return "Optional provider used if HTTP OCR fails or returns no text."
+        return "Optional provider used if GLM-OCR fails or returns no text."
     }
 
     function focusedTextControl() {
@@ -2048,6 +2062,20 @@ ApplicationWindow {
                 }
 
                 FieldGroup {
+                    label: "Fallback provider"
+                    detail: root.ocrFallbackDetail()
+                    visible: app.ocrEnabled && app.ocrProvider !== "azure_tesseract"
+                    Layout.fillWidth: true
+
+                    ThemeComboBox {
+                        model: root.ocrFallbackLabels()
+                        currentIndex: root.ocrFallbackIndex(app.ocrFallbackProvider)
+                        onActivated: index => app.setOcrFallbackProvider(root.ocrFallbackFromIndex(index))
+                        Layout.fillWidth: true
+                    }
+                }
+
+                FieldGroup {
                     label: "Provider capabilities"
                     visible: app.ocrEnabled
                     Layout.fillWidth: true
@@ -2249,19 +2277,6 @@ ApplicationWindow {
                 borderOpacity: dark ? 0.90 : 0.72
                 visible: app.ocrEnabled && app.ocrProvider === "glmocr"
                 Layout.fillWidth: true
-
-                FieldGroup {
-                    label: "Fallback provider"
-                    detail: "Optional provider used if GLM-OCR fails or returns no text."
-                    Layout.fillWidth: true
-
-                    ThemeComboBox {
-                        model: ["None", "Azure + Tesseract", "HTTP OCR"]
-                        currentIndex: root.ocrFallbackIndex(app.ocrFallbackProvider)
-                        onActivated: index => app.setOcrFallbackProvider(root.ocrFallbackFromIndex(index))
-                        Layout.fillWidth: true
-                    }
-                }
 
                 FieldGroup {
                     label: "Mode"

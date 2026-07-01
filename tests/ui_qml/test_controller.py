@@ -656,6 +656,38 @@ def test_controller_exposes_ocr_fallback_provider(controller):
     assert controller.ocrFallbackEnabled is True
 
 
+def test_controller_clears_same_provider_ocr_fallback(controller):
+    controller.setOcrProvider("glmocr")
+    controller.setOcrFallbackProvider("http")
+
+    controller.setOcrProvider("http")
+
+    assert controller.ocrProvider == "http"
+    assert controller.ocrFallbackProvider == "none"
+    assert controller.ocrFallbackEnabled is False
+
+
+def test_controller_clears_ocr_fallback_for_azure_primary(controller):
+    controller.setOcrProvider("glmocr")
+    controller.setOcrFallbackProvider("http")
+
+    controller.setOcrProvider("azure_tesseract")
+
+    assert controller.ocrProvider == "azure_tesseract"
+    assert controller.ocrFallbackProvider == "none"
+    assert controller.ocrFallbackEnabled is False
+
+
+def test_controller_preserves_different_ocr_fallback(controller):
+    controller.setOcrFallbackProvider("azure_tesseract")
+
+    controller.setOcrProvider("http")
+
+    assert controller.ocrProvider == "http"
+    assert controller.ocrFallbackProvider == "azure_tesseract"
+    assert controller.ocrFallbackEnabled is True
+
+
 def test_controller_exposes_ocr_provider_options_and_http_settings(controller):
     provider_ids = [option["id"] for option in controller.ocrProviderOptions]
 

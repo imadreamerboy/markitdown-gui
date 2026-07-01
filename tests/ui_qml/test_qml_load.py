@@ -59,3 +59,16 @@ def test_light_olive_tokens_do_not_leak_into_component_defaults():
     assert "#7C6F00" not in component_text
     assert "#E8EBC8" not in component_text
     assert 'dark ? Qt.color("#88C0D0") : Qt.color("#687700")' in main_text
+
+
+def test_ocr_fallback_selector_is_provider_independent():
+    qml_root = Path(__file__).resolve().parents[2] / "markitdowngui" / "qml"
+    main_text = (qml_root / "Main.qml").read_text(encoding="utf-8")
+
+    fallback_marker = 'label: "Fallback provider"'
+    glm_panel_marker = 'title: "GLM-OCR"'
+
+    assert main_text.count(fallback_marker) == 1
+    assert main_text.index(fallback_marker) < main_text.index(glm_panel_marker)
+    assert 'visible: app.ocrEnabled && app.ocrProvider !== "azure_tesseract"' in main_text
+    assert "model: root.ocrFallbackLabels()" in main_text

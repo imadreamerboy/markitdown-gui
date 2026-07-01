@@ -21,6 +21,7 @@ from markitdowngui.core.conversion import (
     GLMOCR_API_KEY_ENV_VAR,
     GLMOCR_MODE_OLLAMA,
     GLMOCR_MODE_SDK_SERVER,
+    OCR_PROVIDER_AZURE_TESSERACT,
     OCR_PROVIDER_GLMOCR,
     OCR_PROVIDER_HTTP,
     OCR_PROVIDER_NONE,
@@ -829,6 +830,13 @@ class AppController(QObject):
     @Slot(str)
     def setOcrProvider(self, provider: str) -> None:
         self.settings.set_ocr_provider(provider)
+        ocr_provider = self.settings.get_ocr_provider()
+        fallback_provider = self.settings.get_ocr_fallback_provider()
+        if (
+            ocr_provider == OCR_PROVIDER_AZURE_TESSERACT
+            or fallback_provider == ocr_provider
+        ):
+            self.settings.set_ocr_fallback_provider(OCR_PROVIDER_NONE)
         self.settingsChanged.emit()
         self.diagnosticsChanged.emit()
 
