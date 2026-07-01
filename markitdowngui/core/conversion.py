@@ -1187,11 +1187,11 @@ def _extract_http_ocr_response_text(response: requests.Response) -> str:
 
 def _find_text_in_http_ocr_payload(payload: object) -> str | None:
     if isinstance(payload, str):
-        return payload
+        return payload if payload.strip() else None
     if isinstance(payload, dict):
         for key in ("markdown", "text", "result", "content", "output"):
             value = payload.get(key)
-            if isinstance(value, str):
+            if isinstance(value, str) and value.strip():
                 return value
             if isinstance(value, (dict, list)):
                 nested = _find_text_in_http_ocr_payload(value)

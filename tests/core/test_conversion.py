@@ -1086,6 +1086,15 @@ def test_http_ocr_extracts_nested_response_text(conversion):
     assert conversion._extract_http_ocr_response_text(response) == "nested text"
 
 
+def test_http_ocr_skips_blank_fields_before_later_text(conversion):
+    response = types.SimpleNamespace(
+        headers={"content-type": "application/json"},
+        json=lambda: {"markdown": "  ", "text": "recognized text"},
+    )
+
+    assert conversion._extract_http_ocr_response_text(response) == "recognized text"
+
+
 def test_http_ocr_extracts_nested_list_response_text(conversion):
     response = types.SimpleNamespace(
         headers={"content-type": "application/json"},
