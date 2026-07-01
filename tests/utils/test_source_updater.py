@@ -25,9 +25,12 @@ def test_build_source_update_command_prefers_uv(tmp_path):
         uv_executable="uv",
     )
 
+    root_arg = source_updater.quote_command_arg(str(root))
+    python_arg = source_updater.quote_command_arg("C:/Python/python.exe")
+    uv_arg = source_updater.quote_command_arg("uv")
     assert command == (
-        f'git -C "{root}" pull --ff-only && '
-        f'uv pip install --python C:/Python/python.exe -e "{root}"'
+        f"git -C {root_arg} pull --ff-only && "
+        f"{uv_arg} pip install --python {python_arg} -e {root_arg}"
     )
 
 
@@ -41,10 +44,34 @@ def test_build_source_update_command_falls_back_to_python(tmp_path):
         uv_executable="",
     )
 
+    root_arg = source_updater.quote_command_arg(str(root))
+    python_arg = source_updater.quote_command_arg("python")
     assert command == (
-        f"git -C {root} pull --ff-only && "
-        f"python -m pip install -e {root}"
+        f"git -C {root_arg} pull --ff-only && "
+        f"{python_arg} -m pip install -e {root_arg}"
     )
+
+
+def test_build_source_update_command_quotes_shell_metacharacters(tmp_path):
+    root = tmp_path / "R&D;repo"
+    root.mkdir()
+
+    command = source_updater.build_source_update_command(
+        root,
+        python_executable="/opt/python&tools/python",
+        uv_executable="/opt/tools/u;v",
+    )
+
+    root_arg = source_updater.quote_command_arg(str(root))
+    python_arg = source_updater.quote_command_arg("/opt/python&tools/python")
+    uv_arg = source_updater.quote_command_arg("/opt/tools/u;v")
+    assert command == (
+        f"git -C {root_arg} pull --ff-only && "
+        f"{uv_arg} pip install --python {python_arg} -e {root_arg}"
+    )
+    assert root_arg != str(root)
+    assert python_arg != "/opt/python&tools/python"
+    assert uv_arg != "/opt/tools/u;v"
 
 
 def test_run_source_update_reports_progress_with_uv(monkeypatch, tmp_path):

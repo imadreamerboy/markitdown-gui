@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import shutil
+import shlex
 import subprocess
 import sys
 from collections.abc import Callable
@@ -31,8 +32,10 @@ def find_source_root(start: Path | None = None) -> Path | None:
 
 
 def quote_command_arg(value: str) -> str:
-    escaped = value.replace('"', r'\"')
-    return f'"{escaped}"' if any(char.isspace() for char in value) else escaped
+    if sys.platform == "win32":
+        escaped = value.replace('"', r'\"')
+        return f'"{escaped}"'
+    return shlex.quote(value)
 
 
 def build_source_update_command(
