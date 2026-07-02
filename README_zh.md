@@ -192,9 +192,12 @@ Release workflow 会把 Windows 和 Linux build 打包为平台专属 `.zip`，�
 
 ## 许可证
 
-本项目采用 **MIT License**。
+MarkItDown GUI 采用 **MIT License**。该许可证允许商业使用、私有使用、修改、
+再分发、再授权和销售，但需要保留版权和许可证声明。
 
-应用使用 `PySide6`/Qt，需遵守 Qt 的 LGPL/商业许可模式。此前的 `PySide6-Fluent-Widgets` 依赖已移除。
+第三方组件仍适用各自的许可证。应用使用 `PySide6`/Qt，需遵守 Qt 的
+LGPL/商业许可模式；源码和打包版本适用的运行时与依赖声明见
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)。
 
 ## 贡献
 
@@ -219,3 +222,4 @@ uv run pytest -q
 - MarkItDown ([MIT License](https://opensource.org/licenses/MIT))
 - PySide6 ([LGPLv3 License](https://www.gnu.org/licenses/lgpl-3.0.html))
 - Qt Quick Controls ([Qt documentation](https://doc.qt.io/qt-6/qtquickcontrols-index.html))
+- Lucide icons ([ISC License](https://lucide.dev/license))

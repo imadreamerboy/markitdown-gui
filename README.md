@@ -192,9 +192,14 @@ That build intentionally excludes the GLM-OCR self-hosted runtime stack; local h
 
 ## License
 
-Licensed under the **MIT License**.
+MarkItDown GUI is licensed under the **MIT License**. Commercial use, private
+use, modification, redistribution, sublicensing, and sale are permitted under
+that licence, subject to preserving the copyright and licence notice.
 
-The app uses `PySide6`/Qt under Qt's LGPL/commercial licensing model. The previous `PySide6-Fluent-Widgets` dependency has been removed.
+Third-party components keep their own licences. The app uses `PySide6`/Qt under
+Qt's LGPL/commercial licensing model; see
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) for the runtime and
+dependency notices that apply to source and packaged builds.
 
 ## Contributing
 
@@ -219,4 +224,5 @@ uv run pytest -q
 - MarkItDown ([MIT License](https://opensource.org/licenses/MIT))
 - PySide6 ([LGPLv3 License](https://www.gnu.org/licenses/lgpl-3.0.html))
 - Qt Quick Controls ([Qt documentation](https://doc.qt.io/qt-6/qtquickcontrols-index.html))
+- Lucide icons ([ISC License](https://lucide.dev/license))
 

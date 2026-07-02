@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools>=77.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -7,7 +7,8 @@ name = "markitdowngui"
 version = "0.1.0"
 description = "A GUI wrapper for MarkItDown to convert files to Markdown via drag-and-drop."
 authors = [{name = "imadreamerboy", email = "jonas@imadreamerboy.com"}]
-license = { file = "LICENSE" }
+license = "MIT"
+license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md"]
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [

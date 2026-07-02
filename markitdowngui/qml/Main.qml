@@ -2769,6 +2769,52 @@ ApplicationWindow {
             }
 
             UtilitySectionPanel {
+                title: "Licensing"
+                subtitle: "Terms for the app and bundled third-party components."
+
+                Label {
+                    text: "MarkItDown GUI is licensed under the MIT License. Commercial use, private use, modification, redistribution, sublicensing, and sale are permitted when the copyright and licence notice are preserved."
+                    color: colors.text
+                    font.pixelSize: 13
+                    wrapMode: Text.WordWrap
+                    Layout.fillWidth: true
+                }
+
+                Label {
+                    text: "Bundled dependencies keep their own terms. PySide6/Qt is used under Qt's LGPL/commercial licensing model, and packaged builds include third-party notices."
+                    color: colors.muted
+                    font.pixelSize: 12
+                    wrapMode: Text.WordWrap
+                    Layout.fillWidth: true
+                }
+
+                GridLayout {
+                    columns: helpPage.width < 640 ? 1 : 2
+                    columnSpacing: 10
+                    rowSpacing: 10
+                    Layout.fillWidth: true
+
+                    Repeater {
+                        model: [
+                            { label: "Project licence", url: "https://github.com/imadreamerboy/markitdown-gui/blob/main/LICENSE" },
+                            { label: "Third-party notices", url: "https://github.com/imadreamerboy/markitdown-gui/blob/main/THIRD_PARTY_NOTICES.md" }
+                        ]
+
+                        delegate: AppButton {
+                            text: modelData.label
+                            iconName: "external-link"
+                            accentColor: colors.action
+                            surfaceColor: colors.surfaceAlt
+                            borderColor: colors.border
+                            textColor: colors.text
+                            Layout.fillWidth: true
+                            onClicked: app.openExternalUrl(modelData.url)
+                        }
+                    }
+                }
+            }
+
+            UtilitySectionPanel {
                 title: "Diagnostics"
                 subtitle: "Useful when an update, OCR provider, or conversion fails."
 
