@@ -39,8 +39,15 @@ def main() -> int:
 
     QTimer.singleShot(500, controller.checkLastPackagedUpdateResult)
     QTimer.singleShot(2000, controller.startAutomaticUpdateCheck)
-    app.aboutToQuit.connect(controller.shutdown)
+    # aboutToQuit has no return value, while shutdown returns whether a QML
+    # close request should be accepted. Connecting the typed Boolean slot
+    # directly crashes PySide on macOS when it tries to marshal that result.
+    app.aboutToQuit.connect(lambda: _shutdown_without_result(controller))
     return app.exec()
+
+
+def _shutdown_without_result(controller: AppController) -> None:
+    controller.shutdown()
 
 
 def _configure_style() -> None:
