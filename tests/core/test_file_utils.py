@@ -68,4 +68,18 @@ def test_save_and_get_backup_dir(file_manager):
     
     assert os.path.exists(backup_path)
     with open(backup_path, "r", encoding="utf-8") as f:
-        assert f.read() == content 
+        assert f.read() == content
+
+
+def test_save_markdown_file_replaces_existing_content_without_temp_files(
+    file_manager,
+    tmp_path,
+):
+    output_path = tmp_path / "nested" / "report.md"
+    output_path.parent.mkdir()
+    output_path.write_text("old output", encoding="utf-8")
+
+    file_manager.save_markdown_file(str(output_path), "new output")
+
+    assert output_path.read_text(encoding="utf-8") == "new output"
+    assert list(output_path.parent.glob(".report.md.*.tmp")) == []

@@ -15,7 +15,7 @@ ApplicationWindow {
     title: "MarkItDown GUI"
     color: colors.window
     font.family: Qt.platform.os === "windows" ? "Segoe UI" : Qt.platform.os === "osx" ? ".AppleSystemUIFont" : "Noto Sans"
-    onClosing: close => close.accepted = app.shutdown()
+    onClosing: close => close.accepted = app.requestShutdown()
 
     property int pageIndex: 0
     property bool dark: app.darkMode
@@ -32,16 +32,16 @@ ApplicationWindow {
         border: dark ? Qt.color("#4C566A") : Qt.color("#D8CEB5"),
         text: dark ? Qt.color("#ECEFF4") : Qt.color("#073642"),
         muted: dark ? Qt.color("#D8DEE9") : Qt.color("#586E75"),
-        subtle: dark ? Qt.color("#AEB8C8") : Qt.color("#839496"),
+        subtle: dark ? Qt.color("#AEB8C8") : Qt.color("#5D6E72"),
         accent: dark ? Qt.color("#88C0D0") : Qt.color("#687700"),
         accentAlt: dark ? Qt.color("#8FBCBB") : Qt.color("#7C6F00"),
         action: dark ? Qt.color("#88C0D0") : Qt.color("#687700"),
         actionSoft: dark ? Qt.color("#415867") : Qt.color("#E8EBC8"),
         onAccent: dark ? Qt.color("#2E3440") : Qt.color("#FDF6E3"),
         onAction: dark ? Qt.color("#2E3440") : Qt.color("#FDF6E3"),
-        danger: dark ? Qt.color("#E8949C") : Qt.color("#DC322F"),
+        danger: dark ? Qt.color("#E8949C") : Qt.color("#C82624"),
         success: dark ? Qt.color("#A3BE8C") : Qt.color("#397D54"),
-        warning: dark ? Qt.color("#EBCB8B") : Qt.color("#B58900")
+        warning: dark ? Qt.color("#EBCB8B") : Qt.color("#7A5900")
     })
 
     function requestSave() {
@@ -86,6 +86,14 @@ ApplicationWindow {
         if (index === 2)
             return "http"
         return "azure_tesseract"
+    }
+
+    function ocrProviderLabel(provider) {
+        if (provider === "glmocr")
+            return "GLM-OCR"
+        if (provider === "http")
+            return "HTTP OCR"
+        return "Azure + Tesseract"
     }
 
     function ocrFallbackIndex(provider) {
@@ -169,6 +177,68 @@ ApplicationWindow {
         onAccepted: app.saveSeparateOutputs(selectedFolder)
     }
 
+    Dialog {
+        id: discardResultsDialog
+        property string actionDescription: ""
+
+        title: "Discard unsaved results?"
+        modal: true
+        focus: true
+        width: 440
+        standardButtons: Dialog.NoButton
+        closePolicy: Popup.CloseOnEscape
+        anchors.centerIn: parent
+        onRejected: app.cancelPendingResultDiscard()
+
+        background: Rectangle {
+            radius: root.panelRadius
+            color: colors.surface
+            border.color: colors.border
+        }
+
+        contentItem: Label {
+            text: "Successful conversion results have not been saved. Save them before you "
+                + discardResultsDialog.actionDescription + ", or explicitly discard them."
+            color: colors.text
+            wrapMode: Text.WordWrap
+            padding: 4
+        }
+
+        footer: Item {
+            implicitHeight: discardResultsButtons.implicitHeight + 20
+
+            RowLayout {
+                id: discardResultsButtons
+                anchors.fill: parent
+                anchors.margins: 10
+                spacing: 8
+
+                Item {
+                    Layout.fillWidth: true
+                }
+
+                AppButton {
+                    text: "Keep results"
+                    subtle: true
+                    accentColor: colors.action
+                    textColor: colors.text
+                    onClicked: discardResultsDialog.reject()
+                }
+
+                AppButton {
+                    text: "Discard results"
+                    primary: true
+                    accentColor: colors.danger
+                    primaryTextColor: colors.onAccent
+                    onClicked: {
+                        app.discardPendingResults()
+                        discardResultsDialog.accept()
+                    }
+                }
+            }
+        }
+    }
+
     FolderDialog {
         id: outputFolderDialog
         title: "Choose output folder"
@@ -203,6 +273,15 @@ ApplicationWindow {
             toast.message = message
             toast.visible = true
             toastTimer.restart()
+        }
+
+        function onDiscardResultsRequested(actionDescription) {
+            discardResultsDialog.actionDescription = actionDescription
+            discardResultsDialog.open()
+        }
+
+        function onCloseApproved() {
+            root.close()
         }
     }
 
@@ -299,6 +378,7 @@ ApplicationWindow {
                 iconName: "x"
                 accentColor: colors.action
                 textColor: colors.muted
+                Accessible.name: "Dismiss update notification"
                 ToolTip.visible: hovered
                 ToolTip.delay: 550
                 ToolTip.text: "Dismiss"
@@ -316,7 +396,7 @@ ApplicationWindow {
     }
 
     Shortcut {
-        sequence: "Ctrl+O"
+        sequence: StandardKey.Open
         context: Qt.ApplicationShortcut
         enabled: !app.converting
         onActivated: openFileDialog.open()
@@ -341,14 +421,14 @@ ApplicationWindow {
     }
 
     Shortcut {
-        sequence: "Ctrl+S"
+        sequence: StandardKey.Save
         context: Qt.ApplicationShortcut
-        enabled: app.hasSuccessfulResults && !app.selectedResultFailed
+        enabled: app.hasSuccessfulResults
         onActivated: root.requestSave()
     }
 
     Shortcut {
-        sequence: "Ctrl+C"
+        sequence: StandardKey.Copy
         context: Qt.ApplicationShortcut
         enabled: root.pageIndex === 0 && app.hasResults && !root.focusedTextControl()
         onActivated: app.copySelectedMarkdown()
@@ -364,7 +444,7 @@ ApplicationWindow {
     Shortcut {
         sequence: "Ctrl+L"
         context: Qt.ApplicationShortcut
-        enabled: !app.converting
+        enabled: root.pageIndex === 0 && !app.converting && !root.focusedTextControl()
         onActivated: app.clearQueue()
     }
 
@@ -498,6 +578,7 @@ ApplicationWindow {
         borderColor: colors.border
         focusColor: colors.action
         textColor: selected ? colors.text : colors.muted
+        Accessible.name: text + " preview" + (selected ? ", selected" : "")
     }
 
     component UtilitySectionPanel: SectionPanel {
@@ -550,7 +631,7 @@ ApplicationWindow {
         spacing: 8
 
         MetricPill {
-            label: "FILES"
+            label: "INPUTS"
             value: app.queueCount.toString()
             backgroundColor: "transparent"
             borderColor: colors.border
@@ -780,10 +861,12 @@ ApplicationWindow {
                     accentColor: colors.accent
                     textColor: colors.text
                     placeholderColor: colors.subtle
+                    Accessible.name: "Webpage URL"
+                    Accessible.description: "Enter an http or https webpage URL to convert"
                     Layout.fillWidth: true
                     onAccepted: {
-                        app.addUrl(text)
-                        text = ""
+                        if (app.addUrl(text))
+                            text = ""
                     }
                 }
 
@@ -796,9 +879,10 @@ ApplicationWindow {
                     surfaceColor: colors.surfaceAlt
                     borderColor: colors.border
                     textColor: colors.text
+                    Accessible.name: "Add webpage URL"
                     onClicked: {
-                        app.addUrl(compactUrlInput.text)
-                        compactUrlInput.text = ""
+                        if (app.addUrl(compactUrlInput.text))
+                            compactUrlInput.text = ""
                     }
                 }
             }
@@ -1004,6 +1088,7 @@ ApplicationWindow {
                                     iconName: "trash-2"
                                     accentColor: colors.action
                                     textColor: colors.muted
+                                    Accessible.name: "Remove " + name + " from queue"
                                     onClicked: app.removeQueued(index)
                                 }
                             }
@@ -1101,7 +1186,7 @@ ApplicationWindow {
 
                         ThemeToggleRow {
                             title: "OCR"
-                            detail: "Provider: " + (app.ocrProvider === "glmocr" ? "GLM-OCR" : "Azure + Tesseract") + ". Use for scanned or image-heavy inputs."
+                            detail: "Provider: " + root.ocrProviderLabel(app.ocrProvider) + ". Use for scanned or image-heavy inputs."
                             enabled: !app.converting
                             checked: app.ocrEnabled
                             textColor: colors.text
@@ -1252,13 +1337,15 @@ ApplicationWindow {
                     }
 
                     AppButton {
-                        text: "Cancel"
+                        text: "Stop after current"
                         enabled: app.converting
                         iconName: "x"
                         accentColor: colors.action
                         surfaceColor: colors.surfaceAlt
                         borderColor: colors.border
                         textColor: colors.text
+                        Accessible.name: "Stop after the current conversion"
+                        Accessible.description: "The active file finishes before remaining queued items are cancelled."
                         onClicked: app.cancel()
                     }
                 }
@@ -1299,42 +1386,106 @@ ApplicationWindow {
                 Layout.preferredWidth: 300
                 Layout.fillHeight: true
 
-                RowLayout {
+                Rectangle {
+                    visible: app.converting
+                    implicitHeight: activeResultControls.implicitHeight + 20
+                    radius: 8
+                    color: colors.surfaceAlt
+                    border.color: colors.border
                     Layout.fillWidth: true
 
-                    AppButton {
-                        text: "Back to queue"
-                        subtle: true
-                        iconName: "rotate-ccw"
-                        accentColor: colors.action
-                        textColor: colors.text
-                        onClicked: app.clearResults()
-                    }
+                    ColumnLayout {
+                        id: activeResultControls
+                        anchors.fill: parent
+                        anchors.margins: 10
+                        spacing: 7
 
-                    AppButton {
-                        text: "Start new"
-                        subtle: true
-                        iconName: "file-text"
-                        accentColor: colors.action
-                        textColor: colors.muted
-                        onClicked: {
-                            app.clearResults()
-                            app.clearQueue()
+                        Label {
+                            text: app.statusText
+                            color: colors.muted
+                            font.pixelSize: 12
+                            elide: Text.ElideMiddle
+                            Layout.fillWidth: true
+                        }
+
+                        ThemeProgressBar {
+                            value: app.progress
+                            Layout.fillWidth: true
+                        }
+
+                        RowLayout {
+                            spacing: 8
+                            Layout.fillWidth: true
+
+                            AppButton {
+                                text: app.paused ? "Resume" : "Pause"
+                                iconName: app.paused ? "play" : "pause"
+                                accentColor: colors.action
+                                surfaceColor: colors.surface
+                                borderColor: colors.border
+                                textColor: colors.text
+                                Layout.fillWidth: true
+                                onClicked: app.togglePause()
+                            }
+
+                            AppButton {
+                                text: "Stop after current"
+                                iconName: "x"
+                                accentColor: colors.action
+                                surfaceColor: colors.surface
+                                borderColor: colors.border
+                                textColor: colors.text
+                                Accessible.name: "Stop after the current conversion"
+                                Accessible.description: "The active file finishes before remaining queued items are cancelled."
+                                Layout.fillWidth: true
+                                onClicked: app.cancel()
+                            }
+                        }
+                    }
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 6
+
+                    RowLayout {
+                        Layout.fillWidth: true
+
+                        AppButton {
+                            text: "Back to queue"
+                            enabled: !app.converting
+                            subtle: true
+                            iconName: "rotate-ccw"
+                            accentColor: colors.action
+                            textColor: colors.text
+                            onClicked: app.backToQueue()
+                        }
+
+                        AppButton {
+                            text: "Start new"
+                            enabled: !app.converting
+                            subtle: true
+                            iconName: "file-text"
+                            accentColor: colors.action
+                            textColor: colors.muted
+                            onClicked: app.startNew()
+                        }
+
+                        Item {
+                            Layout.fillWidth: true
                         }
                     }
 
                     AppButton {
                         visible: app.hasFailedResults
-                        text: "Retry"
+                        enabled: !app.converting
+                        text: "Retry failed conversions"
                         subtle: true
                         iconName: "rotate-ccw"
                         accentColor: colors.danger
                         textColor: colors.danger
-                        onClicked: app.retryFailedResults()
-                    }
-
-                    Item {
                         Layout.fillWidth: true
+                        onClicked: app.retryFailedResults()
                     }
                 }
 
@@ -1374,7 +1525,7 @@ ApplicationWindow {
                                 : colors.border
                         border.width: activeFocus ? 2 : 1
                         Accessible.role: Accessible.ListItem
-                        Accessible.name: name + (failed ? ", failed conversion" : ", converted") + ", " + wordCount + " words"
+                        Accessible.name: name + (failed ? ", failed conversion" : ", converted, " + wordCount + " words")
 
                         Behavior on color {
                             ColorAnimation {
@@ -1461,6 +1612,7 @@ ApplicationWindow {
                                     }
 
                                     Label {
+                                        visible: !failed
                                         text: wordCount + " words"
                                         color: colors.muted
                                         font.pixelSize: 11
@@ -1529,8 +1681,8 @@ ApplicationWindow {
                         AppButton {
                             visible: !previewToolbar.compactActions
                             text: app.saveCombined ? "Save as one file" : "Save files"
-                            enabled: app.hasSuccessfulResults && !app.selectedResultFailed
-                            primary: !app.selectedResultFailed
+                            enabled: app.hasSuccessfulResults
+                            primary: app.hasSuccessfulResults
                             iconName: "save"
                             accentColor: colors.action
                             primaryTextColor: colors.onAction
@@ -1562,8 +1714,8 @@ ApplicationWindow {
 
                         AppButton {
                             text: "Save"
-                            enabled: app.hasSuccessfulResults && !app.selectedResultFailed
-                            primary: !app.selectedResultFailed
+                            enabled: app.hasSuccessfulResults
+                            primary: app.hasSuccessfulResults
                             iconName: "save"
                             accentColor: colors.action
                             primaryTextColor: colors.onAction
@@ -1889,6 +2041,7 @@ ApplicationWindow {
                         AppTextField {
                             text: app.outputFolder
                             placeholderText: "No default folder set"
+                            Accessible.name: "Default output folder"
                             surfaceColor: colors.input
                             borderColor: colors.border
                             accentColor: colors.accent
@@ -1929,17 +2082,14 @@ ApplicationWindow {
                     Layout.fillWidth: true
                 }
 
-                SettingsField {
-                    label: "Batch size"
-                    detail: "Limit how many sources convert in one worker batch."
+                ThemeToggleRow {
+                    title: "Update notifications"
+                    detail: "Show a notification when a new release is available."
+                    checked: app.updateNotificationsEnabled
+                    textColor: colors.text
+                    mutedTextColor: colors.muted
+                    onToggled: checked => app.setUpdateNotificationsEnabled(checked)
                     Layout.fillWidth: true
-
-                    ThemeSpinBox {
-                        from: 1
-                        to: 10
-                        value: app.batchSize
-                        onValueModified: app.setBatchSize(value)
-                    }
                 }
             }
 
@@ -1962,6 +2112,7 @@ ApplicationWindow {
                     Layout.fillWidth: true
 
                     ThemeComboBox {
+                        Accessible.name: "Application theme"
                         model: ["Solarized Light", "Nord Dark", "System"]
                         currentIndex: app.themeMode === "dark" ? 1 : app.themeMode === "system" ? 2 : 0
                         onActivated: index => app.setThemeMode(index === 1 ? "dark" : index === 2 ? "system" : "light")
@@ -2054,6 +2205,7 @@ ApplicationWindow {
                     Layout.fillWidth: true
 
                     ThemeComboBox {
+                        Accessible.name: "Primary OCR provider"
                         model: ["Azure + Tesseract", "GLM-OCR", "HTTP OCR"]
                         currentIndex: root.ocrProviderIndex(app.ocrProvider)
                         onActivated: index => app.setOcrProvider(root.ocrProviderFromIndex(index))
@@ -2068,6 +2220,7 @@ ApplicationWindow {
                     Layout.fillWidth: true
 
                     ThemeComboBox {
+                        Accessible.name: "Fallback OCR provider"
                         model: root.ocrFallbackLabels()
                         currentIndex: root.ocrFallbackIndex(app.ocrFallbackProvider)
                         onActivated: index => app.setOcrFallbackProvider(root.ocrFallbackFromIndex(index))
@@ -2181,6 +2334,7 @@ ApplicationWindow {
                     AppTextField {
                         text: app.docintelEndpoint
                         placeholderText: "https://example.cognitiveservices.azure.com/"
+                        Accessible.name: app.ocrProvider === "glmocr" ? "Fallback Azure endpoint" : "Azure endpoint"
                         surfaceColor: colors.input
                         borderColor: colors.border
                         accentColor: colors.accent
@@ -2200,6 +2354,7 @@ ApplicationWindow {
                     AppTextField {
                         text: app.ocrLanguages
                         placeholderText: "eng or eng+deu"
+                        Accessible.name: app.ocrProvider === "glmocr" ? "Fallback Tesseract languages" : "Tesseract languages"
                         surfaceColor: colors.input
                         borderColor: colors.border
                         accentColor: colors.accent
@@ -2219,6 +2374,7 @@ ApplicationWindow {
                     AppTextField {
                         text: app.tesseractPath
                         placeholderText: "Optional executable path"
+                        Accessible.name: app.ocrProvider === "glmocr" ? "Fallback Tesseract executable" : "Tesseract executable"
                         surfaceColor: colors.input
                         borderColor: colors.border
                         accentColor: colors.accent
@@ -2254,7 +2410,7 @@ ApplicationWindow {
 
                     AppButton {
                         text: "Test connection"
-                        iconName: "server"
+                        iconName: "external-link"
                         accentColor: colors.action
                         surfaceColor: colors.surfaceAlt
                         borderColor: colors.border
@@ -2288,6 +2444,7 @@ ApplicationWindow {
                     Layout.fillWidth: true
 
                     ThemeComboBox {
+                        Accessible.name: "GLM-OCR mode"
                         model: ["Official API", "Ollama", "SDK Server"]
                         currentIndex: app.glmocrMode === "ollama" ? 1 : app.glmocrMode === "sdk_server" ? 2 : 0
                         onActivated: index => app.setGlmocrMode(index === 1 ? "ollama" : index === 2 ? "sdk_server" : "maas")
@@ -2303,6 +2460,7 @@ ApplicationWindow {
                     AppTextField {
                         text: app.glmocrOllamaHost
                         placeholderText: "127.0.0.1"
+                        Accessible.name: "GLM-OCR Ollama host"
                         surfaceColor: colors.input
                         borderColor: colors.border
                         accentColor: colors.accent
@@ -2324,6 +2482,7 @@ ApplicationWindow {
                         Layout.fillWidth: false
 
                         ThemeSpinBox {
+                            Accessible.name: "GLM-OCR Ollama port"
                             from: 1
                             to: 65535
                             value: app.glmocrOllamaPort
@@ -2339,6 +2498,7 @@ ApplicationWindow {
                         AppTextField {
                             text: app.glmocrOllamaModel
                             placeholderText: "glm-ocr:latest"
+                            Accessible.name: "GLM-OCR Ollama model"
                             surfaceColor: colors.input
                             borderColor: colors.border
                             accentColor: colors.accent
@@ -2358,6 +2518,7 @@ ApplicationWindow {
                     AppTextField {
                         text: app.glmocrSdkServerUrl
                         placeholderText: "http://127.0.0.1:5002/glmocr/parse"
+                        Accessible.name: "GLM-OCR SDK server endpoint"
                         surfaceColor: colors.input
                         borderColor: colors.border
                         accentColor: colors.accent
@@ -2391,6 +2552,7 @@ ApplicationWindow {
                     AppTextField {
                         text: app.httpOcrEndpoint
                         placeholderText: "http://127.0.0.1:8000/ocr"
+                        Accessible.name: "HTTP OCR endpoint"
                         surfaceColor: colors.input
                         borderColor: colors.border
                         accentColor: colors.accent
@@ -2413,6 +2575,7 @@ ApplicationWindow {
                         AppTextField {
                             text: app.httpOcrModel
                             placeholderText: "surya, doctr, paddleocr, ..."
+                            Accessible.name: "HTTP OCR model"
                             surfaceColor: colors.input
                             borderColor: colors.border
                             accentColor: colors.accent
@@ -2430,6 +2593,7 @@ ApplicationWindow {
                         Layout.fillWidth: false
 
                         ThemeSpinBox {
+                            Accessible.name: "HTTP OCR timeout in seconds"
                             from: 1
                             to: 3600
                             value: app.httpOcrTimeoutSeconds
@@ -2447,6 +2611,7 @@ ApplicationWindow {
                     AppTextField {
                         text: app.httpOcrApiKeyEnv
                         placeholderText: "OCR_HTTP_API_KEY"
+                        Accessible.name: "HTTP OCR API key environment variable"
                         surfaceColor: colors.input
                         borderColor: colors.border
                         accentColor: colors.accent
@@ -2495,7 +2660,7 @@ ApplicationWindow {
 
                     AppButton {
                         text: "Import"
-                        iconName: "upload"
+                        iconName: "folder-plus"
                         accentColor: colors.action
                         surfaceColor: colors.surfaceAlt
                         borderColor: colors.border

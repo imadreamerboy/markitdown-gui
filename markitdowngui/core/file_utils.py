@@ -1,6 +1,24 @@
 import os
+from dataclasses import dataclass
+from pathlib import Path
+import tempfile
 from datetime import datetime
 from typing import List, Dict
+
+
+@dataclass
+class StagedMarkdownFile:
+    """A fully-written Markdown file awaiting an atomic replacement."""
+
+    destination: Path
+    temporary_path: Path
+
+    def commit(self) -> None:
+        os.replace(self.temporary_path, self.destination)
+
+    def abort(self) -> None:
+        if self.temporary_path.exists():
+            self.temporary_path.unlink()
 
 class FileManager:
     """Handles file operations and tracking of recent files."""
@@ -34,9 +52,33 @@ class FileManager:
 
     @staticmethod
     def save_markdown_file(filepath: str, content: str) -> None:
-        """Save markdown content to a file."""
-        with open(filepath, "w", encoding="utf-8") as f:
-            f.write(content)
+        """Atomically replace a Markdown file after its full contents are written."""
+        staged_file = FileManager.stage_markdown_file(filepath, content)
+        try:
+            staged_file.commit()
+        finally:
+            staged_file.abort()
+
+    @staticmethod
+    def stage_markdown_file(filepath: str, content: str) -> StagedMarkdownFile:
+        """Write Markdown beside its destination without replacing the current file."""
+        destination = Path(filepath)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        descriptor, temporary_path = tempfile.mkstemp(
+            prefix=f".{destination.name}.",
+            suffix=".tmp",
+            dir=destination.parent,
+        )
+        try:
+            with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+                handle.write(content)
+                handle.flush()
+                os.fsync(handle.fileno())
+        except Exception:
+            if os.path.exists(temporary_path):
+                os.unlink(temporary_path)
+            raise
+        return StagedMarkdownFile(destination, Path(temporary_path))
 
     @staticmethod
     def update_recent_list(filepath: str, recent_list: List[str], max_items: int = 10) -> List[str]:

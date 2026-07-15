@@ -75,6 +75,8 @@ Item {
             Layout.fillWidth: true
             implicitHeight: 56
             flat: true
+            Accessible.name: "Workspace"
+            Accessible.description: "Convert documents and webpages"
             onClicked: root.pageRequested(0)
             ToolTip.visible: hovered
             ToolTip.delay: 550
@@ -171,6 +173,8 @@ Item {
                 Layout.fillWidth: true
                 implicitHeight: 40
                 flat: true
+                Accessible.name: "Help"
+                Accessible.description: "Open help and keyboard shortcuts"
                 onClicked: root.pageRequested(2)
                 ToolTip.visible: hovered
                 ToolTip.delay: 550
@@ -231,6 +235,8 @@ Item {
                 Layout.fillWidth: true
                 implicitHeight: 40
                 flat: true
+                Accessible.name: "Settings"
+                Accessible.description: "Configure output, appearance, and OCR"
                 onClicked: root.pageRequested(1)
                 ToolTip.visible: hovered
                 ToolTip.delay: 550

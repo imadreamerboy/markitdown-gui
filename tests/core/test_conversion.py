@@ -1532,7 +1532,7 @@ def test_conversion_worker_tracks_failed_files_separately_from_result_text(
     monkeypatch,
     conversion,
 ):
-    def fake_convert_with_details(file_path, _options):
+    def fake_convert_with_details(file_path, _options, **_kwargs):
         if file_path == "failure.pdf":
             raise RuntimeError("azure unavailable")
         return conversion.ConversionOutcome(
@@ -1552,7 +1552,7 @@ def test_conversion_worker_tracks_failed_files_separately_from_result_text(
 
 
 def test_conversion_worker_tracks_processing_backends(monkeypatch, conversion):
-    def fake_convert_with_details(file_path, _options):
+    def fake_convert_with_details(file_path, _options, **_kwargs):
         backend = (
             conversion.BACKEND_AZURE
             if file_path.endswith(".pdf")
@@ -1584,6 +1584,47 @@ def test_conversion_worker_emits_finished_when_cancelled_while_paused(conversion
     worker.run()
 
     assert finished == [{}]
+
+
+def test_conversion_worker_reuses_markitdown_instance_for_native_files(
+    monkeypatch,
+    conversion,
+):
+    constructions: list[dict[str, object]] = []
+    converted: list[str] = []
+
+    class FakeMarkItDown:
+        def __init__(self, **kwargs):
+            constructions.append(kwargs)
+
+        def convert(self, file_path):
+            converted.append(file_path)
+            return types.SimpleNamespace(text_content=f"# {file_path}")
+
+    monkeypatch.setitem(
+        sys.modules,
+        "markitdown",
+        types.SimpleNamespace(MarkItDown=FakeMarkItDown),
+    )
+
+    worker = conversion.ConversionWorker(
+        ["first.txt", "second.txt", "third.txt"],
+        batch_size=10,
+    )
+    completed: list[tuple[str, bool]] = []
+    worker.itemFinished.connect(
+        lambda source, _outcome, failed: completed.append((source, failed))
+    )
+
+    worker.run()
+
+    assert constructions == [{}]
+    assert converted == ["first.txt", "second.txt", "third.txt"]
+    assert completed == [
+        ("first.txt", False),
+        ("second.txt", False),
+        ("third.txt", False),
+    ]
 
 
 def test_run_tesseract_ocr_resets_executable_path_when_custom_path_is_cleared(

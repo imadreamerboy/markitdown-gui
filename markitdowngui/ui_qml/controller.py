@@ -5,7 +5,7 @@ import re
 import sys
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from PySide6.QtCore import QObject, Property, QProcess, QThread, QUrl, Signal, Slot
 from PySide6.QtGui import QDesktopServices, QGuiApplication, QPalette, QTextDocument
@@ -26,6 +26,7 @@ from markitdowngui.core.conversion import (
     OCR_PROVIDER_HTTP,
     OCR_PROVIDER_NONE,
     ZHIPU_API_KEY_ENV_VAR,
+    ConversionOutcome,
     ConversionOptions,
     ConversionWorker,
     get_ocr_provider_specs,
@@ -40,10 +41,11 @@ from markitdowngui.core.input_sources import (
 )
 from markitdowngui.core.markdown_assets import (
     MarkdownSaveInput,
+    PreparedMarkdownAssets,
     cleanup_temp_asset_root,
     create_temp_asset_root,
-    prepare_combined_markdown_for_save,
-    prepare_markdown_for_separate_save,
+    prepare_combined_markdown_for_save_transaction,
+    prepare_markdown_for_separate_save_transaction,
     rewrite_markdown_for_preview,
 )
 from markitdowngui.core.settings import SettingsManager
@@ -160,6 +162,8 @@ class AppController(QObject):
     updateInstallChanged = Signal()
     sourceUpdateChanged = Signal()
     diagnosticsChanged = Signal()
+    discardResultsRequested = Signal(str)
+    closeApproved = Signal()
     toastRequested = Signal(str, str)
 
     def __init__(self) -> None:
@@ -176,7 +180,12 @@ class AppController(QObject):
         self._selected_result_index = -1
         self._preview_mode = "rendered"
         self._temp_asset_root: str | None = None
+        # Failed-only retries retain successful outputs, so their asset roots must
+        # outlive the next conversion worker until the result set is cleared.
+        self._temp_asset_roots: set[str] = set()
         self._cancel_requested = False
+        self._unsaved_result_sources: set[str] = set()
+        self._pending_result_discard: Callable[[], None] | None = None
         self._update_checker: UpdateChecker | None = None
         self._update_installer: PackagedUpdateInstaller | None = None
         self._update_check_manual = False
@@ -233,6 +242,13 @@ class AppController(QObject):
     @Property(bool, notify=resultsChanged)
     def hasSuccessfulResults(self) -> bool:
         return bool(self._successful_result_items())
+
+    @Property(bool, notify=resultsChanged)
+    def hasUnsavedSuccessfulResults(self) -> bool:
+        successful_sources = {
+            item.source for item in self._successful_result_items()
+        }
+        return bool(self._unsaved_result_sources & successful_sources)
 
     @Property(bool, notify=resultsChanged)
     def hasFailedResults(self) -> bool:
@@ -327,6 +343,10 @@ class AppController(QObject):
     @Property(bool, notify=settingsChanged)
     def saveToSourceFolder(self) -> bool:
         return self.settings.get_save_to_source_folder()
+
+    @Property(bool, notify=settingsChanged)
+    def updateNotificationsEnabled(self) -> bool:
+        return self.settings.get_update_notifications_enabled()
 
     @Property(int, notify=settingsChanged)
     def batchSize(self) -> int:
@@ -543,24 +563,45 @@ class AppController(QObject):
         if self._queue_change_locked():
             return
         sources = [path for path in self._paths_from_variant(values) if path]
+        if not self._has_new_queue_sources(sources):
+            return
+        if self._request_result_discard(
+            "add inputs to the queue",
+            lambda: self._add_files_to_queue(sources),
+        ):
+            return
+        self._add_files_to_queue(sources)
+
+    def _add_files_to_queue(self, sources: list[str]) -> None:
         added = self.queue_model.add_sources(sources)
         if added:
             self._clear_results_after_queue_change()
             self._set_status(f"Added {added} input{'s' if added != 1 else ''}")
             self.queueChanged.emit()
 
-    @Slot(str)
-    def addUrl(self, value: str) -> None:
+    @Slot(str, result=bool)
+    def addUrl(self, value: str) -> bool:
         url = value.strip()
         if not is_web_url(url):
             self.toastRequested.emit("error", "Enter a valid http:// or https:// URL.")
-            return
+            return False
         self.addFiles([url])
+        return True
 
     @Slot(int)
     def removeQueued(self, row: int) -> None:
         if self._queue_change_locked():
             return
+        if not 0 <= row < self.queue_model.rowCount():
+            return
+        if self._request_result_discard(
+            "change the queue",
+            lambda: self._remove_queued(row),
+        ):
+            return
+        self._remove_queued(row)
+
+    def _remove_queued(self, row: int) -> None:
         sources_before = self.queue_model.sources()
         self.queue_model.remove(row)
         if self.queue_model.sources() != sources_before:
@@ -571,6 +612,11 @@ class AppController(QObject):
     def clearQueue(self) -> None:
         if self._queue_change_locked():
             return
+        if self._request_result_discard("clear the queue", self._clear_queue):
+            return
+        self._clear_queue()
+
+    def _clear_queue(self) -> None:
         self.queue_model.clear()
         self._clear_results_after_queue_change()
         self.queueChanged.emit()
@@ -578,7 +624,41 @@ class AppController(QObject):
 
     @Slot()
     def clearResults(self) -> None:
+        self.backToQueue()
+
+    @Slot()
+    def backToQueue(self) -> None:
+        if self._queue_change_locked():
+            return
+        if self._request_result_discard("return to the queue", self._clear_results):
+            return
+        self._clear_results()
+
+    @Slot()
+    def startNew(self) -> None:
+        if self._queue_change_locked():
+            return
+        if self._request_result_discard("start a new conversion", self._start_new):
+            return
+        self._start_new()
+
+    def _start_new(self) -> None:
+        self._clear_queue()
+
+    @Slot()
+    def discardPendingResults(self) -> None:
+        action = self._pending_result_discard
+        self._pending_result_discard = None
+        if action is not None:
+            action()
+
+    @Slot()
+    def cancelPendingResultDiscard(self) -> None:
+        self._pending_result_discard = None
+
+    def _clear_results(self) -> None:
         self.result_model.clear()
+        self._unsaved_result_sources.clear()
         self._selected_result_index = -1
         self._progress = 0
         self._cleanup_temp_assets()
@@ -595,18 +675,31 @@ class AppController(QObject):
         if not failed_sources:
             self.toastRequested.emit("error", "No failed conversions to retry.")
             return
+        if not self._preflight_conversion():
+            return
+        self._retry_failed_results(failed_sources)
 
+    def _retry_failed_results(self, failed_sources: list[str]) -> None:
+        selected_item = self.result_model.item_at(self._selected_result_index)
+        selected_source = selected_item.source if selected_item else ""
         self.queue_model.clear()
         added = self.queue_model.add_sources(failed_sources)
-        self.clearResults()
-        self.queueChanged.emit()
-        self._set_status(
-            f"Queued {added} failed input{'s' if added != 1 else ''} for retry"
+        self.result_model.remove_sources(set(failed_sources))
+        remaining_sources = [item.source for item in self.result_model.items()]
+        self._selected_result_index = (
+            remaining_sources.index(selected_source)
+            if selected_source in remaining_sources
+            else 0 if remaining_sources else -1
         )
+        self.queueChanged.emit()
+        self.resultsChanged.emit()
+        self.selectedResultChanged.emit()
+        self.saveDefaultsChanged.emit()
         self.toastRequested.emit(
             "success",
-            f"Queued {added} failed input{'s' if added != 1 else ''} for retry.",
+            f"Retrying {added} failed input{'s' if added != 1 else ''}.",
         )
+        self._start_conversion(preserve_results=True, preflight_validated=True)
 
     @Slot()
     def convert(self) -> None:
@@ -617,7 +710,25 @@ class AppController(QObject):
             self.toastRequested.emit("error", "Add files or a website URL first.")
             return
 
-        self.clearResults()
+        if self._request_result_discard("start a new conversion", self._start_conversion):
+            return
+        self._start_conversion()
+
+    def _start_conversion(
+        self,
+        *,
+        preserve_results: bool = False,
+        preflight_validated: bool = False,
+    ) -> None:
+        sources = self.queue_model.sources()
+        if not sources:
+            return
+
+        if not preflight_validated and not self._preflight_conversion():
+            return
+
+        if not preserve_results:
+            self._clear_results()
         self._cancel_requested = False
         self.worker = ConversionWorker(
             files=sources,
@@ -625,6 +736,7 @@ class AppController(QObject):
             options=self._build_conversion_options(),
         )
         self.worker.progress.connect(self._handle_progress)
+        self.worker.itemFinished.connect(self._handle_item_finished)
         self.worker.finished.connect(self._handle_finished)
         self.worker.error.connect(lambda message: self.toastRequested.emit("error", message))
         self.worker.start()
@@ -715,18 +827,19 @@ class AppController(QObject):
             for item in items
         ]
         try:
-            output = prepare_combined_markdown_for_save(
+            prepared_output = prepare_combined_markdown_for_save_transaction(
                 documents,
                 output_path,
                 source_heading_template="## {source}",
             )
-            self.file_manager.save_markdown_file(output_path, output)
+            self._save_prepared_markdown(output_path, prepared_output)
             self.settings.set_recent_outputs(
                 self.file_manager.update_recent_list(
                     output_path,
                     self.settings.get_recent_outputs(),
                 )
             )
+            self._mark_results_saved({item.source for item in items})
             self.toastRequested.emit("success", f"Saved {Path(output_path).name}.")
         except Exception as exc:
             AppLogger.error(f"Failed saving combined output: {exc}")
@@ -752,6 +865,7 @@ class AppController(QObject):
             Path(fallback_dir).mkdir(parents=True, exist_ok=True)
 
         saved_paths: list[str] = []
+        saved_sources: set[str] = set()
         for item in items:
             output_dir = self._separate_output_dir(fallback_dir, item.source)
             if not output_dir:
@@ -760,17 +874,19 @@ class AppController(QObject):
             Path(output_dir).mkdir(parents=True, exist_ok=True)
             output_path = self._unique_output_path(output_dir, item.source)
             try:
-                markdown = prepare_markdown_for_separate_save(
+                prepared_output = prepare_markdown_for_separate_save_transaction(
                     item.outcome.markdown,
                     item.outcome.assets,
                     output_path,
                 )
-                self.file_manager.save_markdown_file(output_path, markdown)
+                self._save_prepared_markdown(output_path, prepared_output)
                 saved_paths.append(output_path)
+                saved_sources.add(item.source)
             except Exception as exc:
                 AppLogger.error(f"Failed saving {output_path}: {exc}")
 
         if saved_paths:
+            self._mark_results_saved(saved_sources)
             self.toastRequested.emit("success", f"Saved {len(saved_paths)} files.")
         else:
             self.toastRequested.emit("error", "No files were saved.")
@@ -1046,7 +1162,11 @@ class AppController(QObject):
 
     @Slot()
     def disableUpdateNotifications(self) -> None:
-        self.settings.set_update_notifications_enabled(False)
+        self.setUpdateNotificationsEnabled(False)
+
+    @Slot(bool)
+    def setUpdateNotificationsEnabled(self, enabled: bool) -> None:
+        self.settings.set_update_notifications_enabled(bool(enabled))
         self.settingsChanged.emit()
         self.diagnosticsChanged.emit()
         self.dismissUpdateNotification()
@@ -1740,13 +1860,17 @@ class AppController(QObject):
     def _clear_update_checker(self) -> None:
         self._update_checker = None
 
-    def _build_conversion_options(self) -> ConversionOptions:
+    def _build_conversion_options(
+        self,
+        *,
+        create_asset_root: bool = True,
+    ) -> ConversionOptions:
         artifacts_dir = ""
         preserve_pdf_images = self.settings.get_preserve_pdf_images()
         preserve_docx_images = self.settings.get_preserve_docx_images()
-        if preserve_pdf_images or preserve_docx_images:
-            self._cleanup_temp_assets()
+        if create_asset_root and (preserve_pdf_images or preserve_docx_images):
             self._temp_asset_root = str(create_temp_asset_root())
+            self._temp_asset_roots.add(self._temp_asset_root)
             artifacts_dir = self._temp_asset_root
 
         return ConversionOptions(
@@ -1777,12 +1901,33 @@ class AppController(QObject):
         self._set_status(f"Converting {Path(current_source).name or current_source}")
         self.progressChanged.emit()
 
+    def _handle_item_finished(
+        self,
+        source: str,
+        outcome: ConversionOutcome,
+        failed: bool,
+    ) -> None:
+        self.result_model.add_result(source, outcome, failed=failed)
+        if not failed:
+            self._unsaved_result_sources.add(source)
+        if self._selected_result_index < 0:
+            self._selected_result_index = 0
+        self.resultsChanged.emit()
+        self.selectedResultChanged.emit()
+        self.saveDefaultsChanged.emit()
+
     def _handle_finished(self, results: dict) -> None:
         worker = self.worker
         was_cancelled = self._cancel_requested or bool(worker and worker.is_cancelled)
         failed = set(worker.failed_files) if worker else set()
-        self.result_model.set_results(results, failed)
-        self._selected_result_index = 0 if results else -1
+        completed_sources = {item.source for item in self.result_model.items()}
+        for source, outcome in results.items():
+            item_failed = source in failed
+            self.result_model.add_result(source, outcome, failed=item_failed)
+            if not item_failed and source not in completed_sources:
+                self._unsaved_result_sources.add(source)
+        if self._selected_result_index < 0:
+            self._selected_result_index = 0 if results else -1
         self._converting = False
         self._paused = False
         self._progress = self._progress if was_cancelled else 100 if results else 0
@@ -1841,10 +1986,87 @@ class AppController(QObject):
     def _clear_results_after_queue_change(self) -> None:
         if self.result_model.rowCount() == 0:
             return
-        self.clearResults()
+        self._clear_results()
+
+    def _has_new_queue_sources(self, sources: list[str]) -> bool:
+        existing = set(self.queue_model.sources())
+        return any(source not in existing for source in sources)
+
+    def _request_result_discard(
+        self,
+        action_description: str,
+        action: Callable[[], None],
+    ) -> bool:
+        if not self.hasUnsavedSuccessfulResults:
+            return False
+        if self._pending_result_discard is None:
+            self._pending_result_discard = action
+            self.discardResultsRequested.emit(action_description)
+        return True
+
+    @Slot(result=bool)
+    def requestShutdown(self) -> bool:
+        if self._request_result_discard(
+            "close the application",
+            self._discard_results_and_close,
+        ):
+            return False
+        return self.shutdown()
+
+    def _discard_results_and_close(self) -> None:
+        if not self.shutdown():
+            return
+        self._clear_results()
+        self.closeApproved.emit()
+
+    def _preflight_conversion(self) -> bool:
+        preflight_options = self._build_conversion_options(create_asset_root=False)
+        if not preflight_options.ocr_enabled:
+            return True
+        preflight = validate_ocr_setup(preflight_options)
+        if preflight.ok:
+            return True
+        self._set_status("OCR setup needs attention")
+        self.toastRequested.emit("error", preflight.message)
+        return False
+
+    def _mark_results_saved(self, sources: set[str]) -> None:
+        if not self._unsaved_result_sources.intersection(sources):
+            return
+        self._unsaved_result_sources.difference_update(sources)
+        if not self.hasUnsavedSuccessfulResults:
+            self._pending_result_discard = None
+        self.resultsChanged.emit()
+
+    def _save_prepared_markdown(
+        self,
+        output_path: str,
+        prepared_output: PreparedMarkdownAssets,
+    ) -> None:
+        staged_markdown = None
+        try:
+            staged_markdown = self.file_manager.stage_markdown_file(
+                output_path,
+                prepared_output.markdown,
+            )
+            prepared_output.commit_assets()
+            staged_markdown.commit()
+        except Exception:
+            prepared_output.rollback_assets()
+            raise
+        else:
+            prepared_output.finalize_assets()
+        finally:
+            if staged_markdown is not None:
+                staged_markdown.abort()
 
     def _cleanup_temp_assets(self) -> None:
-        cleanup_temp_asset_root(self._temp_asset_root)
+        asset_roots = set(self._temp_asset_roots)
+        if self._temp_asset_root:
+            asset_roots.add(self._temp_asset_root)
+        for asset_root in asset_roots:
+            cleanup_temp_asset_root(asset_root)
+        self._temp_asset_roots.clear()
         self._temp_asset_root = None
 
     def _paths_from_variant(self, values: Any) -> list[str]:

@@ -174,6 +174,39 @@ class ResultModel(QAbstractListModel):
         ]
         self.endResetModel()
 
+    def add_result(
+        self,
+        source: str,
+        outcome: ConversionOutcome,
+        *,
+        failed: bool = False,
+    ) -> None:
+        """Append or replace one completed conversion without resetting the model."""
+        item = ResultItem(source, outcome, failed)
+        for row, existing in enumerate(self._items):
+            if existing.source != source:
+                continue
+            self._items[row] = item
+            model_index = self.index(row, 0)
+            self.dataChanged.emit(model_index, model_index)
+            return
+
+        row = len(self._items)
+        self.beginInsertRows(QModelIndex(), row, row)
+        self._items.append(item)
+        self.endInsertRows()
+
+    def remove_sources(self, sources: set[str]) -> None:
+        """Remove completed entries that are about to be retried."""
+        if not sources:
+            return
+        remaining = [item for item in self._items if item.source not in sources]
+        if len(remaining) == len(self._items):
+            return
+        self.beginResetModel()
+        self._items = remaining
+        self.endResetModel()
+
     def clear(self) -> None:
         if not self._items:
             return
