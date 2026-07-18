@@ -162,11 +162,40 @@ def test_controller_add_url_rejects_invalid_url(controller):
 
 
 def test_controller_add_url_queues_valid_url(controller):
-    controller.addUrl("https://example.com/article")
+    assert controller.addUrl("https://example.com/article") is True
 
     assert controller.queue_model.sources() == ["https://example.com/article"]
     assert controller.hasQueue is True
     assert controller.queueCount == 1
+
+
+def test_controller_add_url_waits_for_discard_confirmation(controller, tmp_path):
+    source = str(tmp_path / "existing.pdf")
+    url = "https://example.com/article"
+    controller.addFiles([source])
+    _complete_results(
+        controller,
+        {source: ConversionOutcome("# Existing", backend="native")},
+    )
+    requests: list[str] = []
+    queued_urls: list[str] = []
+    controller.discardResultsRequested.connect(requests.append)
+    controller.urlQueued.connect(queued_urls.append)
+
+    assert controller.addUrl(url) is False
+    assert requests == ["add inputs to the queue"]
+    assert queued_urls == []
+
+    controller.cancelPendingResultDiscard()
+
+    assert controller.queue_model.sources() == [source]
+    assert queued_urls == []
+
+    assert controller.addUrl(url) is False
+    controller.discardPendingResults()
+
+    assert controller.queue_model.sources() == [source, url]
+    assert queued_urls == [url]
 
 
 def test_controller_auto_update_check_respects_disabled_setting(controller, monkeypatch):
@@ -1831,6 +1860,32 @@ def test_controller_save_separate_skips_failed_results(controller, tmp_path):
     assert controller.hasUnsavedSuccessfulResults is False
 
 
+def test_controller_save_separate_reports_partial_save_failures(controller, tmp_path, monkeypatch):
+    output_dir = tmp_path / "exports"
+    _complete_results(
+        controller,
+        {
+            "C:/tmp/ok.pdf": ConversionOutcome("# Converted", backend="native"),
+            "C:/tmp/fail.pdf": ConversionOutcome("# Also converted", backend="native"),
+        },
+    )
+    original_save = controller._save_prepared_markdown
+
+    def fail_one_output(output_path, prepared_output):
+        if output_path.endswith("fail.md"):
+            raise OSError("disk full")
+        original_save(output_path, prepared_output)
+
+    monkeypatch.setattr(controller, "_save_prepared_markdown", fail_one_output)
+    messages: list[tuple[str, str]] = []
+    controller.toastRequested.connect(lambda kind, message: messages.append((kind, message)))
+
+    controller.saveSeparateOutputs(str(output_dir))
+
+    assert messages == [("error", "Saved 1 file; 1 file failed to save.")]
+    assert controller.hasUnsavedSuccessfulResults is True
+
+
 def test_controller_restores_asset_root_when_markdown_replace_fails(
     controller,
     monkeypatch,
@@ -2357,4 +2412,3 @@ def test_controller_exposes_selected_failed_result(controller):
 
     controller.selectResult(1)
     assert controller.selectedResultFailed is True
-

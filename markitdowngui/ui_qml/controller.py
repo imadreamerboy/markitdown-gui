@@ -164,6 +164,7 @@ class AppController(QObject):
     diagnosticsChanged = Signal()
     discardResultsRequested = Signal(str)
     closeApproved = Signal()
+    urlQueued = Signal(str)
     toastRequested = Signal(str, str)
 
     def __init__(self) -> None:
@@ -558,26 +559,32 @@ class AppController(QObject):
     def sourceUpdateStatus(self) -> str:
         return self._source_update_status
 
-    @Slot("QVariant")
-    def addFiles(self, values: Any) -> None:
+    @Slot("QVariant", result=bool)
+    def addFiles(self, values: Any) -> bool:
         if self._queue_change_locked():
-            return
+            return False
         sources = [path for path in self._paths_from_variant(values) if path]
         if not self._has_new_queue_sources(sources):
-            return
+            return False
         if self._request_result_discard(
             "add inputs to the queue",
             lambda: self._add_files_to_queue(sources),
         ):
-            return
-        self._add_files_to_queue(sources)
+            return False
+        return self._add_files_to_queue(sources)
 
-    def _add_files_to_queue(self, sources: list[str]) -> None:
+    def _add_files_to_queue(self, sources: list[str]) -> bool:
+        existing_sources = set(self.queue_model.sources())
         added = self.queue_model.add_sources(sources)
-        if added:
-            self._clear_results_after_queue_change()
-            self._set_status(f"Added {added} input{'s' if added != 1 else ''}")
-            self.queueChanged.emit()
+        if not added:
+            return False
+        self._clear_results_after_queue_change()
+        self._set_status(f"Added {added} input{'s' if added != 1 else ''}")
+        self.queueChanged.emit()
+        for source in sources:
+            if source not in existing_sources and is_web_url(source):
+                self.urlQueued.emit(source)
+        return True
 
     @Slot(str, result=bool)
     def addUrl(self, value: str) -> bool:
@@ -585,8 +592,7 @@ class AppController(QObject):
         if not is_web_url(url):
             self.toastRequested.emit("error", "Enter a valid http:// or https:// URL.")
             return False
-        self.addFiles([url])
-        return True
+        return self.addFiles([url])
 
     @Slot(int)
     def removeQueued(self, row: int) -> None:
@@ -865,6 +871,7 @@ class AppController(QObject):
             Path(fallback_dir).mkdir(parents=True, exist_ok=True)
 
         saved_paths: list[str] = []
+        failed_paths: list[str] = []
         saved_sources: set[str] = set()
         for item in items:
             output_dir = self._separate_output_dir(fallback_dir, item.source)
@@ -884,8 +891,18 @@ class AppController(QObject):
                 saved_sources.add(item.source)
             except Exception as exc:
                 AppLogger.error(f"Failed saving {output_path}: {exc}")
+                failed_paths.append(output_path)
 
-        if saved_paths:
+        if saved_paths and failed_paths:
+            self._mark_results_saved(saved_sources)
+            saved_label = "file" if len(saved_paths) == 1 else "files"
+            failed_label = "file" if len(failed_paths) == 1 else "files"
+            self.toastRequested.emit(
+                "error",
+                f"Saved {len(saved_paths)} {saved_label}; "
+                f"{len(failed_paths)} {failed_label} failed to save.",
+            )
+        elif saved_paths:
             self._mark_results_saved(saved_sources)
             self.toastRequested.emit("success", f"Saved {len(saved_paths)} files.")
         else:
@@ -2226,4 +2243,3 @@ class AppController(QObject):
     def translate(self, key: str) -> str:
         lang = self.settings.get_current_language() or DEFAULT_LANG
         return get_translation(lang, key)
-

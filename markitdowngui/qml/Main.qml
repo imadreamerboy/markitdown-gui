@@ -870,6 +870,15 @@ ApplicationWindow {
                     }
                 }
 
+                Connections {
+                    target: app
+
+                    function onUrlQueued(url) {
+                        if (compactUrlInput.text.trim() === url)
+                            compactUrlInput.text = ""
+                    }
+                }
+
                 AppButton {
                     text: "Add webpage"
                     enabled: !app.converting

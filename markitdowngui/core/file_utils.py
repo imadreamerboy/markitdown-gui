@@ -1,7 +1,8 @@
 import os
 from dataclasses import dataclass
 from pathlib import Path
-import tempfile
+import stat
+from secrets import token_hex
 from datetime import datetime
 from typing import List, Dict
 
@@ -64,22 +65,26 @@ class FileManager:
         """Write Markdown beside its destination without replacing the current file."""
         destination = Path(filepath)
         destination.parent.mkdir(parents=True, exist_ok=True)
-        descriptor, temporary_path = tempfile.mkstemp(
-            prefix=f".{destination.name}.",
-            suffix=".tmp",
-            dir=destination.parent,
-        )
+        descriptor, temporary_path = _create_staged_file(destination)
         try:
+            if (
+                os.name != "nt"
+                and destination.exists()
+                and not destination.is_symlink()
+            ):
+                os.fchmod(descriptor, stat.S_IMODE(destination.stat().st_mode))
             with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+                descriptor = -1
                 handle.write(content)
                 handle.flush()
                 os.fsync(handle.fileno())
         except Exception:
+            if descriptor != -1:
+                os.close(descriptor)
             if os.path.exists(temporary_path):
                 os.unlink(temporary_path)
             raise
         return StagedMarkdownFile(destination, Path(temporary_path))
-
     @staticmethod
     def update_recent_list(filepath: str, recent_list: List[str], max_items: int = 10) -> List[str]:
         """Update a list of recent files."""
@@ -87,3 +92,19 @@ class FileManager:
             recent_list.remove(filepath)
         recent_list.insert(0, filepath)
         return recent_list[:max_items]
+
+
+def _create_staged_file(destination: Path) -> tuple[int, str]:
+    """Create an exclusive staged file using the user's normal file mode."""
+    for _ in range(10):
+        temporary_path = destination.parent / f".{destination.name}.{token_hex(16)}.tmp"
+        try:
+            descriptor = os.open(
+                temporary_path,
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+                0o666,
+            )
+        except FileExistsError:
+            continue
+        return descriptor, str(temporary_path)
+    raise FileExistsError(f"Could not create a temporary Markdown file for {destination}")

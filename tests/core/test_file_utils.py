@@ -1,5 +1,7 @@
 import os
+import stat
 import pytest
+from markitdowngui.core import file_utils
 from markitdowngui.core.file_utils import FileManager
 
 @pytest.fixture
@@ -83,3 +85,42 @@ def test_save_markdown_file_replaces_existing_content_without_temp_files(
 
     assert output_path.read_text(encoding="utf-8") == "new output"
     assert list(output_path.parent.glob(".report.md.*.tmp")) == []
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX permissions are not portable to Windows")
+def test_save_markdown_file_preserves_existing_permissions(file_manager, tmp_path):
+    output_path = tmp_path / "report.md"
+    output_path.write_text("old output", encoding="utf-8")
+    output_path.chmod(0o640)
+
+    file_manager.save_markdown_file(str(output_path), "new output")
+
+    assert stat.S_IMODE(output_path.stat().st_mode) == 0o640
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX permissions are not portable to Windows")
+def test_stage_markdown_file_closes_descriptor_when_permission_setup_fails(
+    file_manager,
+    tmp_path,
+    monkeypatch,
+):
+    output_path = tmp_path / "report.md"
+    output_path.write_text("old output", encoding="utf-8")
+    closed_descriptors: list[int] = []
+    original_close = os.close
+
+    def fail_fchmod(_descriptor, _mode):
+        raise OSError("permission setup failed")
+
+    def track_close(descriptor):
+        closed_descriptors.append(descriptor)
+        original_close(descriptor)
+
+    monkeypatch.setattr(file_utils.os, "fchmod", fail_fchmod)
+    monkeypatch.setattr(file_utils.os, "close", track_close)
+
+    with pytest.raises(OSError, match="permission setup failed"):
+        file_manager.stage_markdown_file(str(output_path), "new output")
+
+    assert len(closed_descriptors) == 1
+    assert list(tmp_path.glob(".report.md.*.tmp")) == []
