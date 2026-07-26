@@ -444,6 +444,46 @@ def test_controller_installs_supported_preferred_update(controller, monkeypatch)
     assert controller.hasUpdateNotification is False
 
 
+def test_controller_confirms_before_starting_update_with_unsaved_results(
+    controller, monkeypatch, tmp_path
+):
+    source = str(tmp_path / "result.pdf")
+    _complete_results(
+        controller,
+        {source: ConversionOutcome("# Converted", backend="native")},
+    )
+    asset = {
+        "url": "https://example.com/windows.zip",
+        "installSupported": True,
+    }
+    controller._preferred_release_asset = asset
+    requests: list[str] = []
+    created: list[dict[str, object]] = []
+    quit_calls: list[None] = []
+    controller.discardResultsRequested.connect(requests.append)
+    monkeypatch.setattr(
+        controller,
+        "_create_update_installer",
+        lambda asset: created.append(asset) or _FakeUpdateInstaller(),
+    )
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.QGuiApplication.quit",
+        lambda: quit_calls.append(None),
+    )
+
+    controller.installPreferredUpdate()
+
+    assert requests == ["install the update and close the application"]
+    assert created == []
+    assert quit_calls == []
+
+    controller.discardPendingResults()
+
+    assert controller.hasResults is False
+    assert created == [asset]
+    assert quit_calls == [None]
+
+
 def test_packaged_update_installer_emits_progress_and_success(monkeypatch):
     progress: list[tuple[str, int]] = []
     started: list[None] = []
@@ -934,6 +974,36 @@ def test_controller_skips_ocr_preflight_without_ocr_inputs(controller, monkeypat
     )
 
     assert controller._preflight_conversion() is True
+
+
+def test_controller_preflights_only_failed_inputs_before_retry(controller, monkeypatch):
+    pdf_source = "C:/tmp/successful.pdf"
+    url_source = "https://example.com/retry"
+    controller.addFiles([pdf_source, url_source])
+    _complete_results(
+        controller,
+        {
+            pdf_source: ConversionOutcome("# PDF", backend="native"),
+            url_source: ConversionOutcome("# Failed", backend="defuddle"),
+        },
+        failed_sources={url_source},
+    )
+    controller.setOcrEnabled(True)
+    starts: list[dict[str, bool]] = []
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.validate_ocr_setup",
+        lambda _options: pytest.fail("the failed URL does not need OCR setup"),
+    )
+    monkeypatch.setattr(
+        controller,
+        "_start_conversion",
+        lambda **kwargs: starts.append(kwargs),
+    )
+
+    controller.retryFailedResults()
+
+    assert controller.queue_model.sources() == [url_source]
+    assert starts == [{"preserve_results": True, "preflight_validated": True}]
 
 
 def test_controller_tests_ocr_connection(controller, monkeypatch):
@@ -2017,9 +2087,9 @@ def test_controller_restores_asset_root_when_markdown_replace_fails(
 
     assert output_path.read_text(encoding="utf-8") == old_markdown
     assert (tmp_path / "report_assets" / "page.png").read_bytes() == b"old asset"
-    assert not list(tmp_path.glob(".report_assets.*.backup"))
-    assert not list(tmp_path.glob(".report_assets.*.staging"))
-    assert not list(tmp_path.glob(".report.md.*.tmp"))
+    assert not list(tmp_path.glob(".markitdowngui-assets-*.backup"))
+    assert not list(tmp_path.glob(".markitdowngui-assets-*.staging"))
+    assert not list(tmp_path.glob(".markitdowngui-*.tmp"))
 
 
 def test_controller_restores_owned_assets_when_asset_free_save_fails(
@@ -2065,7 +2135,7 @@ def test_controller_restores_owned_assets_when_asset_free_save_fails(
 
     assert output_path.read_text(encoding="utf-8") == old_markdown
     assert (tmp_path / "report_assets" / "page.png").read_bytes() == b"old asset"
-    assert not list(tmp_path.glob(".report_assets.*.backup"))
+    assert not list(tmp_path.glob(".markitdowngui-assets-*.backup"))
 
 
 def test_controller_save_all_failed_results_reports_no_success(controller, tmp_path):

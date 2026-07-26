@@ -683,7 +683,7 @@ class AppController(QObject):
         if not failed_sources:
             self.toastRequested.emit("error", "No failed conversions to retry.")
             return
-        if not self._preflight_conversion():
+        if not self._preflight_conversion(failed_sources):
             return
         self._retry_failed_results(failed_sources)
 
@@ -1227,6 +1227,16 @@ class AppController(QObject):
                 self.toastRequested.emit("error", reason)
             self.openReleaseAsset(str(self._preferred_release_asset.get("url") or ""))
             return
+        if self._request_result_discard(
+            "install the update and close the application",
+            lambda: self._discard_results_and_continue(
+                self._start_preferred_update_install
+            ),
+        ):
+            return
+        self._start_preferred_update_install()
+
+    def _start_preferred_update_install(self) -> None:
         self._update_install_running = True
         self._update_install_progress = 0
         self._update_install_status = "Preparing update"
@@ -2056,11 +2066,11 @@ class AppController(QObject):
         self._clear_results()
         self.closeApproved.emit()
 
-    def _preflight_conversion(self) -> bool:
+    def _preflight_conversion(self, sources: list[str] | None = None) -> bool:
         preflight_options = self._build_conversion_options(create_asset_root=False)
         if (
             not preflight_options.ocr_enabled
-            or not self._queue_has_ocr_input()
+            or not self._queue_has_ocr_input(sources)
         ):
             return True
         preflight = validate_ocr_setup(preflight_options)
@@ -2070,11 +2080,13 @@ class AppController(QObject):
         self.toastRequested.emit("error", preflight.message)
         return False
 
-    def _queue_has_ocr_input(self) -> bool:
+    def _queue_has_ocr_input(self, sources: list[str] | None = None) -> bool:
         return any(
             not is_web_url(source)
             and Path(source).suffix.lower() in (IMAGE_EXTENSIONS | {PDF_EXTENSION})
-            for source in self.queue_model.sources()
+            for source in (
+                self.queue_model.sources() if sources is None else sources
+            )
         )
 
     def _mark_results_saved(self, sources: set[str]) -> None:

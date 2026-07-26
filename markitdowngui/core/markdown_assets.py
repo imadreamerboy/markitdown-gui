@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
-import os
 from pathlib import Path
+from secrets import token_hex
 import shutil
 import tempfile
 from typing import Protocol, Sequence
@@ -276,24 +276,18 @@ def _documents_have_copyable_assets(documents: Sequence[MarkdownSaveInput]) -> b
 
 def _create_asset_root_staging_directory(asset_root: Path) -> Path:
     asset_root.parent.mkdir(parents=True, exist_ok=True)
-    staging_root = Path(
-        tempfile.mkdtemp(
-            prefix=f".{asset_root.name}.",
-            suffix=".staging",
-            dir=asset_root.parent,
+    for _ in range(10):
+        staging_root = asset_root.parent / (
+            f".markitdowngui-assets-{token_hex(16)}.staging"
         )
-    )
-    if os.name == "nt":
+        try:
+            staging_root.mkdir(mode=0o777)
+        except FileExistsError:
+            continue
         return staging_root
-
-    current_umask = os.umask(0)
-    os.umask(current_umask)
-    try:
-        staging_root.chmod(0o777 & ~current_umask)
-    except Exception:
-        shutil.rmtree(staging_root, ignore_errors=True)
-        raise
-    return staging_root
+    raise FileExistsError(
+        f"Could not create a staging asset directory for {asset_root}"
+    )
 
 
 def _ensure_asset_root_can_be_replaced(asset_root: Path) -> None:
@@ -308,7 +302,7 @@ def _ensure_asset_root_can_be_replaced(asset_root: Path) -> None:
 
 
 def _asset_root_backup_path(asset_root: Path) -> Path:
-    return asset_root.with_name(f".{asset_root.name}.{uuid4().hex}.backup")
+    return asset_root.with_name(f".markitdowngui-assets-{uuid4().hex}.backup")
 
 
 def _remove_owned_transaction_asset_root(asset_root: Path) -> None:

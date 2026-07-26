@@ -90,6 +90,33 @@ def test_prepare_markdown_for_separate_save_uses_normal_directory_permissions(
     assert asset_root_mode == 0o777 & ~current_umask
 
 
+@pytest.mark.skipif(
+    os.name == "nt", reason="POSIX path limits are not portable to Windows"
+)
+def test_prepare_markdown_for_separate_save_supports_long_asset_root_names(tmp_path):
+    name_max = os.pathconf(tmp_path, "PC_NAME_MAX")
+    output_path = tmp_path / ("x" * (name_max - len("_assets")) + ".md")
+    asset_path = tmp_path / "temp-assets" / "page-1.png"
+    asset_path.parent.mkdir(parents=True)
+    asset_path.write_bytes(b"png")
+
+    markdown = prepare_markdown_for_separate_save(
+        "![page](C:/temp/run/report/page-1.png)",
+        [
+            _FakeAsset(
+                filename="page-1.png",
+                source_path=str(asset_path),
+                preview_markdown_path="C:/temp/run/report/page-1.png",
+            )
+        ],
+        output_path,
+    )
+
+    asset_root = output_path.with_name(f"{output_path.stem}_assets")
+    assert f"{asset_root.name}/page-1.png" in markdown
+    assert (asset_root / "page-1.png").is_file()
+
+
 def test_prepare_markdown_for_separate_save_refuses_to_replace_unowned_assets(
     tmp_path,
 ):
@@ -173,7 +200,7 @@ def test_prepare_markdown_for_separate_save_replaces_only_app_owned_assets(tmp_p
     assert "report_assets/page-2.png" in markdown
     assert not (asset_root / "page-1.png").exists()
     assert (asset_root / "page-2.png").read_bytes() == b"second"
-    assert not list(tmp_path.glob(".report_assets.*.backup"))
+    assert not list(tmp_path.glob(".markitdowngui-assets-*.backup"))
 
 
 def test_prepare_markdown_for_separate_save_reserves_the_ownership_marker_name(
@@ -237,7 +264,7 @@ def test_prepare_markdown_for_separate_save_keeps_previous_owned_assets_on_copy_
         )
 
     assert (tmp_path / "report_assets" / "page-1.png").read_bytes() == b"first"
-    assert not list(tmp_path.glob(".report_assets.*.staging"))
+    assert not list(tmp_path.glob(".markitdowngui-assets-*.staging"))
 
 
 def test_prepare_markdown_for_separate_save_removes_only_owned_assets_when_empty(

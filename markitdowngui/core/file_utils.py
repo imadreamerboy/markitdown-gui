@@ -64,6 +64,8 @@ class FileManager:
     def stage_markdown_file(filepath: str, content: str) -> StagedMarkdownFile:
         """Write Markdown beside its destination without replacing the current file."""
         destination = Path(filepath)
+        if destination.is_symlink():
+            destination = destination.resolve()
         destination.parent.mkdir(parents=True, exist_ok=True)
         descriptor, temporary_path = _create_staged_file(destination)
         try:
@@ -97,7 +99,7 @@ class FileManager:
 def _create_staged_file(destination: Path) -> tuple[int, str]:
     """Create an exclusive staged file using the user's normal file mode."""
     for _ in range(10):
-        temporary_path = destination.parent / f".{destination.name}.{token_hex(16)}.tmp"
+        temporary_path = destination.parent / f".markitdowngui-{token_hex(16)}.tmp"
         try:
             descriptor = os.open(
                 temporary_path,
