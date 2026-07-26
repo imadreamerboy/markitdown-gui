@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
+import os
 from pathlib import Path
 import shutil
 import tempfile
@@ -275,13 +276,24 @@ def _documents_have_copyable_assets(documents: Sequence[MarkdownSaveInput]) -> b
 
 def _create_asset_root_staging_directory(asset_root: Path) -> Path:
     asset_root.parent.mkdir(parents=True, exist_ok=True)
-    return Path(
+    staging_root = Path(
         tempfile.mkdtemp(
             prefix=f".{asset_root.name}.",
             suffix=".staging",
             dir=asset_root.parent,
         )
     )
+    if os.name == "nt":
+        return staging_root
+
+    current_umask = os.umask(0)
+    os.umask(current_umask)
+    try:
+        staging_root.chmod(0o777 & ~current_umask)
+    except Exception:
+        shutil.rmtree(staging_root, ignore_errors=True)
+        raise
+    return staging_root
 
 
 def _ensure_asset_root_can_be_replaced(asset_root: Path) -> None:

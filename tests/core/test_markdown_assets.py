@@ -1,4 +1,6 @@
 from dataclasses import dataclass
+import os
+import stat
 
 import pytest
 
@@ -59,6 +61,33 @@ def test_prepare_markdown_for_separate_save_copies_assets_and_rewrites_paths(tmp
     assert "report_assets/page-1.png" in markdown
     assert "C:/temp/run/report/page-1.png" not in markdown
     assert (tmp_path / "report_assets" / "page-1.png").is_file()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX directory modes are not available")
+def test_prepare_markdown_for_separate_save_uses_normal_directory_permissions(
+    tmp_path,
+):
+    asset_path = tmp_path / "temp-assets" / "page-1.png"
+    asset_path.parent.mkdir(parents=True)
+    asset_path.write_bytes(b"png")
+    output_path = tmp_path / "report.md"
+    current_umask = os.umask(0)
+    os.umask(current_umask)
+
+    prepare_markdown_for_separate_save(
+        "![page](C:/temp/run/report/page-1.png)",
+        [
+            _FakeAsset(
+                filename="page-1.png",
+                source_path=str(asset_path),
+                preview_markdown_path="C:/temp/run/report/page-1.png",
+            )
+        ],
+        output_path,
+    )
+
+    asset_root_mode = stat.S_IMODE((tmp_path / "report_assets").stat().st_mode)
+    assert asset_root_mode == 0o777 & ~current_umask
 
 
 def test_prepare_markdown_for_separate_save_refuses_to_replace_unowned_assets(

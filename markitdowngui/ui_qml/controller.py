@@ -21,10 +21,12 @@ from markitdowngui.core.conversion import (
     GLMOCR_API_KEY_ENV_VAR,
     GLMOCR_MODE_OLLAMA,
     GLMOCR_MODE_SDK_SERVER,
+    IMAGE_EXTENSIONS,
     OCR_PROVIDER_AZURE_TESSERACT,
     OCR_PROVIDER_GLMOCR,
     OCR_PROVIDER_HTTP,
     OCR_PROVIDER_NONE,
+    PDF_EXTENSION,
     ZHIPU_API_KEY_ENV_VAR,
     ConversionOutcome,
     ConversionOptions,
@@ -1311,6 +1313,14 @@ class AppController(QObject):
                 "Wait for the current update to finish before restarting.",
             )
             return
+        if self._request_result_discard(
+            "restart the application",
+            lambda: self._discard_results_and_continue(self._restart_app),
+        ):
+            return
+        self._restart_app()
+
+    def _restart_app(self) -> None:
         if not self._start_restart_process():
             self.toastRequested.emit("error", "Could not restart the app.")
             return
@@ -1473,6 +1483,16 @@ class AppController(QObject):
         self.updateNotificationChanged.emit()
         self.sourceUpdateChanged.emit()
         self.diagnosticsChanged.emit()
+        if self._request_result_discard(
+            "close the application and install the update",
+            lambda: self._discard_results_and_continue(
+                self._quit_for_packaged_update
+            ),
+        ):
+            return
+        self._quit_for_packaged_update()
+
+    def _quit_for_packaged_update(self) -> None:
         self.toastRequested.emit("success", "Update installer started. Closing app.")
         self.dismissUpdateNotification()
         QGuiApplication.quit()
@@ -2038,7 +2058,10 @@ class AppController(QObject):
 
     def _preflight_conversion(self) -> bool:
         preflight_options = self._build_conversion_options(create_asset_root=False)
-        if not preflight_options.ocr_enabled:
+        if (
+            not preflight_options.ocr_enabled
+            or not self._queue_has_ocr_input()
+        ):
             return True
         preflight = validate_ocr_setup(preflight_options)
         if preflight.ok:
@@ -2047,6 +2070,13 @@ class AppController(QObject):
         self.toastRequested.emit("error", preflight.message)
         return False
 
+    def _queue_has_ocr_input(self) -> bool:
+        return any(
+            not is_web_url(source)
+            and Path(source).suffix.lower() in (IMAGE_EXTENSIONS | {PDF_EXTENSION})
+            for source in self.queue_model.sources()
+        )
+
     def _mark_results_saved(self, sources: set[str]) -> None:
         if not self._unsaved_result_sources.intersection(sources):
             return
@@ -2054,6 +2084,10 @@ class AppController(QObject):
         if not self.hasUnsavedSuccessfulResults:
             self._pending_result_discard = None
         self.resultsChanged.emit()
+
+    def _discard_results_and_continue(self, action: Callable[[], None]) -> None:
+        self._clear_results()
+        action()
 
     def _save_prepared_markdown(
         self,

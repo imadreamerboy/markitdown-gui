@@ -923,6 +923,19 @@ def test_controller_preflights_ocr_before_starting_a_conversion(controller, monk
     assert messages == [("error", "HTTP OCR requires an endpoint URL.")]
 
 
+def test_controller_skips_ocr_preflight_without_ocr_inputs(controller, monkeypatch):
+    controller.addFiles(
+        ["https://example.com/article", "C:/tmp/presentation.pptx", "C:/tmp/readme.txt"]
+    )
+    controller.setOcrEnabled(True)
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.validate_ocr_setup",
+        lambda _options: pytest.fail("native and URL inputs should not need OCR setup"),
+    )
+
+    assert controller._preflight_conversion() is True
+
+
 def test_controller_tests_ocr_connection(controller, monkeypatch):
     messages: list[tuple[str, str]] = []
     controller.toastRequested.connect(
@@ -1193,6 +1206,68 @@ def test_controller_restarts_app(controller, monkeypatch):
     assert started == [None]
     assert quit_calls == [None]
     assert messages == [("success", "Restarting app.")]
+
+
+def test_controller_confirms_before_restarting_with_unsaved_results(
+    controller, monkeypatch, tmp_path
+):
+    source = str(tmp_path / "result.pdf")
+    _complete_results(
+        controller,
+        {source: ConversionOutcome("# Converted", backend="native")},
+    )
+    requests: list[str] = []
+    started: list[None] = []
+    quit_calls: list[None] = []
+    controller.discardResultsRequested.connect(requests.append)
+    monkeypatch.setattr(
+        controller,
+        "_start_restart_process",
+        lambda: started.append(None) or True,
+    )
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.QGuiApplication.quit",
+        lambda: quit_calls.append(None),
+    )
+
+    controller.restartApp()
+
+    assert requests == ["restart the application"]
+    assert started == []
+    assert quit_calls == []
+
+    controller.discardPendingResults()
+
+    assert controller.hasResults is False
+    assert started == [None]
+    assert quit_calls == [None]
+
+
+def test_controller_confirms_before_closing_for_update_with_unsaved_results(
+    controller, monkeypatch, tmp_path
+):
+    source = str(tmp_path / "result.pdf")
+    _complete_results(
+        controller,
+        {source: ConversionOutcome("# Converted", backend="native")},
+    )
+    requests: list[str] = []
+    quit_calls: list[None] = []
+    controller.discardResultsRequested.connect(requests.append)
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.QGuiApplication.quit",
+        lambda: quit_calls.append(None),
+    )
+
+    controller._on_update_install_started()
+
+    assert requests == ["close the application and install the update"]
+    assert quit_calls == []
+
+    controller.discardPendingResults()
+
+    assert controller.hasResults is False
+    assert quit_calls == [None]
 
 
 def test_controller_reports_restart_failure(controller, monkeypatch):
