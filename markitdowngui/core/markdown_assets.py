@@ -149,7 +149,7 @@ def prepare_markdown_for_separate_save_transaction(
 ) -> PreparedMarkdownAssets:
     """Stage separate-output assets until the corresponding Markdown is ready."""
     destination_path = Path(output_path)
-    asset_root = destination_path.with_name(f"{destination_path.stem}_assets")
+    asset_root = _asset_root_for_output(destination_path)
 
     return _prepare_markdown_with_assets_transaction(
         markdown,
@@ -181,7 +181,7 @@ def prepare_combined_markdown_for_save_transaction(
 ) -> PreparedMarkdownAssets:
     """Stage combined-output assets until the corresponding Markdown is ready."""
     destination_path = Path(output_path)
-    asset_root = destination_path.with_name(f"{destination_path.stem}_assets")
+    asset_root = _asset_root_for_output(destination_path)
     parts: list[str] = []
 
     if not _documents_have_copyable_assets(documents):
@@ -272,6 +272,20 @@ def _assets_have_copyable_sources(assets: Sequence[AssetLike]) -> bool:
 
 def _documents_have_copyable_assets(documents: Sequence[MarkdownSaveInput]) -> bool:
     return any(_assets_have_copyable_sources(document.assets) for document in documents)
+
+
+def _asset_root_for_output(destination_path: Path) -> Path:
+    primary_root = destination_path.with_name(f"{destination_path.stem}_assets")
+    if not _asset_root_exists(primary_root) or _is_app_owned_asset_root(primary_root):
+        return primary_root
+
+    for index in range(1, 10_000):
+        candidate = primary_root.with_name(f"{primary_root.name}_{index}")
+        if not _asset_root_exists(candidate) or _is_app_owned_asset_root(candidate):
+            return candidate
+    raise FileExistsError(
+        f"Could not find a free asset directory beside {destination_path}"
+    )
 
 
 def _create_asset_root_staging_directory(asset_root: Path) -> Path:

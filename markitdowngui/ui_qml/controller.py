@@ -1185,11 +1185,15 @@ class AppController(QObject):
 
     @Slot(bool)
     def setUpdateNotificationsEnabled(self, enabled: bool) -> None:
-        self.settings.set_update_notifications_enabled(bool(enabled))
+        enabled = bool(enabled)
+        self.settings.set_update_notifications_enabled(enabled)
         self.settingsChanged.emit()
         self.diagnosticsChanged.emit()
-        self.dismissUpdateNotification()
-        self.toastRequested.emit("success", "Update notifications disabled.")
+        if not enabled:
+            self.dismissUpdateNotification()
+            self.toastRequested.emit("success", "Update notifications disabled.")
+        else:
+            self.updateNotificationChanged.emit()
 
     @Slot()
     def openReleases(self) -> None:
@@ -1227,11 +1231,14 @@ class AppController(QObject):
                 self.toastRequested.emit("error", reason)
             self.openReleaseAsset(str(self._preferred_release_asset.get("url") or ""))
             return
-        if self._request_result_discard(
-            "install the update and close the application",
-            lambda: self._discard_results_and_continue(
-                self._start_preferred_update_install
-            ),
+        if (
+            self._preferred_release_asset.get("installMode") == "zip"
+            and self._request_result_discard(
+                "install the update and close the application",
+                lambda: self._discard_results_and_continue(
+                    self._start_preferred_update_install
+                ),
+            )
         ):
             return
         self._start_preferred_update_install()

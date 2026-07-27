@@ -117,7 +117,7 @@ def test_prepare_markdown_for_separate_save_supports_long_asset_root_names(tmp_p
     assert (asset_root / "page-1.png").is_file()
 
 
-def test_prepare_markdown_for_separate_save_refuses_to_replace_unowned_assets(
+def test_prepare_markdown_for_separate_save_uses_noncolliding_root_for_unowned_assets(
     tmp_path,
 ):
     asset_path = tmp_path / "temp-assets" / "page-1.png"
@@ -128,26 +128,22 @@ def test_prepare_markdown_for_separate_save_refuses_to_replace_unowned_assets(
     unowned_asset_root.mkdir()
     sentinel_path = unowned_asset_root / "user-file.txt"
     sentinel_path.write_text("keep me", encoding="utf-8")
-    (unowned_asset_root / ".markitdowngui-assets.json").write_text(
-        "{}",
-        encoding="utf-8",
+    markdown = prepare_markdown_for_separate_save(
+        "![page](C:/temp/run/report/page-1.png)",
+        [
+            _FakeAsset(
+                filename="page-1.png",
+                source_path=str(asset_path),
+                preview_markdown_path="C:/temp/run/report/page-1.png",
+            )
+        ],
+        output_path,
     )
-
-    with pytest.raises(FileExistsError, match="unowned asset directory"):
-        prepare_markdown_for_separate_save(
-            "![page](C:/temp/run/report/page-1.png)",
-            [
-                _FakeAsset(
-                    filename="page-1.png",
-                    source_path=str(asset_path),
-                    preview_markdown_path="C:/temp/run/report/page-1.png",
-                )
-            ],
-            output_path,
-        )
 
     assert sentinel_path.read_text(encoding="utf-8") == "keep me"
     assert not (unowned_asset_root / "page-1.png").exists()
+    assert "report_assets_1/page-1.png" in markdown
+    assert (tmp_path / "report_assets_1" / "page-1.png").read_bytes() == b"new-png"
 
 
 def test_prepare_markdown_for_separate_save_keeps_unowned_assets_when_no_assets(
@@ -341,7 +337,7 @@ def test_prepare_combined_markdown_for_save_scopes_documents_and_avoids_collisio
     assert (tmp_path / "combined_assets" / "002_report" / "page-1.png").is_file()
 
 
-def test_prepare_combined_markdown_for_save_refuses_to_replace_unowned_assets(
+def test_prepare_combined_markdown_for_save_uses_noncolliding_root_for_unowned_assets(
     tmp_path,
 ):
     asset_path = tmp_path / "temp-assets" / "page-1.png"
@@ -353,26 +349,27 @@ def test_prepare_combined_markdown_for_save_refuses_to_replace_unowned_assets(
     sentinel_path = unowned_asset_root / "user-file.txt"
     sentinel_path.write_text("keep me", encoding="utf-8")
 
-    with pytest.raises(FileExistsError, match="unowned asset directory"):
-        prepare_combined_markdown_for_save(
-            [
-                MarkdownSaveInput(
-                    source="C:/docs/report.pdf",
-                    markdown="![page](C:/temp/run/report/page-1.png)",
-                    assets=[
-                        _FakeAsset(
-                            filename="page-1.png",
-                            source_path=str(asset_path),
-                            preview_markdown_path="C:/temp/run/report/page-1.png",
-                        )
-                    ],
-                )
-            ],
-            output_path,
-            source_heading_template="Source: {source}",
-        )
+    markdown = prepare_combined_markdown_for_save(
+        [
+            MarkdownSaveInput(
+                source="C:/docs/report.pdf",
+                markdown="![page](C:/temp/run/report/page-1.png)",
+                assets=[
+                    _FakeAsset(
+                        filename="page-1.png",
+                        source_path=str(asset_path),
+                        preview_markdown_path="C:/temp/run/report/page-1.png",
+                    )
+                ],
+            )
+        ],
+        output_path,
+        source_heading_template="Source: {source}",
+    )
 
     assert sentinel_path.read_text(encoding="utf-8") == "keep me"
+    assert "combined_assets_1/001_report/page-1.png" in markdown
+    assert (tmp_path / "combined_assets_1" / "001_report" / "page-1.png").read_bytes() == b"new-png"
 
 
 def test_temp_asset_root_creation_and_cleanup():

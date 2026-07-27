@@ -455,6 +455,7 @@ def test_controller_confirms_before_starting_update_with_unsaved_results(
     asset = {
         "url": "https://example.com/windows.zip",
         "installSupported": True,
+        "installMode": "zip",
     }
     controller._preferred_release_asset = asset
     requests: list[str] = []
@@ -581,6 +582,38 @@ def test_controller_reports_manual_dmg_open_without_quitting(controller, monkeyp
             "Drag MarkItDown to Applications.",
         )
     ]
+
+
+def test_controller_keeps_unsaved_results_when_opening_manual_dmg(
+    controller, monkeypatch, tmp_path
+):
+    source = str(tmp_path / "result.pdf")
+    _complete_results(
+        controller,
+        {source: ConversionOutcome("# Converted", backend="native")},
+    )
+    asset = {
+        "name": "MarkItDown.dmg",
+        "url": "https://example.com/macos.dmg",
+        "installSupported": True,
+        "installMode": "dmg",
+    }
+    controller._preferred_release_asset = asset
+    requests: list[str] = []
+    created: list[dict[str, object]] = []
+    controller.discardResultsRequested.connect(requests.append)
+    monkeypatch.setattr(
+        controller,
+        "_create_update_installer",
+        lambda installed_asset: created.append(installed_asset)
+        or _FakeUpdateInstaller("manual"),
+    )
+
+    controller.installPreferredUpdate()
+
+    assert requests == []
+    assert created == [asset]
+    assert controller.hasResults is True
 
 
 def test_controller_blocks_update_install_while_converting(controller, monkeypatch):
@@ -1666,6 +1699,24 @@ def test_controller_disables_update_notifications_from_banner(controller, monkey
     assert controller.hasUpdateNotification is False
     assert controller.availableUpdateVersion == ""
     assert messages == [("success", "Update notifications disabled.")]
+
+
+def test_controller_enables_update_notifications_without_dismissing_update(controller):
+    controller.settings.set_update_notifications_enabled(False)
+    controller._available_update_version = "v1.2.0"
+    controller._available_release_url = "https://github.com/example/releases/tag/v1.2.0"
+    messages: list[tuple[str, str]] = []
+    changes: list[None] = []
+    controller.toastRequested.connect(lambda kind, message: messages.append((kind, message)))
+    controller.updateNotificationChanged.connect(lambda: changes.append(None))
+
+    controller.setUpdateNotificationsEnabled(True)
+
+    assert controller.settings.get_update_notifications_enabled() is True
+    assert controller.hasUpdateNotification is True
+    assert controller.availableUpdateVersion == "v1.2.0"
+    assert messages == []
+    assert changes == [None]
 
 
 def test_controller_locks_queue_mutations_while_converting(controller, tmp_path):
