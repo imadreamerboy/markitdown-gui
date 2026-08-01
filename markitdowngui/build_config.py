@@ -52,6 +52,7 @@ BASE_DATAS = (
     ("markitdowngui/resources/moon.svg", "markitdowngui/resources"),
     ("markitdowngui/resources/sun.svg", "markitdowngui/resources"),
     ("LICENSE", "."),
+    ("THIRD_PARTY_NOTICES.md", "."),
 )
 OPTIONAL_DATA_PACKAGES = (
     "docling_parse",

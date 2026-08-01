@@ -18,13 +18,13 @@ More screenshots:
 
 - Queue-based file workflow with drag and drop.
 - Paste website URLs and convert article content to Markdown with the hosted Defuddle API.
-- Batch conversion with start, pause/resume, cancel, and progress feedback.
+- Serial conversion with start, pause/resume, cancel, and progress feedback.
 - Results view with per-file selection and Markdown preview.
 - Preview modes: rendered Markdown view and raw Markdown view.
 - Save modes: export as one combined file or separate files.
 - Quick actions: copy Markdown, save output, retry failed conversions, back to queue, start over.
 - Optional OCR for scanned PDFs and image files, with selectable `Azure + Tesseract`, `GLM-OCR`, and generic `HTTP OCR` providers.
-- Settings for output folder, save mode, source-folder saves, batch size, OCR, and theme mode (light/dark/system).
+- Settings for output folder, save mode, source-folder saves, OCR, and theme mode (light/dark/system).
 - Help view with project links, OCR references, conversion references, and keyboard shortcuts.
 
 ## Installation
@@ -182,7 +182,7 @@ uv run python -m markitdowngui.main
 ## Build a Standalone Executable
 
 ```sh
-uv pip install -e .[dev]
+uv sync --extra dev --locked
 pyinstaller MarkItDown.spec --clean --noconfirm
 ```
 
@@ -192,9 +192,14 @@ That build intentionally excludes the GLM-OCR self-hosted runtime stack; local h
 
 ## License
 
-Licensed under the **MIT License**.
+MarkItDown GUI is licensed under the **MIT License**. Commercial use, private
+use, modification, redistribution, sublicensing, and sale are permitted under
+that licence, subject to preserving the copyright and licence notice.
 
-The app uses `PySide6`/Qt under Qt's LGPL/commercial licensing model. The previous `PySide6-Fluent-Widgets` dependency has been removed.
+Third-party components keep their own licences. The app uses `PySide6`/Qt under
+Qt's LGPL/commercial licensing model; see
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) for the runtime and
+dependency notices that apply to source and packaged builds.
 
 ## Contributing
 
@@ -209,6 +214,7 @@ uv pip install -e .[dev]
 4. Run tests:
 
 ```sh
+uv sync --extra test --locked
 uv run pytest -q
 ```
 
@@ -219,4 +225,5 @@ uv run pytest -q
 - MarkItDown ([MIT License](https://opensource.org/licenses/MIT))
 - PySide6 ([LGPLv3 License](https://www.gnu.org/licenses/lgpl-3.0.html))
 - Qt Quick Controls ([Qt documentation](https://doc.qt.io/qt-6/qtquickcontrols-index.html))
+- Lucide icons ([ISC License](https://lucide.dev/license))
 

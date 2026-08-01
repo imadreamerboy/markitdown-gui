@@ -4,7 +4,11 @@ from types import SimpleNamespace
 import pytest
 from PySide6.QtCore import QSettings, QUrl
 
-from markitdowngui.core.conversion import ConversionOutcome
+from markitdowngui.core.conversion import ConversionAsset, ConversionOutcome
+from markitdowngui.core.markdown_assets import (
+    prepare_markdown_for_separate_save,
+    prepare_markdown_for_separate_save_transaction,
+)
 from markitdowngui.core.settings import SettingsManager
 from markitdowngui.ui_qml.controller import (
     AppController,
@@ -134,6 +138,19 @@ def controller(tmp_path):
     return controller
 
 
+def _complete_results(
+    controller: AppController,
+    results: dict[str, ConversionOutcome],
+    failed_sources: set[str] | None = None,
+) -> None:
+    controller.worker = SimpleNamespace(
+        is_cancelled=False,
+        failed_files=failed_sources or set(),
+    )
+    controller._converting = True
+    controller._handle_finished(results)
+
+
 def test_controller_add_url_rejects_invalid_url(controller):
     messages: list[tuple[str, str]] = []
     controller.toastRequested.connect(lambda kind, message: messages.append((kind, message)))
@@ -145,11 +162,40 @@ def test_controller_add_url_rejects_invalid_url(controller):
 
 
 def test_controller_add_url_queues_valid_url(controller):
-    controller.addUrl("https://example.com/article")
+    assert controller.addUrl("https://example.com/article") is True
 
     assert controller.queue_model.sources() == ["https://example.com/article"]
     assert controller.hasQueue is True
     assert controller.queueCount == 1
+
+
+def test_controller_add_url_waits_for_discard_confirmation(controller, tmp_path):
+    source = str(tmp_path / "existing.pdf")
+    url = "https://example.com/article"
+    controller.addFiles([source])
+    _complete_results(
+        controller,
+        {source: ConversionOutcome("# Existing", backend="native")},
+    )
+    requests: list[str] = []
+    queued_urls: list[str] = []
+    controller.discardResultsRequested.connect(requests.append)
+    controller.urlQueued.connect(queued_urls.append)
+
+    assert controller.addUrl(url) is False
+    assert requests == ["add inputs to the queue"]
+    assert queued_urls == []
+
+    controller.cancelPendingResultDiscard()
+
+    assert controller.queue_model.sources() == [source]
+    assert queued_urls == []
+
+    assert controller.addUrl(url) is False
+    controller.discardPendingResults()
+
+    assert controller.queue_model.sources() == [source, url]
+    assert queued_urls == [url]
 
 
 def test_controller_auto_update_check_respects_disabled_setting(controller, monkeypatch):
@@ -398,6 +444,47 @@ def test_controller_installs_supported_preferred_update(controller, monkeypatch)
     assert controller.hasUpdateNotification is False
 
 
+def test_controller_confirms_before_starting_update_with_unsaved_results(
+    controller, monkeypatch, tmp_path
+):
+    source = str(tmp_path / "result.pdf")
+    _complete_results(
+        controller,
+        {source: ConversionOutcome("# Converted", backend="native")},
+    )
+    asset = {
+        "url": "https://example.com/windows.zip",
+        "installSupported": True,
+        "installMode": "zip",
+    }
+    controller._preferred_release_asset = asset
+    requests: list[str] = []
+    created: list[dict[str, object]] = []
+    quit_calls: list[None] = []
+    controller.discardResultsRequested.connect(requests.append)
+    monkeypatch.setattr(
+        controller,
+        "_create_update_installer",
+        lambda asset: created.append(asset) or _FakeUpdateInstaller(),
+    )
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.QGuiApplication.quit",
+        lambda: quit_calls.append(None),
+    )
+
+    controller.installPreferredUpdate()
+
+    assert requests == ["install the update and close the application"]
+    assert created == []
+    assert quit_calls == []
+
+    controller.discardPendingResults()
+
+    assert controller.hasResults is False
+    assert created == [asset]
+    assert quit_calls == [None]
+
+
 def test_packaged_update_installer_emits_progress_and_success(monkeypatch):
     progress: list[tuple[str, int]] = []
     started: list[None] = []
@@ -495,6 +582,38 @@ def test_controller_reports_manual_dmg_open_without_quitting(controller, monkeyp
             "Drag MarkItDown to Applications.",
         )
     ]
+
+
+def test_controller_keeps_unsaved_results_when_opening_manual_dmg(
+    controller, monkeypatch, tmp_path
+):
+    source = str(tmp_path / "result.pdf")
+    _complete_results(
+        controller,
+        {source: ConversionOutcome("# Converted", backend="native")},
+    )
+    asset = {
+        "name": "MarkItDown.dmg",
+        "url": "https://example.com/macos.dmg",
+        "installSupported": True,
+        "installMode": "dmg",
+    }
+    controller._preferred_release_asset = asset
+    requests: list[str] = []
+    created: list[dict[str, object]] = []
+    controller.discardResultsRequested.connect(requests.append)
+    monkeypatch.setattr(
+        controller,
+        "_create_update_installer",
+        lambda installed_asset: created.append(installed_asset)
+        or _FakeUpdateInstaller("manual"),
+    )
+
+    controller.installPreferredUpdate()
+
+    assert requests == []
+    assert created == [asset]
+    assert controller.hasResults is True
 
 
 def test_controller_blocks_update_install_while_converting(controller, monkeypatch):
@@ -853,6 +972,73 @@ def test_controller_reports_ocr_validation_error(controller, monkeypatch):
     assert messages == [("error", "HTTP OCR requires an endpoint URL.")]
 
 
+def test_controller_preflights_ocr_before_starting_a_conversion(controller, monkeypatch):
+    messages: list[tuple[str, str]] = []
+    controller.toastRequested.connect(lambda kind, message: messages.append((kind, message)))
+    controller.addFiles(["C:/tmp/scan.pdf"])
+    controller.setOcrEnabled(True)
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.validate_ocr_setup",
+        lambda _options: SimpleNamespace(
+            ok=False,
+            message="HTTP OCR requires an endpoint URL.",
+        ),
+    )
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.ConversionWorker",
+        lambda **_kwargs: pytest.fail("worker should not start after failed preflight"),
+    )
+
+    controller.convert()
+
+    assert controller.converting is False
+    assert controller.statusText == "OCR setup needs attention"
+    assert messages == [("error", "HTTP OCR requires an endpoint URL.")]
+
+
+def test_controller_skips_ocr_preflight_without_ocr_inputs(controller, monkeypatch):
+    controller.addFiles(
+        ["https://example.com/article", "C:/tmp/presentation.pptx", "C:/tmp/readme.txt"]
+    )
+    controller.setOcrEnabled(True)
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.validate_ocr_setup",
+        lambda _options: pytest.fail("native and URL inputs should not need OCR setup"),
+    )
+
+    assert controller._preflight_conversion() is True
+
+
+def test_controller_preflights_only_failed_inputs_before_retry(controller, monkeypatch):
+    pdf_source = "C:/tmp/successful.pdf"
+    url_source = "https://example.com/retry"
+    controller.addFiles([pdf_source, url_source])
+    _complete_results(
+        controller,
+        {
+            pdf_source: ConversionOutcome("# PDF", backend="native"),
+            url_source: ConversionOutcome("# Failed", backend="defuddle"),
+        },
+        failed_sources={url_source},
+    )
+    controller.setOcrEnabled(True)
+    starts: list[dict[str, bool]] = []
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.validate_ocr_setup",
+        lambda _options: pytest.fail("the failed URL does not need OCR setup"),
+    )
+    monkeypatch.setattr(
+        controller,
+        "_start_conversion",
+        lambda **kwargs: starts.append(kwargs),
+    )
+
+    controller.retryFailedResults()
+
+    assert controller.queue_model.sources() == [url_source]
+    assert starts == [{"preserve_results": True, "preflight_validated": True}]
+
+
 def test_controller_tests_ocr_connection(controller, monkeypatch):
     messages: list[tuple[str, str]] = []
     controller.toastRequested.connect(
@@ -945,6 +1131,38 @@ def test_diagnostic_readiness_does_not_create_temp_asset_root(controller, monkey
     )
 
     controller.diagnosticReadinessItems
+
+
+def test_controller_retains_all_asset_roots_while_results_are_kept(
+    controller,
+    monkeypatch,
+    tmp_path,
+):
+    first_root = tmp_path / "first-assets"
+    second_root = tmp_path / "second-assets"
+    first_root.mkdir()
+    second_root.mkdir()
+    roots = iter([first_root, second_root])
+    cleaned: list[str] = []
+    controller.setPreservePdfImages(True)
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.create_temp_asset_root",
+        lambda: next(roots),
+    )
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.cleanup_temp_asset_root",
+        lambda path: cleaned.append(str(path)),
+    )
+
+    first_options = controller._build_conversion_options()
+    second_options = controller._build_conversion_options()
+
+    assert first_options.pdf_artifacts_dir == str(first_root)
+    assert second_options.pdf_artifacts_dir == str(second_root)
+
+    controller._cleanup_temp_assets()
+
+    assert set(cleaned) == {str(first_root), str(second_root)}
 
 
 def test_controller_copies_source_update_command(controller, monkeypatch):
@@ -1091,6 +1309,68 @@ def test_controller_restarts_app(controller, monkeypatch):
     assert started == [None]
     assert quit_calls == [None]
     assert messages == [("success", "Restarting app.")]
+
+
+def test_controller_confirms_before_restarting_with_unsaved_results(
+    controller, monkeypatch, tmp_path
+):
+    source = str(tmp_path / "result.pdf")
+    _complete_results(
+        controller,
+        {source: ConversionOutcome("# Converted", backend="native")},
+    )
+    requests: list[str] = []
+    started: list[None] = []
+    quit_calls: list[None] = []
+    controller.discardResultsRequested.connect(requests.append)
+    monkeypatch.setattr(
+        controller,
+        "_start_restart_process",
+        lambda: started.append(None) or True,
+    )
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.QGuiApplication.quit",
+        lambda: quit_calls.append(None),
+    )
+
+    controller.restartApp()
+
+    assert requests == ["restart the application"]
+    assert started == []
+    assert quit_calls == []
+
+    controller.discardPendingResults()
+
+    assert controller.hasResults is False
+    assert started == [None]
+    assert quit_calls == [None]
+
+
+def test_controller_confirms_before_closing_for_update_with_unsaved_results(
+    controller, monkeypatch, tmp_path
+):
+    source = str(tmp_path / "result.pdf")
+    _complete_results(
+        controller,
+        {source: ConversionOutcome("# Converted", backend="native")},
+    )
+    requests: list[str] = []
+    quit_calls: list[None] = []
+    controller.discardResultsRequested.connect(requests.append)
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.QGuiApplication.quit",
+        lambda: quit_calls.append(None),
+    )
+
+    controller._on_update_install_started()
+
+    assert requests == ["close the application and install the update"]
+    assert quit_calls == []
+
+    controller.discardPendingResults()
+
+    assert controller.hasResults is False
+    assert quit_calls == [None]
 
 
 def test_controller_reports_restart_failure(controller, monkeypatch):
@@ -1421,6 +1701,24 @@ def test_controller_disables_update_notifications_from_banner(controller, monkey
     assert messages == [("success", "Update notifications disabled.")]
 
 
+def test_controller_enables_update_notifications_without_dismissing_update(controller):
+    controller.settings.set_update_notifications_enabled(False)
+    controller._available_update_version = "v1.2.0"
+    controller._available_release_url = "https://github.com/example/releases/tag/v1.2.0"
+    messages: list[tuple[str, str]] = []
+    changes: list[None] = []
+    controller.toastRequested.connect(lambda kind, message: messages.append((kind, message)))
+    controller.updateNotificationChanged.connect(lambda: changes.append(None))
+
+    controller.setUpdateNotificationsEnabled(True)
+
+    assert controller.settings.get_update_notifications_enabled() is True
+    assert controller.hasUpdateNotification is True
+    assert controller.availableUpdateVersion == "v1.2.0"
+    assert messages == []
+    assert changes == [None]
+
+
 def test_controller_locks_queue_mutations_while_converting(controller, tmp_path):
     source_a = str(tmp_path / "a.pdf")
     source_b = str(tmp_path / "b.pdf")
@@ -1442,47 +1740,78 @@ def test_controller_locks_queue_mutations_while_converting(controller, tmp_path)
     ]
 
 
-def test_controller_add_files_invalidates_stale_results(controller, tmp_path):
+def test_controller_add_files_requires_discarding_unsaved_results(controller, tmp_path):
     source_a = str(tmp_path / "a.pdf")
     source_b = str(tmp_path / "b.pdf")
     controller.addFiles([source_a])
-    controller.result_model.set_results(
-        {source_a: ConversionOutcome("# Converted", backend="native")}
+    _complete_results(
+        controller,
+        {source_a: ConversionOutcome("# Converted", backend="native")},
     )
-    controller.selectResult(0)
+    requests: list[str] = []
+    controller.discardResultsRequested.connect(requests.append)
 
     controller.addFiles([source_b])
+
+    assert requests == ["add inputs to the queue"]
+    assert controller.hasUnsavedSuccessfulResults is True
+    assert controller.result_model.rowCount() == 1
+    assert controller.queue_model.sources() == [source_a]
+
+    controller.cancelPendingResultDiscard()
+
+    assert controller.result_model.rowCount() == 1
+    assert controller.queue_model.sources() == [source_a]
+
+    controller.addFiles([source_b])
+    controller.discardPendingResults()
 
     assert controller.result_model.rowCount() == 0
     assert controller.selectedResultIndex == -1
     assert controller.queue_model.sources() == [source_a, source_b]
 
 
-def test_controller_remove_queued_invalidates_stale_results(controller, tmp_path):
+def test_controller_remove_queued_requires_discarding_unsaved_results(controller, tmp_path):
     source_a = str(tmp_path / "a.pdf")
     source_b = str(tmp_path / "b.pdf")
     controller.addFiles([source_a, source_b])
-    controller.result_model.set_results(
-        {source_a: ConversionOutcome("# Converted", backend="native")}
+    _complete_results(
+        controller,
+        {source_a: ConversionOutcome("# Converted", backend="native")},
     )
-    controller.selectResult(0)
+    requests: list[str] = []
+    controller.discardResultsRequested.connect(requests.append)
 
     controller.removeQueued(0)
+
+    assert requests == ["change the queue"]
+    assert controller.result_model.rowCount() == 1
+    assert controller.queue_model.sources() == [source_a, source_b]
+
+    controller.discardPendingResults()
 
     assert controller.result_model.rowCount() == 0
     assert controller.selectedResultIndex == -1
     assert controller.queue_model.sources() == [source_b]
 
 
-def test_controller_clear_queue_invalidates_stale_results(controller, tmp_path):
+def test_controller_clear_queue_requires_discarding_unsaved_results(controller, tmp_path):
     source = str(tmp_path / "a.pdf")
     controller.addFiles([source])
-    controller.result_model.set_results(
-        {source: ConversionOutcome("# Converted", backend="native")}
+    _complete_results(
+        controller,
+        {source: ConversionOutcome("# Converted", backend="native")},
     )
-    controller.selectResult(0)
+    requests: list[str] = []
+    controller.discardResultsRequested.connect(requests.append)
 
     controller.clearQueue()
+
+    assert requests == ["clear the queue"]
+    assert controller.result_model.rowCount() == 1
+    assert controller.queue_model.sources() == [source]
+
+    controller.discardPendingResults()
 
     assert controller.result_model.rowCount() == 0
     assert controller.selectedResultIndex == -1
@@ -1500,6 +1829,107 @@ def test_controller_clear_empty_queue_invalidates_stale_results(controller):
     assert controller.result_model.rowCount() == 0
     assert controller.selectedResultIndex == -1
     assert controller.queue_model.sources() == []
+
+
+def test_controller_back_to_queue_requires_discarding_unsaved_results(controller, tmp_path):
+    source = str(tmp_path / "a.pdf")
+    controller.addFiles([source])
+    _complete_results(
+        controller,
+        {source: ConversionOutcome("# Converted", backend="native")},
+    )
+    requests: list[str] = []
+    controller.discardResultsRequested.connect(requests.append)
+
+    controller.backToQueue()
+
+    assert requests == ["return to the queue"]
+    assert controller.hasResults is True
+    assert controller.queue_model.sources() == [source]
+
+    controller.discardPendingResults()
+
+    assert controller.hasResults is False
+    assert controller.queue_model.sources() == [source]
+
+
+def test_controller_start_new_requires_discarding_unsaved_results(controller, tmp_path):
+    source = str(tmp_path / "a.pdf")
+    controller.addFiles([source])
+    _complete_results(
+        controller,
+        {source: ConversionOutcome("# Converted", backend="native")},
+    )
+    requests: list[str] = []
+    controller.discardResultsRequested.connect(requests.append)
+
+    controller.startNew()
+
+    assert requests == ["start a new conversion"]
+    assert controller.hasResults is True
+    assert controller.queue_model.sources() == [source]
+
+    controller.discardPendingResults()
+
+    assert controller.hasResults is False
+    assert controller.queue_model.sources() == []
+
+
+def test_controller_confirms_before_closing_with_unsaved_results(controller, tmp_path):
+    source = str(tmp_path / "a.pdf")
+    controller.addFiles([source])
+    _complete_results(
+        controller,
+        {source: ConversionOutcome("# Converted", backend="native")},
+    )
+    requests: list[str] = []
+    close_approved: list[None] = []
+    controller.discardResultsRequested.connect(requests.append)
+    controller.closeApproved.connect(lambda: close_approved.append(None))
+
+    assert controller.requestShutdown() is False
+    assert requests == ["close the application"]
+    assert controller.hasResults is True
+
+    controller.cancelPendingResultDiscard()
+    assert controller.hasResults is True
+    assert close_approved == []
+
+    assert controller.requestShutdown() is False
+    controller.discardPendingResults()
+
+    assert controller.hasResults is False
+    assert close_approved == [None]
+
+
+def test_controller_stops_active_conversion_before_discarding_for_close(
+    controller,
+    monkeypatch,
+):
+    source = "C:/tmp/report.pdf"
+    controller.result_model.set_results(
+        {source: ConversionOutcome("# Converted", backend="native")}
+    )
+    controller._unsaved_result_sources.add(source)
+    controller._temp_asset_root = "C:/tmp/markitdown-assets"
+    events: list[str] = []
+    controller.worker = SimpleNamespace(
+        is_cancelled=False,
+        is_paused=False,
+        isRunning=lambda: True,
+        wait=lambda _timeout: events.append("wait") or True,
+    )
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.cleanup_temp_asset_root",
+        lambda path: events.append(f"cleanup:{path}"),
+    )
+
+    assert controller.requestShutdown() is False
+    controller.discardPendingResults()
+
+    assert controller.worker.is_cancelled is True
+    assert events == ["wait", "cleanup:C:/tmp/markitdown-assets"]
+    assert controller.hasResults is False
 
 
 def test_controller_notifies_before_save_dialog_when_no_output(controller):
@@ -1580,7 +2010,8 @@ def test_controller_separate_save_requires_fallback_for_web_sources(
 
 def test_controller_save_combined_skips_failed_results(controller, tmp_path):
     output_path = tmp_path / "combined.md"
-    controller.result_model.set_results(
+    _complete_results(
+        controller,
         {
             "C:/tmp/ok.pdf": ConversionOutcome("# Converted\n\nBody", backend="native"),
             "C:/tmp/broken.pdf": ConversionOutcome(
@@ -1592,6 +2023,7 @@ def test_controller_save_combined_skips_failed_results(controller, tmp_path):
     )
 
     assert controller.hasSuccessfulResults is True
+    assert controller.hasUnsavedSuccessfulResults is True
 
     controller.saveCombinedOutput(str(output_path))
 
@@ -1599,11 +2031,13 @@ def test_controller_save_combined_skips_failed_results(controller, tmp_path):
     assert "# Converted" in saved
     assert "Error converting broken.pdf" not in saved
     assert "C:/tmp/broken.pdf" not in saved
+    assert controller.hasUnsavedSuccessfulResults is False
 
 
 def test_controller_save_separate_skips_failed_results(controller, tmp_path):
     output_dir = tmp_path / "exports"
-    controller.result_model.set_results(
+    _complete_results(
+        controller,
         {
             "C:/tmp/ok.pdf": ConversionOutcome("# Converted\n\nBody", backend="native"),
             "C:/tmp/broken.pdf": ConversionOutcome(
@@ -1619,6 +2053,140 @@ def test_controller_save_separate_skips_failed_results(controller, tmp_path):
     saved_files = sorted(path.name for path in output_dir.glob("*.md"))
     assert saved_files == ["ok.md"]
     assert (output_dir / "ok.md").read_text(encoding="utf-8") == "# Converted\n\nBody"
+    assert controller.hasUnsavedSuccessfulResults is False
+
+
+def test_controller_save_separate_reports_partial_save_failures(controller, tmp_path, monkeypatch):
+    output_dir = tmp_path / "exports"
+    _complete_results(
+        controller,
+        {
+            "C:/tmp/ok.pdf": ConversionOutcome("# Converted", backend="native"),
+            "C:/tmp/fail.pdf": ConversionOutcome("# Also converted", backend="native"),
+        },
+    )
+    original_save = controller._save_prepared_markdown
+
+    def fail_one_output(output_path, prepared_output):
+        if output_path.endswith("fail.md"):
+            raise OSError("disk full")
+        original_save(output_path, prepared_output)
+
+    monkeypatch.setattr(controller, "_save_prepared_markdown", fail_one_output)
+    messages: list[tuple[str, str]] = []
+    controller.toastRequested.connect(lambda kind, message: messages.append((kind, message)))
+
+    controller.saveSeparateOutputs(str(output_dir))
+
+    assert messages == [("error", "Saved 1 file; 1 file failed to save.")]
+    assert controller.hasUnsavedSuccessfulResults is True
+
+
+def test_controller_restores_asset_root_when_markdown_replace_fails(
+    controller,
+    monkeypatch,
+    tmp_path,
+):
+    output_path = tmp_path / "report.md"
+    old_asset_path = tmp_path / "source" / "old.png"
+    new_asset_path = tmp_path / "source" / "new.png"
+    old_asset_path.parent.mkdir()
+    old_asset_path.write_bytes(b"old asset")
+    new_asset_path.write_bytes(b"new asset")
+    old_asset = ConversionAsset(
+        filename="page.png",
+        source_path=str(old_asset_path),
+        preview_markdown_path="C:/temp/old.png",
+        page_number=None,
+        kind="image",
+    )
+    new_asset = ConversionAsset(
+        filename="page.png",
+        source_path=str(new_asset_path),
+        preview_markdown_path="C:/temp/new.png",
+        page_number=None,
+        kind="image",
+    )
+    old_markdown = prepare_markdown_for_separate_save(
+        "# Old\n![old](C:/temp/old.png)",
+        [old_asset],
+        output_path,
+    )
+    controller.file_manager.save_markdown_file(str(output_path), old_markdown)
+    prepared = prepare_markdown_for_separate_save_transaction(
+        "# New\n![new](C:/temp/new.png)",
+        [new_asset],
+        output_path,
+    )
+    staged_file = controller.file_manager.stage_markdown_file(
+        str(output_path),
+        prepared.markdown,
+    )
+    monkeypatch.setattr(
+        controller.file_manager,
+        "stage_markdown_file",
+        lambda *_args: staged_file,
+    )
+    monkeypatch.setattr(
+        staged_file,
+        "commit",
+        lambda: (_ for _ in ()).throw(OSError("disk is unavailable")),
+    )
+
+    with pytest.raises(OSError, match="disk is unavailable"):
+        controller._save_prepared_markdown(str(output_path), prepared)
+
+    assert output_path.read_text(encoding="utf-8") == old_markdown
+    assert (tmp_path / "report_assets" / "page.png").read_bytes() == b"old asset"
+    assert not list(tmp_path.glob(".markitdowngui-assets-*.backup"))
+    assert not list(tmp_path.glob(".markitdowngui-assets-*.staging"))
+    assert not list(tmp_path.glob(".markitdowngui-*.tmp"))
+
+
+def test_controller_restores_owned_assets_when_asset_free_save_fails(
+    controller,
+    monkeypatch,
+    tmp_path,
+):
+    output_path = tmp_path / "report.md"
+    asset_path = tmp_path / "source" / "page.png"
+    asset_path.parent.mkdir()
+    asset_path.write_bytes(b"old asset")
+    asset = ConversionAsset(
+        filename="page.png",
+        source_path=str(asset_path),
+        preview_markdown_path="C:/temp/page.png",
+        page_number=None,
+        kind="image",
+    )
+    old_markdown = prepare_markdown_for_separate_save(
+        "# Old\n![page](C:/temp/page.png)",
+        [asset],
+        output_path,
+    )
+    controller.file_manager.save_markdown_file(str(output_path), old_markdown)
+    prepared = prepare_markdown_for_separate_save_transaction("# New", [], output_path)
+    staged_file = controller.file_manager.stage_markdown_file(
+        str(output_path),
+        prepared.markdown,
+    )
+    monkeypatch.setattr(
+        controller.file_manager,
+        "stage_markdown_file",
+        lambda *_args: staged_file,
+    )
+    monkeypatch.setattr(
+        staged_file,
+        "commit",
+        lambda: (_ for _ in ()).throw(OSError("disk is unavailable")),
+    )
+
+    with pytest.raises(OSError, match="disk is unavailable"):
+        controller._save_prepared_markdown(str(output_path), prepared)
+
+    assert output_path.read_text(encoding="utf-8") == old_markdown
+    assert (tmp_path / "report_assets" / "page.png").read_bytes() == b"old asset"
+    assert not list(tmp_path.glob(".markitdowngui-assets-*.backup"))
 
 
 def test_controller_save_all_failed_results_reports_no_success(controller, tmp_path):
@@ -1669,6 +2237,27 @@ def test_controller_finished_status_reports_mixed_failures(controller):
     assert messages == [("error", "1 conversion failed.")]
 
 
+def test_controller_exposes_completed_items_before_the_worker_finishes(controller):
+    controller._handle_item_finished(
+        "C:/tmp/first.pdf",
+        ConversionOutcome("# First", backend="native"),
+        False,
+    )
+
+    assert controller.result_model.rowCount() == 1
+    assert controller.selectedResultIndex == 0
+    assert controller.hasUnsavedSuccessfulResults is True
+
+    controller.worker = SimpleNamespace(is_cancelled=False, failed_files=set())
+    controller._converting = True
+    controller._handle_finished(
+        {"C:/tmp/first.pdf": ConversionOutcome("# First", backend="native")}
+    )
+
+    assert controller.result_model.rowCount() == 1
+    assert controller.hasUnsavedSuccessfulResults is True
+
+
 def test_controller_finished_status_reports_all_failed(controller):
     messages: list[tuple[str, str]] = []
     controller.toastRequested.connect(
@@ -1689,18 +2278,30 @@ def test_controller_finished_status_reports_all_failed(controller):
     assert messages == [("error", "1 conversion failed.")]
 
 
-def test_controller_retries_failed_results(controller):
+def test_controller_retries_failed_results_without_discarding_successes(
+    controller,
+    monkeypatch,
+):
     messages: list[tuple[str, str]] = []
     changes: list[str] = []
+    requests: list[str] = []
+    starts: list[dict[str, bool]] = []
     controller.toastRequested.connect(
         lambda kind, message: messages.append((kind, message))
     )
     controller.queueChanged.connect(lambda: changes.append("queue"))
     controller.resultsChanged.connect(lambda: changes.append("results"))
     controller.selectedResultChanged.connect(lambda: changes.append("selected"))
+    controller.discardResultsRequested.connect(requests.append)
+    monkeypatch.setattr(
+        controller,
+        "_start_conversion",
+        lambda **kwargs: starts.append(kwargs),
+    )
     controller.addFiles(["C:/tmp/original.pdf"])
     changes.clear()
-    controller.result_model.set_results(
+    _complete_results(
+        controller,
         {
             "C:/tmp/ok.pdf": ConversionOutcome("# Converted", backend="native"),
             "C:/tmp/broken-a.pdf": ConversionOutcome("A failed", backend="native"),
@@ -1710,21 +2311,27 @@ def test_controller_retries_failed_results(controller):
     )
     controller.selectResult(1)
     changes.clear()
+    messages.clear()
 
     assert controller.hasFailedResults is True
     assert controller.failedResultCount == 2
+    assert controller.hasUnsavedSuccessfulResults is True
 
     controller.retryFailedResults()
 
+    assert requests == []
     assert controller.queue_model.sources() == [
         "C:/tmp/broken-a.pdf",
         "https://example.com/broken",
     ]
-    assert controller.hasResults is False
-    assert controller.selectedResultIndex == -1
-    assert controller.statusText == "Queued 2 failed inputs for retry"
-    assert messages == [("success", "Queued 2 failed inputs for retry.")]
-    assert changes == ["results", "selected", "queue"]
+    assert controller.hasResults is True
+    assert controller.hasFailedResults is False
+    assert controller.result_model.item_at(0).source == "C:/tmp/ok.pdf"
+    assert controller.selectedResultIndex == 0
+    assert controller.hasUnsavedSuccessfulResults is True
+    assert starts == [{"preserve_results": True, "preflight_validated": True}]
+    assert messages == [("success", "Retrying 2 failed inputs.")]
+    assert changes == ["queue", "results", "selected"]
 
 
 def test_controller_retry_failed_results_reports_when_none_failed(controller):
@@ -1743,6 +2350,46 @@ def test_controller_retry_failed_results_reports_when_none_failed(controller):
     assert controller.hasFailedResults is False
     assert controller.failedResultCount == 0
     assert messages == [("error", "No failed conversions to retry.")]
+
+
+def test_controller_can_save_retained_successes_while_retrying_failures(
+    controller,
+    monkeypatch,
+    tmp_path,
+):
+    output_path = tmp_path / "converted.md"
+    starts: list[dict[str, bool]] = []
+    monkeypatch.setattr(
+        controller,
+        "_start_conversion",
+        lambda **kwargs: starts.append(kwargs),
+    )
+    controller.addFiles(["C:/tmp/original.pdf"])
+    _complete_results(
+        controller,
+        {
+            "C:/tmp/ok.pdf": ConversionOutcome("# Converted", backend="native"),
+            "C:/tmp/broken.pdf": ConversionOutcome("Conversion failed", backend="native"),
+        },
+        {"C:/tmp/broken.pdf"},
+    )
+    requests: list[str] = []
+    controller.discardResultsRequested.connect(requests.append)
+
+    controller.retryFailedResults()
+
+    assert requests == []
+    assert controller.hasResults is True
+    assert controller.hasFailedResults is False
+    assert controller.queue_model.sources() == ["C:/tmp/broken.pdf"]
+    assert starts == [{"preserve_results": True, "preflight_validated": True}]
+
+    controller.saveCombinedOutput(str(output_path))
+
+    saved = output_path.read_text(encoding="utf-8")
+    assert "# Converted" in saved
+    assert "broken.pdf" not in saved
+    assert controller.hasUnsavedSuccessfulResults is False
 
 
 def test_controller_separate_save_falls_back_when_source_folder_is_not_writable(
@@ -1961,4 +2608,3 @@ def test_controller_exposes_selected_failed_result(controller):
 
     controller.selectResult(1)
     assert controller.selectedResultFailed is True
-

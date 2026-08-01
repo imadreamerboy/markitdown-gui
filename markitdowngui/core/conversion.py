@@ -275,6 +275,37 @@ class ConversionOutcome:
     assets: list[ConversionAsset] = field(default_factory=list)
 
 
+class MarkItDownSession:
+    """Lazily reuse native MarkItDown instances within one serial worker."""
+
+    def __init__(self) -> None:
+        self._instances: dict[tuple[bool, str], object] = {}
+
+    def get(
+        self,
+        options: ConversionOptions,
+        *,
+        use_docintel: bool = False,
+    ) -> object:
+        endpoint = options.normalized_docintel_endpoint if use_docintel else ""
+        key = (use_docintel, endpoint)
+        instance = self._instances.get(key)
+        if instance is not None:
+            return instance
+
+        # Delay the heavy import until a native conversion is actually requested.
+        from markitdown import MarkItDown
+
+        kwargs: dict[str, object] = {}
+        if use_docintel and endpoint:
+            kwargs["docintel_endpoint"] = endpoint
+            kwargs["docintel_credential"], _auth_method = _build_docintel_credential()
+
+        instance = MarkItDown(**kwargs)
+        self._instances[key] = instance
+        return instance
+
+
 def format_conversion_error(file_path: str, error: Exception) -> str:
     return f"{CONVERSION_ERROR_PREFIX}{file_path}: {error}"
 
@@ -617,6 +648,8 @@ def _test_http_endpoint_reachable(
 def convert_file_with_details(
     file_path: str,
     options: ConversionOptions | None = None,
+    *,
+    markitdown_session: MarkItDownSession | None = None,
 ) -> ConversionOutcome:
     """Convert a single file to Markdown text and report which backend produced it."""
     effective_options = options or ConversionOptions()
@@ -637,7 +670,11 @@ def convert_file_with_details(
 
     if not effective_options.ocr_enabled:
         return ConversionOutcome(
-            markdown=_convert_with_markitdown(file_path, effective_options),
+            markdown=_convert_with_markitdown_for_session(
+                file_path,
+                effective_options,
+                markitdown_session=markitdown_session,
+            ),
             backend=BACKEND_NATIVE,
         )
 
@@ -648,7 +685,11 @@ def convert_file_with_details(
         return _convert_pdf_with_ocr(file_path, effective_options)
 
     return ConversionOutcome(
-        markdown=_convert_with_markitdown(file_path, effective_options),
+        markdown=_convert_with_markitdown_for_session(
+            file_path,
+            effective_options,
+            markitdown_session=markitdown_session,
+        ),
         backend=BACKEND_NATIVE,
     )
 
@@ -1039,18 +1080,43 @@ def _convert_with_markitdown(
     options: ConversionOptions,
     *,
     use_docintel: bool = False,
+    markitdown_session: MarkItDownSession | None = None,
 ) -> str:
-    # Delay heavy imports until conversion is requested.
-    from markitdown import MarkItDown
+    if markitdown_session is not None:
+        md = markitdown_session.get(options, use_docintel=use_docintel)
+    else:
+        # Delay heavy imports until conversion is requested.
+        from markitdown import MarkItDown
 
-    kwargs: dict[str, object] = {}
-    if use_docintel and options.normalized_docintel_endpoint:
-        kwargs["docintel_endpoint"] = options.normalized_docintel_endpoint
-        kwargs["docintel_credential"], _auth_method = _build_docintel_credential()
-
-    md = MarkItDown(**kwargs)
+        kwargs: dict[str, object] = {}
+        if use_docintel and options.normalized_docintel_endpoint:
+            kwargs["docintel_endpoint"] = options.normalized_docintel_endpoint
+            kwargs["docintel_credential"], _auth_method = _build_docintel_credential()
+        md = MarkItDown(**kwargs)
     result = md.convert(file_path)
     return result.text_content or ""
+
+
+def _convert_with_markitdown_for_session(
+    file_path: str,
+    options: ConversionOptions,
+    *,
+    use_docintel: bool = False,
+    markitdown_session: MarkItDownSession | None = None,
+) -> str:
+    """Keep existing converter hooks compatible when no worker session is active."""
+    if markitdown_session is None:
+        return _convert_with_markitdown(
+            file_path,
+            options,
+            use_docintel=use_docintel,
+        )
+    return _convert_with_markitdown(
+        file_path,
+        options,
+        use_docintel=use_docintel,
+        markitdown_session=markitdown_session,
+    )
 
 
 def _convert_with_glmocr(
@@ -1443,6 +1509,7 @@ def _run_tesseract_ocr(image, options: ConversionOptions) -> str:
 
 class ConversionWorker(QThread):
     progress = Signal(int, str)
+    itemFinished = Signal(str, object, bool)
     finished = Signal(dict)
     error = Signal(str)
 
@@ -1454,6 +1521,8 @@ class ConversionWorker(QThread):
     ):
         super().__init__()
         self.files = files
+        # Retained for callers/settings profiles created before serial scheduling.
+        # A batch boundary never produced concurrency, so it no longer affects work.
         self.batch_size = batch_size
         self.options = options or ConversionOptions()
         self.failed_files: set[str] = set()
@@ -1465,33 +1534,33 @@ class ConversionWorker(QThread):
         results: dict[str, ConversionOutcome] = {}
         self.failed_files = set()
         self.processing_backends = {}
+        markitdown_session = MarkItDownSession()
 
-        for i in range(0, len(self.files), self.batch_size):
-            if self.is_cancelled:
-                break
-
-            batch = self.files[i : i + self.batch_size]
-            for j, file_path in enumerate(batch):
-                while self.is_paused:
-                    if self.is_cancelled:
-                        break
-                    self.msleep(100)
+        for index, file_path in enumerate(self.files):
+            while self.is_paused:
                 if self.is_cancelled:
                     break
-
-                try:
-                    outcome = convert_file_with_details(file_path, self.options)
-                    results[file_path] = outcome
-                    self.processing_backends[file_path] = outcome.backend
-                except Exception as exc:
-                    self.failed_files.add(file_path)
-                    results[file_path] = ConversionOutcome(
-                        markdown=format_conversion_error(file_path, exc)
-                    )
-
-                progress = int((i + j + 1) / len(self.files) * 100)
-                self.progress.emit(progress, file_path)
+                self.msleep(100)
             if self.is_cancelled:
                 break
+
+            failed = False
+            try:
+                outcome = convert_file_with_details(
+                    file_path,
+                    self.options,
+                    markitdown_session=markitdown_session,
+                )
+                results[file_path] = outcome
+                self.processing_backends[file_path] = outcome.backend
+            except Exception as exc:
+                failed = True
+                self.failed_files.add(file_path)
+                outcome = ConversionOutcome(markdown=format_conversion_error(file_path, exc))
+                results[file_path] = outcome
+
+            self.itemFinished.emit(file_path, outcome, failed)
+            progress = int((index + 1) / len(self.files) * 100)
+            self.progress.emit(progress, file_path)
 
         self.finished.emit(results)

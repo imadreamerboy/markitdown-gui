@@ -38,3 +38,41 @@ def test_result_model_exposes_backend_and_failure_state():
     assert model.data(index, ResultModel.FailedRole) is True
     assert model.data(index, ResultModel.WordCountRole) == 2
 
+
+def test_result_model_add_result_preserves_existing_completed_items():
+    model = ResultModel()
+    model.add_result(
+        "C:/tmp/first.pdf",
+        ConversionOutcome(markdown="first", backend="native"),
+    )
+    model.add_result(
+        "C:/tmp/second.pdf",
+        ConversionOutcome(markdown="second", backend="http-ocr"),
+        failed=True,
+    )
+    model.add_result(
+        "C:/tmp/first.pdf",
+        ConversionOutcome(markdown="first revised", backend="native"),
+    )
+
+    assert model.rowCount() == 2
+    assert model.item_at(0).outcome.markdown == "first revised"
+    assert model.item_at(1).failed is True
+    assert model.data(model.index(1, 0), ResultModel.BackendRole) == "HTTP OCR"
+
+
+def test_result_model_removes_only_sources_that_are_being_retried():
+    model = ResultModel()
+    model.set_results(
+        {
+            "C:/tmp/ok.pdf": ConversionOutcome("ok", backend="native"),
+            "C:/tmp/broken.pdf": ConversionOutcome("failed", backend="native"),
+        },
+        {"C:/tmp/broken.pdf"},
+    )
+
+    model.remove_sources({"C:/tmp/broken.pdf"})
+
+    assert model.rowCount() == 1
+    assert model.item_at(0).source == "C:/tmp/ok.pdf"
+

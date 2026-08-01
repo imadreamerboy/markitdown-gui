@@ -1,5 +1,7 @@
 import os
+import stat
 import pytest
+from markitdowngui.core import file_utils
 from markitdowngui.core.file_utils import FileManager
 
 @pytest.fixture
@@ -68,4 +70,85 @@ def test_save_and_get_backup_dir(file_manager):
     
     assert os.path.exists(backup_path)
     with open(backup_path, "r", encoding="utf-8") as f:
-        assert f.read() == content 
+        assert f.read() == content
+
+
+def test_save_markdown_file_replaces_existing_content_without_temp_files(
+    file_manager,
+    tmp_path,
+):
+    output_path = tmp_path / "nested" / "report.md"
+    output_path.parent.mkdir()
+    output_path.write_text("old output", encoding="utf-8")
+
+    file_manager.save_markdown_file(str(output_path), "new output")
+
+    assert output_path.read_text(encoding="utf-8") == "new output"
+    assert list(output_path.parent.glob(".markitdowngui-*.tmp")) == []
+
+
+@pytest.mark.skipif(
+    os.name == "nt", reason="POSIX symlinks are not portable to Windows"
+)
+def test_save_markdown_file_preserves_output_symlink(file_manager, tmp_path):
+    target = tmp_path / "reports" / "current.md"
+    target.parent.mkdir()
+    target.write_text("old output", encoding="utf-8")
+    output_link = tmp_path / "latest.md"
+    output_link.symlink_to(target.relative_to(output_link.parent))
+
+    file_manager.save_markdown_file(str(output_link), "new output")
+
+    assert output_link.is_symlink()
+    assert target.read_text(encoding="utf-8") == "new output"
+
+
+@pytest.mark.skipif(
+    os.name == "nt", reason="POSIX path limits are not portable to Windows"
+)
+def test_save_markdown_file_supports_long_destination_names(file_manager, tmp_path):
+    name_max = os.pathconf(tmp_path, "PC_NAME_MAX")
+    output_path = tmp_path / ("x" * (name_max - len(".md")) + ".md")
+
+    file_manager.save_markdown_file(str(output_path), "new output")
+
+    assert output_path.read_text(encoding="utf-8") == "new output"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX permissions are not portable to Windows")
+def test_save_markdown_file_preserves_existing_permissions(file_manager, tmp_path):
+    output_path = tmp_path / "report.md"
+    output_path.write_text("old output", encoding="utf-8")
+    output_path.chmod(0o640)
+
+    file_manager.save_markdown_file(str(output_path), "new output")
+
+    assert stat.S_IMODE(output_path.stat().st_mode) == 0o640
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX permissions are not portable to Windows")
+def test_stage_markdown_file_closes_descriptor_when_permission_setup_fails(
+    file_manager,
+    tmp_path,
+    monkeypatch,
+):
+    output_path = tmp_path / "report.md"
+    output_path.write_text("old output", encoding="utf-8")
+    closed_descriptors: list[int] = []
+    original_close = os.close
+
+    def fail_fchmod(_descriptor, _mode):
+        raise OSError("permission setup failed")
+
+    def track_close(descriptor):
+        closed_descriptors.append(descriptor)
+        original_close(descriptor)
+
+    monkeypatch.setattr(file_utils.os, "fchmod", fail_fchmod)
+    monkeypatch.setattr(file_utils.os, "close", track_close)
+
+    with pytest.raises(OSError, match="permission setup failed"):
+        file_manager.stage_markdown_file(str(output_path), "new output")
+
+    assert len(closed_descriptors) == 1
+    assert list(tmp_path.glob(".markitdowngui-*.tmp")) == []

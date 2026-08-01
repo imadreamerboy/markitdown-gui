@@ -62,6 +62,7 @@ def test_build_datas_keeps_base_files_and_warns_for_missing_optional_packages():
     datas = build_config.build_datas(fake_collect, warn=warnings.append)
 
     assert ("LICENSE", ".") in datas
+    assert ("THIRD_PARTY_NOTICES.md", ".") in datas
     assert (
         "markitdowngui/resources/icons",
         "markitdowngui/resources/icons",
