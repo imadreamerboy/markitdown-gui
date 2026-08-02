@@ -360,6 +360,10 @@ class AppController(QObject):
         return self.settings.get_ocr_enabled()
 
     @Property(bool, notify=settingsChanged)
+    def fastPdfConversion(self) -> bool:
+        return self.settings.get_fast_pdf_conversion()
+
+    @Property(bool, notify=settingsChanged)
     def preservePdfImages(self) -> bool:
         return self.settings.get_preserve_pdf_images()
 
@@ -951,6 +955,11 @@ class AppController(QObject):
         self.settings.set_ocr_enabled(enabled)
         self.settingsChanged.emit()
         self.diagnosticsChanged.emit()
+
+    @Slot(bool)
+    def setFastPdfConversion(self, enabled: bool) -> None:
+        self.settings.set_fast_pdf_conversion(enabled)
+        self.settingsChanged.emit()
 
     @Slot(bool)
     def setPreservePdfImages(self, enabled: bool) -> None:
@@ -1929,6 +1938,7 @@ class AppController(QObject):
 
         return ConversionOptions(
             ocr_enabled=self.settings.get_ocr_enabled(),
+            fast_pdf_conversion=self.settings.get_fast_pdf_conversion(),
             preserve_pdf_images=preserve_pdf_images,
             preserve_docx_images=preserve_docx_images,
             ocr_provider=self.settings.get_ocr_provider(),

@@ -14,6 +14,7 @@ requires-python = ">=3.10"
 dependencies = [
     "markitdown[az-doc-intel,docx,pdf,pptx,xls,xlsx]==0.1.6",
     "pypdfium2",
+    "pdf-inspector==0.2.6",
     "pytesseract",
     "pyside6>=6.8.2.1",
     "glmocr==0.1.4",

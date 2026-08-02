@@ -1123,6 +1123,15 @@ def test_controller_diagnostic_readiness_updates_after_ocr_change(controller):
     assert changes
 
 
+def test_controller_builds_fast_pdf_conversion_option(controller):
+    controller.setFastPdfConversion(True)
+
+    options = controller._build_conversion_options(create_asset_root=False)
+
+    assert controller.fastPdfConversion is True
+    assert options.fast_pdf_conversion is True
+
+
 def test_diagnostic_readiness_does_not_create_temp_asset_root(controller, monkeypatch):
     controller.setPreservePdfImages(True)
     monkeypatch.setattr(

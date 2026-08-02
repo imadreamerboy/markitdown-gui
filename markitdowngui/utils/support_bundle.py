@@ -86,6 +86,7 @@ def build_sanitized_settings_snapshot(settings: SettingsManager) -> dict[str, An
         },
         "conversion": {
             "batchSize": settings.get_batch_size(),
+            "fastPdfConversion": settings.get_fast_pdf_conversion(),
             "preservePdfImages": settings.get_preserve_pdf_images(),
             "preserveDocxImages": settings.get_preserve_docx_images(),
         },

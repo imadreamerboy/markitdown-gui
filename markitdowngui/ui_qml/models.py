@@ -42,6 +42,7 @@ class ResultItem:
             "native": "Native",
             "docx-images": "DOCX assets",
             "pdf-images": "PDF assets",
+            "pdf-inspector": "Fast PDF",
         }
         return labels.get(self.outcome.backend, self.outcome.backend or "Native")
 

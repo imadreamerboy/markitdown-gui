@@ -121,6 +121,8 @@ pandas==2.3.0
     # via
     #   docling-core
     #   markitdown
+pdf-inspector==0.2.6
+    # via markitdowngui (pyproject.toml)
 pdfminer-six==20251230
     # via
     #   markitdown

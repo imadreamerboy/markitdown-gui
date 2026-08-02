@@ -1205,6 +1205,25 @@ ApplicationWindow {
                         }
 
                         ThemeToggleRow {
+                            id: fastPdfConversionToggle
+                            title: "Fast PDF conversion"
+                            detail: "Use the fast local parser for clear digital PDFs. Mixed, scanned, or uncertain PDFs keep the existing conversion path."
+                            enabled: !app.converting && !app.preservePdfImages
+                            checked: app.fastPdfConversion
+                            textColor: colors.text
+                            mutedTextColor: colors.muted
+                            Layout.fillWidth: true
+                        }
+
+                        Connections {
+                            target: fastPdfConversionToggle
+
+                            function onToggled(enabled) {
+                                app.setFastPdfConversion(enabled)
+                            }
+                        }
+
+                        ThemeToggleRow {
                             title: "Preserve PDF images"
                             detail: "Extract PDF page images and keep relative asset links on export."
                             enabled: !app.converting

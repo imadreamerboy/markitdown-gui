@@ -161,6 +161,14 @@ class SettingsManager:
         """Set whether OCR is enabled."""
         self.settings.setValue('ocrEnabled', enabled)
 
+    def get_fast_pdf_conversion(self) -> bool:
+        """Get whether eligible digital PDFs use pdf-inspector first."""
+        return bool(self.settings.value('fastPdfConversion', False, type=bool))
+
+    def set_fast_pdf_conversion(self, enabled: bool) -> None:
+        """Set whether eligible digital PDFs use pdf-inspector first."""
+        self.settings.setValue('fastPdfConversion', enabled)
+
     def get_preserve_pdf_images(self) -> bool:
         """Get whether PDF image preservation is enabled by default."""
         return bool(self.settings.value('preservePdfImages', False, type=bool))

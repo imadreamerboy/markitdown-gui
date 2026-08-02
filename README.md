@@ -24,6 +24,7 @@ More screenshots:
 - Save modes: export as one combined file or separate files.
 - Quick actions: copy Markdown, save output, retry failed conversions, back to queue, start over.
 - Optional OCR for scanned PDFs and image files, with selectable `Azure + Tesseract`, `GLM-OCR`, and generic `HTTP OCR` providers.
+- Opt-in fast local conversion for clear digital PDFs using `pdf-inspector`; scanned, mixed, uncertain, and encoding-problem PDFs continue through the existing conversion and OCR path.
 - Settings for output folder, save mode, source-folder saves, OCR, and theme mode (light/dark/system).
 - Help view with project links, OCR references, conversion references, and keyboard shortcuts.
 
@@ -79,6 +80,7 @@ pip install -e .[dev]
 ### OCR Notes
 
 - OCR is optional and disabled by default.
+- **Fast PDF conversion** is optional and disabled by default. Enable it from the conversion controls for text-based PDFs where speed matters. It is bypassed when preserving PDF images, and it falls back to the established PDF pipeline when the document is scanned, mixed, uncertain, or has encoding issues.
 - `Azure + Tesseract` uses Azure Document Intelligence first when configured, then Tesseract as its local fallback.
 - `GLM-OCR` is available as a separate OCR provider for PDFs and images. It can fall back to another configured provider if selected in Settings.
 - `HTTP OCR` is a generic integration point for local or self-hosted OCR servers. The app sends a multipart `POST` with a `file` part, optional `model` field, and optional `Authorization: Bearer ...` header read from the configured environment variable. JSON responses can use `markdown`, `text`, `result`, `content`, or `output`; plain text responses are used directly.

@@ -39,6 +39,16 @@ def test_result_model_exposes_backend_and_failure_state():
     assert model.data(index, ResultModel.WordCountRole) == 2
 
 
+def test_result_model_labels_fast_pdf_results():
+    model = ResultModel()
+    model.add_result(
+        "C:/tmp/report.pdf",
+        ConversionOutcome(markdown="fast text", backend="pdf-inspector"),
+    )
+
+    assert model.data(model.index(0, 0), ResultModel.BackendRole) == "Fast PDF"
+
+
 def test_result_model_add_result_preserves_existing_completed_items():
     model = ResultModel()
     model.add_result(
@@ -75,4 +85,3 @@ def test_result_model_removes_only_sources_that_are_being_retried():
 
     assert model.rowCount() == 1
     assert model.item_at(0).source == "C:/tmp/ok.pdf"
-
