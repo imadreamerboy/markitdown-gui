@@ -37,6 +37,7 @@ def build_settings_profile(
             },
             "conversion": {
                 "batchSize": settings.get_batch_size(),
+                "fastPdfConversion": settings.get_fast_pdf_conversion(),
                 "preservePdfImages": settings.get_preserve_pdf_images(),
                 "preserveDocxImages": settings.get_preserve_docx_images(),
             },
@@ -113,6 +114,8 @@ def apply_settings_profile(settings: SettingsManager, payload: dict[str, Any]) -
 
     if "batchSize" in conversion:
         settings.set_batch_size(_int_value(conversion["batchSize"]))
+    if "fastPdfConversion" in conversion:
+        settings.set_fast_pdf_conversion(_bool_value(conversion["fastPdfConversion"]))
     if "preservePdfImages" in conversion:
         settings.set_preserve_pdf_images(_bool_value(conversion["preservePdfImages"]))
     if "preserveDocxImages" in conversion:

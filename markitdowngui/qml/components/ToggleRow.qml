@@ -57,7 +57,7 @@ RowLayout {
         Accessible.role: Accessible.Switch
         Accessible.name: root.title
         Accessible.description: root.detail
-        onToggled: root.toggled(checked)
+        onToggled: root.toggled(switchControl.checked)
 
         indicator: Rectangle {
             implicitWidth: 46
@@ -104,4 +104,3 @@ RowLayout {
         }
     }
 }
-

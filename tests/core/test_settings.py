@@ -110,6 +110,10 @@ def test_ocr_settings(settings_manager):
     settings_manager.set_ocr_enabled(True)
     assert settings_manager.get_ocr_enabled()
 
+    assert not settings_manager.get_fast_pdf_conversion()
+    settings_manager.set_fast_pdf_conversion(True)
+    assert settings_manager.get_fast_pdf_conversion()
+
     assert not settings_manager.get_preserve_pdf_images()
     settings_manager.set_preserve_pdf_images(True)
     assert settings_manager.get_preserve_pdf_images()

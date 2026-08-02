@@ -26,6 +26,7 @@ def test_sanitized_settings_snapshot_excludes_raw_paths(tmp_path):
     settings.set_http_ocr_endpoint("https://ocr.example/private")
     settings.set_docintel_endpoint("https://azure.example/private")
     settings.set_tesseract_path(str(tmp_path / "tesseract.exe"))
+    settings.set_fast_pdf_conversion(True)
 
     snapshot = support_bundle.build_sanitized_settings_snapshot(settings)
     encoded = json.dumps(snapshot)
@@ -33,6 +34,7 @@ def test_sanitized_settings_snapshot_excludes_raw_paths(tmp_path):
     assert snapshot["output"]["defaultOutputFolderConfigured"] is True
     assert snapshot["output"]["recentFilesCount"] == 1
     assert snapshot["output"]["recentOutputsCount"] == 1
+    assert snapshot["conversion"]["fastPdfConversion"] is True
     assert snapshot["ocr"]["httpEndpointConfigured"] is True
     assert snapshot["ocr"]["docintelEndpointConfigured"] is True
     assert str(tmp_path) not in encoded

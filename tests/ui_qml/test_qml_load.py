@@ -1,8 +1,9 @@
 from pathlib import Path
 
-from PySide6.QtCore import QCoreApplication, QObject, QSettings, QUrl, Qt
+from PySide6.QtCore import QCoreApplication, QObject, QPoint, QSettings, QUrl, Qt
 from PySide6.QtGui import QAccessible, QColor, QGuiApplication
 from PySide6.QtQml import QQmlApplicationEngine
+from PySide6.QtQuick import QQuickItem
 from PySide6.QtTest import QTest
 from PySide6.QtQuickControls2 import QQuickStyle
 
@@ -122,6 +123,56 @@ def test_ocr_fallback_selector_is_provider_independent():
     assert main_text.index(fallback_marker) < main_text.index(glm_panel_marker)
     assert 'visible: app.ocrEnabled && app.ocrProvider !== "azure_tesseract"' in main_text
     assert "model: root.ocrFallbackLabels()" in main_text
+
+
+def test_workspace_exposes_fast_pdf_conversion_control():
+    qml_root = Path(__file__).resolve().parents[2] / "markitdowngui" / "qml"
+    main_text = (qml_root / "Main.qml").read_text(encoding="utf-8")
+
+    assert 'title: "Fast PDF conversion"' in main_text
+    assert "checked: app.fastPdfConversion" in main_text
+    assert "target: fastPdfConversionToggle" in main_text
+    assert "function onToggled(enabled)" in main_text
+    assert "app.setFastPdfConversion(enabled)" in main_text
+
+
+def test_fast_pdf_conversion_toggle_updates_controller(monkeypatch, tmp_path):
+    app, controller, engine, root = _load_main_qml(monkeypatch, tmp_path)
+
+    try:
+        controller.addFiles([str(tmp_path / "digital.pdf")])
+        app.processEvents()
+        toggle = _find_by_property(root, "title", "Fast PDF conversion")
+        switch = next(
+            item
+            for item in toggle.findChildren(QQuickItem)
+            if item.property("checked") is not None
+        )
+        position = switch.mapToScene(switch.boundingRect().center())
+
+        QTest.mouseClick(
+            root,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+            QPoint(round(position.x()), round(position.y())),
+        )
+        app.processEvents()
+
+        assert controller.fastPdfConversion is True
+    finally:
+        _close_main_qml(app, controller, engine)
+
+
+def test_toggle_row_emits_the_switch_value():
+    toggle_row = (
+        Path(__file__).resolve().parents[2]
+        / "markitdowngui"
+        / "qml"
+        / "components"
+        / "ToggleRow.qml"
+    ).read_text(encoding="utf-8")
+
+    assert "onToggled: root.toggled(switchControl.checked)" in toggle_row
 
 
 def test_workspace_confirms_before_discarding_unsaved_results():

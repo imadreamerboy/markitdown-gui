@@ -25,6 +25,7 @@ terms.
 
 - MarkItDown: MIT License.
 - markitdown-pdf-images: MIT License.
+- pdf-inspector: MIT License.
 - Docling Core and Docling Parse: MIT License for the codebases; any model usage
   remains subject to the applicable model licences.
 - GLM-OCR Python package: Apache-2.0 License.

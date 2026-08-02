@@ -22,6 +22,7 @@ def test_build_hiddenimports_includes_charset_normalizer_mypyc_runtime():
     assert "azure.ai.documentintelligence.aio" in hiddenimports
     assert "glmocr.api" in hiddenimports
     assert "markitdown_pdf_images.converter" in hiddenimports
+    assert "pdf_inspector.pdf_inspector" in hiddenimports
     assert calls[:2] == ["markitdown", "charset_normalizer"]
 
 

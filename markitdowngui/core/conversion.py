@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from itertools import islice
 import base64
+import logging
 import mimetypes
 import os
 import shutil
@@ -12,6 +13,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 import requests
+from pdf_inspector import process_pdf
 
 from PySide6.QtCore import QThread, Signal
 
@@ -47,6 +49,8 @@ BACKEND_LOCAL = "local"
 BACKEND_NATIVE = "native"
 BACKEND_DOCX_IMAGES = "docx-images"
 BACKEND_PDF_IMAGES = "pdf-images"
+BACKEND_PDF_INSPECTOR = "pdf-inspector"
+PDF_INSPECTOR_MIN_CONFIDENCE = 0.9
 OCR_PROVIDER_AZURE_TESSERACT = "azure_tesseract"
 OCR_PROVIDER_GLMOCR = "glmocr"
 OCR_PROVIDER_HTTP = "http"
@@ -144,6 +148,7 @@ class ConversionOptions:
     """User-controlled conversion behavior."""
 
     ocr_enabled: bool = False
+    fast_pdf_conversion: bool = False
     preserve_pdf_images: bool = False
     preserve_docx_images: bool = False
     ocr_provider: str = OCR_PROVIDER_AZURE_TESSERACT
@@ -185,6 +190,10 @@ class ConversionOptions:
     @property
     def normalized_preserve_pdf_images(self) -> bool:
         return bool(self.preserve_pdf_images)
+
+    @property
+    def normalized_fast_pdf_conversion(self) -> bool:
+        return bool(self.fast_pdf_conversion)
 
     @property
     def normalized_preserve_docx_images(self) -> bool:
@@ -665,6 +674,11 @@ def convert_file_with_details(
     if extension == PDF_EXTENSION and effective_options.normalized_preserve_pdf_images:
         return _convert_pdf_with_preserved_images(file_path, effective_options)
 
+    if extension == PDF_EXTENSION and effective_options.normalized_fast_pdf_conversion:
+        fast_outcome = _try_convert_pdf_with_pdf_inspector(file_path)
+        if fast_outcome is not None:
+            return fast_outcome
+
     if extension == DOCX_EXTENSION and effective_options.normalized_preserve_docx_images:
         return _convert_docx_with_preserved_images(file_path, effective_options)
 
@@ -692,6 +706,63 @@ def convert_file_with_details(
         ),
         backend=BACKEND_NATIVE,
     )
+
+
+def _try_convert_pdf_with_pdf_inspector(file_path: str) -> ConversionOutcome | None:
+    """Return a trusted fast PDF result, or None so the established path can continue.
+
+    pdf-inspector is deliberately an opt-in accelerator. It only takes ownership
+    of digital PDFs when its classification and output indicate a safe result;
+    scanned, mixed, uncertain, and encoding-problem PDFs retain the existing
+    MarkItDown and OCR behaviour.
+    """
+    try:
+        result = process_pdf(file_path)
+    except Exception as exc:
+        logging.warning("Fast PDF conversion fell back for %s: %s", file_path, exc)
+        return None
+
+    pdf_type = str(getattr(result, "pdf_type", "")).strip().lower()
+    if pdf_type != "text_based":
+        logging.warning(
+            "Fast PDF conversion fell back for %s: pdf-inspector classified it as %s",
+            file_path,
+            pdf_type or "unknown",
+        )
+        return None
+    if bool(getattr(result, "has_encoding_issues", True)):
+        logging.warning(
+            "Fast PDF conversion fell back for %s: pdf-inspector found encoding issues",
+            file_path,
+        )
+        return None
+
+    try:
+        confidence = float(getattr(result, "confidence", 0.0))
+    except (TypeError, ValueError):
+        logging.warning(
+            "Fast PDF conversion fell back for %s: pdf-inspector returned invalid confidence",
+            file_path,
+        )
+        return None
+    if confidence < PDF_INSPECTOR_MIN_CONFIDENCE:
+        logging.warning(
+            "Fast PDF conversion fell back for %s: confidence %.2f is below %.2f",
+            file_path,
+            confidence,
+            PDF_INSPECTOR_MIN_CONFIDENCE,
+        )
+        return None
+
+    markdown = getattr(result, "markdown", None)
+    if not isinstance(markdown, str) or not markdown.strip():
+        logging.warning(
+            "Fast PDF conversion fell back for %s: pdf-inspector returned no Markdown",
+            file_path,
+        )
+        return None
+
+    return ConversionOutcome(markdown=markdown, backend=BACKEND_PDF_INSPECTOR)
 
 
 def convert_file(file_path: str, options: ConversionOptions | None = None) -> str:

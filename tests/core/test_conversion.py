@@ -54,6 +54,10 @@ def _install_fake_pdf_images(monkeypatch, convert_pdf):
     monkeypatch.setitem(sys.modules, "markitdown_pdf_images", package)
 
 
+def _install_fake_pdf_inspector(monkeypatch, conversion, process_pdf):
+    monkeypatch.setattr(conversion, "process_pdf", process_pdf)
+
+
 def _install_fake_docx_dependencies(
     monkeypatch,
     *,
@@ -129,6 +133,134 @@ def test_convert_pdf_without_preserve_images_keeps_native_path(monkeypatch, conv
 
     assert result == "native pdf text"
     assert calls == [("scan.pdf", False)]
+
+
+def test_fast_pdf_conversion_uses_pdf_inspector_for_trusted_text_pdf(monkeypatch, conversion):
+    native_calls = []
+
+    def process_pdf(file_path):
+        assert file_path == "report.pdf"
+        return types.SimpleNamespace(
+            pdf_type="text_based",
+            confidence=0.99,
+            has_encoding_issues=False,
+            markdown="# Fast report",
+        )
+
+    def native_convert(*args, **kwargs):
+        native_calls.append((args, kwargs))
+        return "native fallback"
+
+    _install_fake_pdf_inspector(monkeypatch, conversion, process_pdf)
+    monkeypatch.setattr(conversion, "_convert_with_markitdown", native_convert)
+
+    outcome = conversion.convert_file_with_details(
+        "report.pdf",
+        conversion.ConversionOptions(fast_pdf_conversion=True),
+    )
+
+    assert outcome.markdown == "# Fast report"
+    assert outcome.backend == conversion.BACKEND_PDF_INSPECTOR
+    assert native_calls == []
+
+
+@pytest.mark.parametrize(
+    "result",
+    [
+        types.SimpleNamespace(
+            pdf_type="scanned",
+            confidence=1.0,
+            has_encoding_issues=False,
+            markdown="# OCR needed",
+        ),
+        types.SimpleNamespace(
+            pdf_type="text_based",
+            confidence=0.5,
+            has_encoding_issues=False,
+            markdown="# Low confidence",
+        ),
+        types.SimpleNamespace(
+            pdf_type="text_based",
+            confidence=1.0,
+            has_encoding_issues=True,
+            markdown="# Encoding issue",
+        ),
+        types.SimpleNamespace(
+            pdf_type="text_based",
+            confidence=1.0,
+            has_encoding_issues=False,
+            markdown="  ",
+        ),
+    ],
+)
+def test_fast_pdf_conversion_falls_back_for_untrusted_result(
+    monkeypatch,
+    conversion,
+    result,
+):
+    _install_fake_pdf_inspector(monkeypatch, conversion, lambda _file_path: result)
+    monkeypatch.setattr(
+        conversion,
+        "_convert_with_markitdown",
+        lambda *_args, **_kwargs: "native fallback",
+    )
+
+    outcome = conversion.convert_file_with_details(
+        "report.pdf",
+        conversion.ConversionOptions(fast_pdf_conversion=True),
+    )
+
+    assert outcome.markdown == "native fallback"
+    assert outcome.backend == conversion.BACKEND_NATIVE
+
+
+def test_fast_pdf_conversion_falls_back_to_ocr_when_enabled(monkeypatch, conversion):
+    _install_fake_pdf_inspector(
+        monkeypatch,
+        conversion,
+        lambda _file_path: types.SimpleNamespace(
+            pdf_type="mixed",
+            confidence=1.0,
+            has_encoding_issues=False,
+            markdown="# Partial text",
+        ),
+    )
+    expected = conversion.ConversionOutcome("ocr fallback", backend="local")
+    monkeypatch.setattr(conversion, "_convert_pdf_with_ocr", lambda *_args: expected)
+
+    outcome = conversion.convert_file_with_details(
+        "mixed.pdf",
+        conversion.ConversionOptions(ocr_enabled=True, fast_pdf_conversion=True),
+    )
+
+    assert outcome is expected
+
+
+def test_fast_pdf_conversion_keeps_image_preservation_authoritative(
+    monkeypatch,
+    conversion,
+):
+    _install_fake_pdf_inspector(
+        monkeypatch,
+        conversion,
+        lambda _file_path: pytest.fail("fast parser must not run when preserving images"),
+    )
+    expected = conversion.ConversionOutcome("with assets", backend="pdf-images")
+    monkeypatch.setattr(
+        conversion,
+        "_convert_pdf_with_preserved_images",
+        lambda *_args: expected,
+    )
+
+    outcome = conversion.convert_file_with_details(
+        "illustrated.pdf",
+        conversion.ConversionOptions(
+            fast_pdf_conversion=True,
+            preserve_pdf_images=True,
+        ),
+    )
+
+    assert outcome is expected
 
 
 def test_convert_url_uses_defuddle_http_api(monkeypatch, conversion):

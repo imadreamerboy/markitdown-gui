@@ -40,6 +40,8 @@ OPTIONAL_HIDDENIMPORTS = (
     "markitdown_pdf_images.ocr",
     "markitdown_pdf_images.pipeline",
     "markitdown_pdf_images.vector",
+    "pdf_inspector",
+    "pdf_inspector.pdf_inspector",
     "pypdfium2",
     "pypdfium2_raw",
     "pytesseract",
