@@ -13,7 +13,6 @@ from pathlib import Path
 from urllib.parse import quote
 
 import requests
-from pdf_inspector import process_pdf
 
 from PySide6.QtCore import QThread, Signal
 
@@ -51,6 +50,7 @@ BACKEND_DOCX_IMAGES = "docx-images"
 BACKEND_PDF_IMAGES = "pdf-images"
 BACKEND_PDF_INSPECTOR = "pdf-inspector"
 PDF_INSPECTOR_MIN_CONFIDENCE = 0.9
+process_pdf = None
 OCR_PROVIDER_AZURE_TESSERACT = "azure_tesseract"
 OCR_PROVIDER_GLMOCR = "glmocr"
 OCR_PROVIDER_HTTP = "http"
@@ -716,39 +716,49 @@ def _try_convert_pdf_with_pdf_inspector(file_path: str) -> ConversionOutcome | N
     scanned, mixed, uncertain, and encoding-problem PDFs retain the existing
     MarkItDown and OCR behaviour.
     """
+    global process_pdf
+
+    if process_pdf is None:
+        try:
+            from pdf_inspector import process_pdf as _process_pdf
+        except ImportError as exc:
+            logging.warning(
+                "Fast PDF conversion fell back: pdf-inspector is unavailable (%s)",
+                type(exc).__name__,
+            )
+            return None
+        process_pdf = _process_pdf
+
     try:
         result = process_pdf(file_path)
     except Exception as exc:
-        logging.warning("Fast PDF conversion fell back for %s: %s", file_path, exc)
+        logging.warning(
+            "Fast PDF conversion fell back: pdf-inspector raised %s",
+            type(exc).__name__,
+        )
         return None
 
     pdf_type = str(getattr(result, "pdf_type", "")).strip().lower()
     if pdf_type != "text_based":
         logging.warning(
-            "Fast PDF conversion fell back for %s: pdf-inspector classified it as %s",
-            file_path,
+            "Fast PDF conversion fell back: pdf-inspector classified it as %s",
             pdf_type or "unknown",
         )
         return None
     if bool(getattr(result, "has_encoding_issues", True)):
-        logging.warning(
-            "Fast PDF conversion fell back for %s: pdf-inspector found encoding issues",
-            file_path,
-        )
+        logging.warning("Fast PDF conversion fell back: pdf-inspector found encoding issues")
         return None
 
     try:
         confidence = float(getattr(result, "confidence", 0.0))
     except (TypeError, ValueError):
         logging.warning(
-            "Fast PDF conversion fell back for %s: pdf-inspector returned invalid confidence",
-            file_path,
+            "Fast PDF conversion fell back: pdf-inspector returned invalid confidence",
         )
         return None
     if confidence < PDF_INSPECTOR_MIN_CONFIDENCE:
         logging.warning(
-            "Fast PDF conversion fell back for %s: confidence %.2f is below %.2f",
-            file_path,
+            "Fast PDF conversion fell back: confidence %.2f is below %.2f",
             confidence,
             PDF_INSPECTOR_MIN_CONFIDENCE,
         )
@@ -756,10 +766,7 @@ def _try_convert_pdf_with_pdf_inspector(file_path: str) -> ConversionOutcome | N
 
     markdown = getattr(result, "markdown", None)
     if not isinstance(markdown, str) or not markdown.strip():
-        logging.warning(
-            "Fast PDF conversion fell back for %s: pdf-inspector returned no Markdown",
-            file_path,
-        )
+        logging.warning("Fast PDF conversion fell back: pdf-inspector returned no Markdown")
         return None
 
     return ConversionOutcome(markdown=markdown, backend=BACKEND_PDF_INSPECTOR)

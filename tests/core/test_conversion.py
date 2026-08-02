@@ -1,5 +1,6 @@
 import importlib
 import io
+import logging
 import sys
 import types
 
@@ -234,6 +235,60 @@ def test_fast_pdf_conversion_falls_back_to_ocr_when_enabled(monkeypatch, convers
     )
 
     assert outcome is expected
+
+
+def test_fast_pdf_conversion_falls_back_when_dependency_is_unavailable(
+    monkeypatch,
+    conversion,
+):
+    monkeypatch.setattr(conversion, "process_pdf", None)
+    monkeypatch.setitem(sys.modules, "pdf_inspector", None)
+    monkeypatch.setattr(
+        conversion,
+        "_convert_with_markitdown",
+        lambda *_args, **_kwargs: "native fallback",
+    )
+
+    outcome = conversion.convert_file_with_details(
+        "report.pdf",
+        conversion.ConversionOptions(fast_pdf_conversion=True),
+    )
+
+    assert outcome.markdown == "native fallback"
+    assert outcome.backend == conversion.BACKEND_NATIVE
+
+
+def test_fast_pdf_conversion_fallback_logs_do_not_include_source_path(
+    monkeypatch,
+    conversion,
+    caplog,
+):
+    source_path = "/private/customer-records/report.pdf"
+    _install_fake_pdf_inspector(
+        monkeypatch,
+        conversion,
+        lambda _file_path: types.SimpleNamespace(
+            pdf_type="scanned",
+            confidence=1.0,
+            has_encoding_issues=False,
+            markdown="# OCR needed",
+        ),
+    )
+    monkeypatch.setattr(
+        conversion,
+        "_convert_with_markitdown",
+        lambda *_args, **_kwargs: "native fallback",
+    )
+
+    with caplog.at_level(logging.WARNING):
+        outcome = conversion.convert_file_with_details(
+            source_path,
+            conversion.ConversionOptions(fast_pdf_conversion=True),
+        )
+
+    assert outcome.backend == conversion.BACKEND_NATIVE
+    assert source_path not in caplog.text
+    assert "classified it as scanned" in caplog.text
 
 
 def test_fast_pdf_conversion_keeps_image_preservation_authoritative(
