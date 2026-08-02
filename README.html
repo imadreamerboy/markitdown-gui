@@ -2,7 +2,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
 
 <meta charset="utf-8">
-<meta name="generator" content="quarto-1.6.43">
+<meta name="generator" content="quarto-1.6.40">
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
@@ -17,7 +17,7 @@ div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
 ul.task-list{list-style: none;}
 ul.task-list li input[type="checkbox"] {
   width: 0.8em;
-  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */
   vertical-align: middle;
 }
 /* CSS for syntax highlighting */
@@ -63,10 +63,10 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <script src="README_files/libs/quarto-html/tippy.umd.min.js"></script>
 <script src="README_files/libs/quarto-html/anchor.min.js"></script>
 <link href="README_files/libs/quarto-html/tippy.css" rel="stylesheet">
-<link href="README_files/libs/quarto-html/quarto-syntax-highlighting-d4d76bf8491c20bad77d141916dc28e1.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<link href="README_files/libs/quarto-html/quarto-syntax-highlighting-549806ee2085284f45b00abea8c6df48.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="README_files/libs/bootstrap/bootstrap.min.js"></script>
 <link href="README_files/libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="README_files/libs/bootstrap/bootstrap-1bc8a17f135ab3d594c857e9f48e611b.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="README_files/libs/bootstrap/bootstrap-973236bd072d72a04ee9cd82dcc9cb29.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 
 
 </head>
@@ -80,104 +80,235 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 
 
 
-<p><a href="README_zh.md">阅读中文版本</a></p>
+<p><a href="README.md">English</a> | <a href="README_zh.md">简体中文</a> | <a href="README_zh_TW.md">繁體中文</a></p>
 <section id="markitdown-gui-wrapper" class="level1">
 <h1>MarkItDown GUI Wrapper</h1>
-<p>A feature-rich <strong>GUI wrapper</strong> for <code>MarkItDown</code>, built with <strong>PySide6</strong>. Easily convert files to markdown using drag &amp; drop.</p>
-<p><img src="gui.png" class="img-fluid" alt="Screenshot of the GUI"> ## Features</p>
+<p>A desktop GUI for <code>MarkItDown</code>, built with <code>PySide6</code> and official Qt Quick Controls/QML. It focuses on fast multi-file conversion to Markdown with a modern, native-styled desktop interface.</p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="image.png" class="img-fluid figure-img"></p>
+<figcaption>Current UI screenshot</figcaption>
+</figure>
+</div>
+<p>More screenshots:</p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 35%">
+<col style="width: 64%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Settings</th>
+<th>Help and updates</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><img src="docs/screenshots/settings.png" class="img-fluid" alt="Settings screenshot"></td>
+<td><img src="docs/screenshots/help.png" class="img-fluid" alt="Help and updates screenshot"></td>
+</tr>
+</tbody>
+</table>
+<section id="features" class="level2">
+<h2 class="anchored" data-anchor-id="features">Features</h2>
 <ul>
-<li>📂 <strong>File Management</strong>:
-<ul>
-<li>Drag &amp; Drop for batch processing</li>
-<li>File type filtering</li>
-<li>Recent files history</li>
-<li>Batch processing with pause/resume</li>
-</ul></li>
-<li>🎨 <strong>User Interface</strong>:
-<ul>
-<li>Dark/Light theme support</li>
-<li>Preview panel</li>
-<li>Progress tracking</li>
-<li>Keyboard shortcuts</li>
-</ul></li>
-<li>⚙️ <strong>Advanced Options</strong>:
-<ul>
-<li>Format customization (headers, tables)</li>
-<li>Auto-save and backup</li>
-<li>Enable plugins</li>
-<li>Document Intelligence API support</li>
-</ul></li>
-<li>🛠️ <strong>Output Options</strong>:
-<ul>
-<li>Save all in one file or separately</li>
-<li>Choose output directory</li>
-<li>Quick copy &amp; paste</li>
-<li>Preview before saving</li>
-</ul></li>
+<li>Queue-based file workflow with drag and drop.</li>
+<li>Paste website URLs and convert article content to Markdown with the hosted Defuddle API.</li>
+<li>Serial conversion with start, pause/resume, cancel, and progress feedback.</li>
+<li>Results view with per-file selection and Markdown preview.</li>
+<li>Preview modes: rendered Markdown view and raw Markdown view.</li>
+<li>Save modes: export as one combined file or separate files.</li>
+<li>Quick actions: copy Markdown, save output, retry failed conversions, back to queue, start over.</li>
+<li>Optional OCR for scanned PDFs and image files, with selectable <code>Azure + Tesseract</code>, <code>GLM-OCR</code>, and generic <code>HTTP OCR</code> providers.</li>
+<li>Opt-in fast local conversion for clear digital PDFs using <code>pdf-inspector</code>; scanned, mixed, uncertain, and encoding-problem PDFs continue through the existing conversion and OCR path.</li>
+<li>Settings for output folder, save mode, source-folder saves, OCR, and theme mode (light/dark/system).</li>
+<li>Help view with project links, OCR references, conversion references, and keyboard shortcuts.</li>
 </ul>
+</section>
 <section id="installation" class="level2">
 <h2 class="anchored" data-anchor-id="installation">Installation</h2>
-<p>You can download the precompiled executable from the <a href="https://github.com/imadreamerboy/markitdown-gui/releases">Releases</a> or build it from source. For that just follow the instructions below.</p>
+<p>Download prebuilt binaries from <a href="https://github.com/imadreamerboy/markitdown-gui/releases">Releases</a>, or run from source.</p>
+<section id="release-assets" class="level3">
+<h3 class="anchored" data-anchor-id="release-assets">Release assets</h3>
+<ul>
+<li>Windows: use <code>MarkItDown-Windows-Setup-&lt;version&gt;.exe</code> for the normal installer, or <code>MarkItDown-Windows-&lt;version&gt;.zip</code> for a portable folder.</li>
+<li>Linux: use <code>MarkItDown-Linux-&lt;version&gt;.AppImage</code> for a single-file app, or <code>MarkItDown-Linux-&lt;version&gt;.zip</code> for a portable folder.</li>
+<li>macOS: use <code>MarkItDown-macOS-&lt;version&gt;.dmg</code> and drag the app into Applications.</li>
+</ul>
+</section>
+<section id="updating" class="level3">
+<h3 class="anchored" data-anchor-id="updating">Updating</h3>
+<ul>
+<li>Packaged desktop builds are updated from <a href="https://github.com/imadreamerboy/markitdown-gui/releases">Releases</a>. The in-app update check reads the latest GitHub release, shows a short release-note summary, and prefers the asset for the current operating system. Help shows the selected asset, size, checksum availability, action, and restart behaviour before install.</li>
+<li>Windows and Linux packaged builds can start an in-app install when the preferred asset is a <code>.zip</code>: the app shows install progress, downloads the archive, verifies SHA256 when release metadata is available, prepares an external helper, closes, replaces the app folder, restarts, and rolls back if replacement fails. The helper records the last update result and rollback backup path in Help -&gt; Diagnostics on the next launch, with a direct action to open the backup folder when it still exists. macOS packaged builds download, verify, and open the <code>.dmg</code> for manual drag-to-Applications installation.</li>
+<li>The Windows installer and Linux AppImage are additional first-install download options; the in-app self-update path intentionally keeps using the portable <code>.zip</code> asset.</li>
+<li>Release builds publish a <code>markitdown-release-manifest.json</code> with platform, size, and SHA256 metadata for each package.</li>
+<li>Source checkouts can update in place from the Help view with <code>Run source update</code>, or from a terminal:</li>
+</ul>
+<div class="sourceCode" id="cb1"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="ex">python</span> <span class="at">-m</span> markitdowngui.utils.source_updater</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>The source updater first checks that the checkout has no tracked local changes, then runs <code>git pull --ff-only</code> and reinstalls the app in editable mode with <code>uv</code> when available or <code>pip</code> otherwise. The Help view shows a restart action after it finishes.</p>
+</section>
+<section id="support-bundles" class="level3">
+<h3 class="anchored" data-anchor-id="support-bundles">Support bundles</h3>
+<p>The Help view shows a compact readiness summary for OCR, packaged updates, source updates, update checks, and logs. Copy diagnostics includes that readiness summary with home paths and obvious secret values redacted. The view can also export a support bundle for issue reports with a diagnostics report, sanitised settings, and capped recent log tails; raw recent file paths, output paths, and obvious secret values are excluded or redacted.</p>
+</section>
+<section id="settings-profiles" class="level3">
+<h3 class="anchored" data-anchor-id="settings-profiles">Settings profiles</h3>
+<p>The Settings view can export or import a portable JSON profile for OCR, update, conversion, theme, language, and save-mode preferences. Profiles include provider endpoints and environment variable names, but exclude recent files, recent outputs, window state, and default output folders.</p>
+</section>
 <section id="prerequisites" class="level3">
 <h3 class="anchored" data-anchor-id="prerequisites">Prerequisites</h3>
 <ul>
-<li>Python <strong>3.10+</strong></li>
-<li>Install dependencies:</li>
+<li>Python <code>3.10+</code></li>
+<li><code>uv</code> (recommended)</li>
 </ul>
-<div class="sourceCode" id="cb1"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install <span class="at">-r</span> requirements.txt</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Install dependencies:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="ex">uv</span> sync</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Alternative:</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install <span class="at">-e</span> .<span class="pp">[</span><span class="ss">dev</span><span class="pp">]</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </section>
-<section id="run-the-app" class="level3">
-<h3 class="anchored" data-anchor-id="run-the-app">Run the App</h3>
-<div class="sourceCode" id="cb2"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="ex">python</span> <span class="at">-m</span> markitdowngui.main</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-<section id="keyboard-shortcuts" class="level3">
-<h3 class="anchored" data-anchor-id="keyboard-shortcuts">Keyboard Shortcuts</h3>
+<section id="ocr-notes" class="level3">
+<h3 class="anchored" data-anchor-id="ocr-notes">OCR Notes</h3>
 <ul>
-<li><code>Ctrl+O</code>: Open Files</li>
-<li><code>Ctrl+S</code>: Save Output</li>
-<li><code>Ctrl+C</code>: Copy Output</li>
-<li><code>Ctrl+P</code>: Pause/Resume</li>
-<li><code>Ctrl+B</code>: Begin Conversion</li>
-<li><code>Ctrl+L</code>: Clear List</li>
-<li><code>Ctrl+K</code>: Show Shortcuts</li>
-<li><code>Esc</code>: Cancel Conversion</li>
+<li>OCR is optional and disabled by default.</li>
+<li><strong>Fast PDF conversion</strong> is optional and disabled by default. Enable it from the conversion controls for text-based PDFs where speed matters. It is bypassed when preserving PDF images, and it falls back to the established PDF pipeline when the document is scanned, mixed, uncertain, or has encoding issues.</li>
+<li><code>Azure + Tesseract</code> uses Azure Document Intelligence first when configured, then Tesseract as its local fallback.</li>
+<li><code>GLM-OCR</code> is available as a separate OCR provider for PDFs and images. It can fall back to another configured provider if selected in Settings.</li>
+<li><code>HTTP OCR</code> is a generic integration point for local or self-hosted OCR servers. The app sends a multipart <code>POST</code> with a <code>file</code> part, optional <code>model</code> field, and optional <code>Authorization: Bearer ...</code> header read from the configured environment variable. JSON responses can use <code>markdown</code>, <code>text</code>, <code>result</code>, <code>content</code>, or <code>output</code>; plain text responses are used directly.</li>
+<li>Preserved PDF images keep using the existing image-preservation pipeline. With <code>Azure + Tesseract</code>, OCR runs inside that helper. With <code>GLM-OCR</code> or <code>HTTP OCR</code>, the app preserves images first and appends OCR text from the selected provider.</li>
+<li>Settings shows one-click OCR presets for common local stacks, plus provider-specific setup actions for opening docs or copying safe setup snippets. <strong>Validate OCR</strong> checks the required fields before a batch starts, and <strong>Test connection</strong> checks live provider connectivity without uploading user documents.</li>
+<li>GLM-OCR offers three modes in Settings:
+<ul>
+<li><code>Official API</code>: easiest zero-setup path, reads <code>ZHIPU_API_KEY</code> or <code>GLMOCR_API_KEY</code> from the environment.</li>
+<li><code>Ollama</code>: easiest local path. The GUI calls Ollama’s native <code>/api/generate</code> endpoint directly, with defaults <code>127.0.0.1:11434</code> and <code>glm-ocr:latest</code>.</li>
+<li><code>SDK Server (vLLM / SGLang)</code>: stronger self-hosted path. Point the app at an existing <code>/glmocr/parse</code> endpoint. Default: <code>http://127.0.0.1:5002/glmocr/parse</code>.</li>
+</ul></li>
+<li>The packaged desktop app does not bundle the GLM-OCR self-hosted runtime stack (<code>torch</code>, <code>transformers</code>, <code>vLLM</code>, <code>SGLang</code>, and related server/runtime pieces stay external).</li>
+<li>The project depends on <code>glmocr==0.1.4</code> for client-side Official API and SDK Server connectivity. Ollama is called directly over HTTP.</li>
+<li>Local OCR requires a system <code>tesseract</code> binary. Install it from the <a href="https://github.com/tesseract-ocr/tesseract">official Tesseract project</a>. If it is not on your <code>PATH</code>, set the executable path in Settings.</li>
+<li>Azure OCR requires an Azure Document Intelligence endpoint in Settings.</li>
+<li>Azure Document Intelligence pricing includes <a href="https://azure.microsoft.com/en-us/products/ai-foundry/tools/document-intelligence#Pricing">500 free pages per month</a> at the time of writing.</li>
+<li>For API-key auth, set <code>AZURE_OCR_API_KEY</code>.</li>
+<li>If <code>AZURE_OCR_API_KEY</code> is not set, Azure OCR falls back to Azure identity credentials supported by <code>DefaultAzureCredential</code>.</li>
+<li>GLM-OCR project reference: <a href="https://github.com/zai-org/GLM-OCR">zai-org/GLM-OCR</a></li>
 </ul>
 </section>
+<section id="recommended-local-hosting" class="level3">
+<h3 class="anchored" data-anchor-id="recommended-local-hosting">Recommended Local Hosting</h3>
+<p>For normal local use, the easiest path is Ollama. For stronger self-hosted deployments, use the GLM-OCR SDK Server with vLLM or SGLang.</p>
+</section>
+<section id="ollama" class="level3">
+<h3 class="anchored" data-anchor-id="ollama">Ollama</h3>
+<ol type="1">
+<li>Install Ollama.</li>
+<li>Pull the model:</li>
+</ol>
+<div class="sourceCode" id="cb4"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="ex">ollama</span> pull glm-ocr:latest</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<ol start="3" type="1">
+<li>Start the service if it is not already running:</li>
+</ol>
+<div class="sourceCode" id="cb5"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="ex">ollama</span> serve</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<ol start="4" type="1">
+<li>In this app, choose <code>GLM-OCR</code> -&gt; <code>Ollama</code>.</li>
+<li>Keep the defaults unless you changed them:
+<ul>
+<li>host: <code>127.0.0.1</code></li>
+<li>port: <code>11434</code></li>
+<li>model: <code>glm-ocr:latest</code></li>
+</ul></li>
+</ol>
+</section>
+<section id="sdk-server" class="level3">
+<h3 class="anchored" data-anchor-id="sdk-server">SDK Server</h3>
+<ol type="1">
+<li>Create a separate Python environment for GLM-OCR.</li>
+<li>Install <code>glmocr[selfhosted,server]</code> in that environment.</li>
+<li>Start a local <code>vLLM</code> or <code>SGLang</code> backend for <code>zai-org/GLM-OCR</code>.</li>
+<li>Start the SDK server:</li>
+</ol>
+<div class="sourceCode" id="cb6"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="ex">python</span> <span class="at">-m</span> glmocr.server <span class="at">--config</span> config.yaml</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<ol start="5" type="1">
+<li>In this app, choose <code>GLM-OCR</code> -&gt; <code>SDK Server (vLLM / SGLang)</code> and keep <code>http://127.0.0.1:5002/glmocr/parse</code>.</li>
+</ol>
+<p>Minimal server-side <code>config.yaml</code>:</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode yaml code-with-copy"><code class="sourceCode yaml"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="fu">pipeline</span><span class="kw">:</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">maas</span><span class="kw">:</span></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">enabled</span><span class="kw">:</span><span class="at"> </span><span class="ch">false</span></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">ocr_api</span><span class="kw">:</span></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">api_host</span><span class="kw">:</span><span class="at"> </span><span class="fl">127.0.0.1</span></span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">api_port</span><span class="kw">:</span><span class="at"> </span><span class="dv">8080</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>The official GLM-OCR docs show the full Ollama, <code>vLLM</code>, and <code>SGLang</code> setup commands:</p>
+<ul>
+<li><a href="https://github.com/zai-org/GLM-OCR/blob/main/examples/ollama-deploy/README.md">Official Ollama deployment guide</a></li>
+<li><a href="https://github.com/zai-org/GLM-OCR/blob/main/examples/self-host/README.md">Self-hosted SDK Server + Client Guide</a></li>
+<li><a href="https://github.com/zai-org/GLM-OCR">GLM-OCR README</a></li>
+</ul>
+</section>
+<section id="website-url-notes" class="level3">
+<h3 class="anchored" data-anchor-id="website-url-notes">Website URL Notes</h3>
+<ul>
+<li>Website conversion uses the hosted <a href="https://defuddle.md/">Defuddle</a> API.</li>
+<li>The app sends the pasted <code>http://</code> or <code>https://</code> URL to <code>https://defuddle.md/&lt;url&gt;</code> and stores the returned Markdown in the normal results view.</li>
+<li>Defuddle responses typically include YAML frontmatter metadata at the top when available.</li>
+<li>According to the <a href="https://defuddle.md/terms">Defuddle Terms</a>, unauthenticated requests are limited to <code>1,000</code> requests per month per IP address as of March 14, 2026.</li>
+<li>Because requests are sent directly from the desktop app, that free-tier limit applies to the user’s own network IP.</li>
+<li>Website conversion requires an internet connection and depends on the external Defuddle service being available.</li>
+</ul>
+</section>
+</section>
+<section id="run-the-app" class="level2">
+<h2 class="anchored" data-anchor-id="run-the-app">Run the App</h2>
+<div class="sourceCode" id="cb8"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="ex">uv</span> run python <span class="at">-m</span> markitdowngui.main</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</section>
+<section id="keyboard-shortcuts" class="level2">
+<h2 class="anchored" data-anchor-id="keyboard-shortcuts">Keyboard Shortcuts</h2>
+<ul>
+<li><code>Ctrl+O</code>: Open files</li>
+<li><code>Ctrl+S</code>: Save output</li>
+<li><code>Ctrl+C</code>: Copy output</li>
+<li><code>Ctrl+R</code>: Retry failed conversions</li>
+<li><code>Ctrl+P</code>: Pause/resume</li>
+<li><code>Ctrl+B</code>: Start conversion</li>
+<li><code>Ctrl+L</code>: Clear queue</li>
+<li><code>Ctrl+K</code>: Show shortcuts</li>
+<li><code>Esc</code>: Cancel conversion</li>
+</ul>
 </section>
 <section id="build-a-standalone-executable" class="level2">
 <h2 class="anchored" data-anchor-id="build-a-standalone-executable">Build a Standalone Executable</h2>
-<p>First activate the development environment:</p>
-<div class="sourceCode" id="cb3"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="ex">uv</span> pip install <span class="at">-e</span> .<span class="pp">[</span><span class="ss">dev</span><span class="pp">]</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<p>Use <code>PyInstaller</code>:</p>
-<div class="sourceCode" id="cb4"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="ex">pyinstaller</span> <span class="at">--clean</span> <span class="at">--onefile</span> <span class="at">--windowed</span> <span class="at">-n</span> MarkItDown markitdowngui/main.py</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb9"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="ex">uv</span> sync <span class="at">--extra</span> dev <span class="at">--locked</span></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="ex">pyinstaller</span> MarkItDown.spec <span class="at">--clean</span> <span class="at">--noconfirm</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>The default spec builds an <code>onedir</code> app in <code>dist/MarkItDown/</code>. On macOS it also emits <code>dist/MarkItDown.app</code>. Release workflows package Windows and Linux builds into platform-specific <code>.zip</code> artifacts, add a Windows Inno Setup <code>.exe</code> installer, add a Linux <code>.AppImage</code>, and package macOS builds into a drag-to-Applications <code>.dmg</code> from the <code>.app</code> bundle. The macOS bundle is signed with <code>MACOS_CODESIGN_IDENTITY</code> when configured, otherwise it uses ad-hoc signing. Each release also includes <code>markitdown-release-manifest.json</code> for update metadata and checksums. That build intentionally excludes the GLM-OCR self-hosted runtime stack; local hosting stays external to the GUI.</p>
 </section>
 <section id="license" class="level2">
 <h2 class="anchored" data-anchor-id="license">License</h2>
-<p>Licensed under <strong>MIT</strong>.</p>
-<p><strong>Note:</strong> <code>PySide6</code> uses <strong>LGPLv3</strong>, requiring dynamic linking.</p>
+<p>MarkItDown GUI is licensed under the <strong>MIT License</strong>. Commercial use, private use, modification, redistribution, sublicensing, and sale are permitted under that licence, subject to preserving the copyright and licence notice.</p>
+<p>Third-party components keep their own licences. The app uses <code>PySide6</code>/Qt under Qt’s LGPL/commercial licensing model; see <a href="THIRD_PARTY_NOTICES.md"><code>THIRD_PARTY_NOTICES.md</code></a> for the runtime and dependency notices that apply to source and packaged builds.</p>
 </section>
 <section id="contributing" class="level2">
 <h2 class="anchored" data-anchor-id="contributing">Contributing</h2>
-<p>Contributions are welcome! Please follow these steps to contribute:</p>
 <ol type="1">
-<li><strong>Fork the repository</strong> and create a new branch for your feature or bug fix.</li>
-<li><strong>Set up the development environment</strong>:
-<ul>
-<li><p>It is recommended to use a virtual environment.</p></li>
-<li><p>This project uses <code>uv</code> for package management.</p></li>
-<li><p>To install all dependencies, including for development and testing, run:</p>
-<div class="sourceCode" id="cb5"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="ex">uv</span> pip install <span class="at">-e</span> .<span class="pp">[</span><span class="ss">dev</span><span class="pp">]</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div></li>
-</ul></li>
-<li><strong>Make your changes</strong>.</li>
-<li><strong>Run the tests</strong> to ensure everything is working correctly: <code>sh     pytest</code></li>
-<li><strong>Submit a pull request</strong> with a clear description of your changes.</li>
+<li>Fork the repository and create a branch.</li>
+<li>Install dev dependencies:</li>
+</ol>
+<div class="sourceCode" id="cb10"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="ex">uv</span> pip install <span class="at">-e</span> .<span class="pp">[</span><span class="ss">dev</span><span class="pp">]</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<ol start="3" type="1">
+<li>Make your changes.</li>
+<li>Run tests:</li>
+</ol>
+<div class="sourceCode" id="cb11"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="ex">uv</span> sync <span class="at">--extra</span> test <span class="at">--locked</span></span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a><span class="ex">uv</span> run pytest <span class="at">-q</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<ol start="5" type="1">
+<li>Open a pull request with a clear summary.</li>
 </ol>
 </section>
 <section id="credits" class="level2">
 <h2 class="anchored" data-anchor-id="credits">Credits</h2>
 <ul>
-<li><strong>MarkItDown</strong> (<a href="https://opensource.org/licenses/MIT">MIT License</a>)</li>
-<li><strong>PySide6</strong> (<a href="https://www.gnu.org/licenses/lgpl-3.0.html">LGPLv3 License</a>)</li>
+<li>MarkItDown (<a href="https://opensource.org/licenses/MIT">MIT License</a>)</li>
+<li>PySide6 (<a href="https://www.gnu.org/licenses/lgpl-3.0.html">LGPLv3 License</a>)</li>
+<li>Qt Quick Controls (<a href="https://doc.qt.io/qt-6/qtquickcontrols-index.html">Qt documentation</a>)</li>
+<li>Lucide icons (<a href="https://lucide.dev/license">ISC License</a>)</li>
 </ul>
 </section>
 </section>
@@ -203,7 +334,7 @@ window.document.addEventListener("DOMContentLoaded", function (event) {
       toggleBodyColorMode(bsSheetEl);
     }
   }
-  toggleBodyColorPrimary();  
+  toggleBodyColorPrimary();
   const icon = "";
   const anchorJS = new window.AnchorJS();
   anchorJS.options = {
@@ -213,7 +344,7 @@ window.document.addEventListener("DOMContentLoaded", function (event) {
   anchorJS.add('.anchored');
   const isCodeAnnotation = (el) => {
     for (const clz of el.classList) {
-      if (clz.startsWith('code-annotation-')) {                     
+      if (clz.startsWith('code-annotation-')) {
         return true;
       }
     }
@@ -233,11 +364,11 @@ window.document.addEventListener("DOMContentLoaded", function (event) {
       button.setAttribute("data-bs-toggle", "tooltip");
       button.setAttribute("data-bs-placement", "left");
       button.setAttribute("data-bs-title", "Copied!");
-      tooltip = new bootstrap.Tooltip(button, 
-        { trigger: "manual", 
+      tooltip = new bootstrap.Tooltip(button,
+        { trigger: "manual",
           customClass: "code-copy-button-tooltip",
           offset: [0, -8]});
-      tooltip.show();    
+      tooltip.show();
     }
     setTimeout(function() {
       if (tooltip) {
@@ -279,7 +410,7 @@ window.document.addEventListener("DOMContentLoaded", function (event) {
         return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
     }
     // Inspect non-navigation links and adorn them if external
- 	var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+	var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
     for (var i=0; i<links.length; i++) {
       const link = links[i];
       if (!isInternal(link.href)) {
@@ -313,7 +444,7 @@ window.document.addEventListener("DOMContentLoaded", function (event) {
     if (onUntriggerFn) {
       config.onUntrigger = onUntriggerFn;
     }
-    window.tippy(el, config); 
+    window.tippy(el, config);
   }
   const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
   for (var i=0; i<noterefs.length; i++) {
@@ -388,7 +519,7 @@ window.document.addEventListener("DOMContentLoaded", function (event) {
     tippyHover(xref, undefined, function(instance) {
       instance.disable();
       let url = xref.getAttribute('href');
-      let hash = undefined; 
+      let hash = undefined;
       if (url.startsWith('#')) {
         hash = url;
       } else {
@@ -416,7 +547,7 @@ window.document.addEventListener("DOMContentLoaded", function (event) {
             if (note !== null) {
               const html = processXRef(id, note);
               instance.setContent(html);
-            } 
+            }
           }).finally(() => {
             instance.enable();
             instance.show();
@@ -440,7 +571,7 @@ window.document.addEventListener("DOMContentLoaded", function (event) {
             }
             const html = processXRef(null, note);
             instance.setContent(html);
-          } 
+          }
         }).finally(() => {
           instance.enable();
           instance.show();
@@ -480,7 +611,7 @@ window.document.addEventListener("DOMContentLoaded", function (event) {
             height = bottom - top;
           }
           if (top !== null && height !== null && parent !== null) {
-            // cook up a div (if necessary) and position it 
+            // cook up a div (if necessary) and position it
             let div = window.document.getElementById("code-annotation-line-highlight");
             if (div === null) {
               div = window.document.createElement("div");

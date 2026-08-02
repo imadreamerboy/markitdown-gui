@@ -47,6 +47,7 @@ def test_result_model_labels_fast_pdf_results():
     )
 
     assert model.data(model.index(0, 0), ResultModel.BackendRole) == "Fast PDF"
+    assert model.data(model.index(0, 0), ResultModel.BackendKeyRole) == "conversion_backend_pdf_inspector"
 
 
 def test_result_model_add_result_preserves_existing_completed_items():
@@ -69,6 +70,10 @@ def test_result_model_add_result_preserves_existing_completed_items():
     assert model.item_at(0).outcome.markdown == "first revised"
     assert model.item_at(1).failed is True
     assert model.data(model.index(1, 0), ResultModel.BackendRole) == "HTTP OCR"
+    assert (
+        model.data(model.index(1, 0), ResultModel.BackendKeyRole)
+        == "conversion_backend_http_ocr"
+    )
 
 
 def test_result_model_removes_only_sources_that_are_being_retried():

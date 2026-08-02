@@ -32,7 +32,7 @@ def test_get_available_languages():
     assert langs['zh_CN'] == "简体中文(&S)" 
 
 def test_home_translation_keys_exist():
-    """Ensure new Home UX translation keys exist in both languages."""
+    """Ensure new Home UX translation keys exist in every configured language."""
     required_keys = [
         "home_empty_state_title",
         "home_queue_title_with_count",
@@ -47,6 +47,8 @@ def test_home_translation_keys_exist():
         "home_url_invalid_title",
         "home_url_invalid_message",
         "home_preserve_pdf_images_label",
+        "home_fast_pdf_conversion_label",
+        "home_fast_pdf_conversion_detail",
         "home_preserve_pdf_images_tooltip",
         "home_preserve_pdf_images_note",
         "home_preserve_pdf_images_glmocr_note",
@@ -105,10 +107,12 @@ def test_home_translation_keys_exist():
         "conversion_backend_azure",
         "conversion_backend_defuddle",
         "conversion_backend_glmocr",
+        "conversion_backend_http_ocr",
         "conversion_backend_local",
         "conversion_backend_native",
         "conversion_backend_docx_images",
         "conversion_backend_pdf_images",
+        "conversion_backend_pdf_inspector",
         "conversion_source_heading",
         "save_combined_complete_title",
         "save_combined_complete_message",
@@ -140,6 +144,6 @@ def test_home_translation_keys_exist():
         "help_faq_local_fallback_answer",
     ]
 
-    for lang in ["en", "zh_CN"]:
+    for lang in TRANSLATIONS:
         for key in required_keys:
             assert key in TRANSLATIONS[lang]

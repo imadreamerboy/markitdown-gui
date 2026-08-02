@@ -129,11 +129,14 @@ def test_workspace_exposes_fast_pdf_conversion_control():
     qml_root = Path(__file__).resolve().parents[2] / "markitdowngui" / "qml"
     main_text = (qml_root / "Main.qml").read_text(encoding="utf-8")
 
-    assert 'title: "Fast PDF conversion"' in main_text
+    assert 'title: root.tr("home_fast_pdf_conversion_label")' in main_text
+    assert 'root.tr("home_fast_pdf_conversion_label")' in main_text
+    assert 'root.tr("home_fast_pdf_conversion_detail")' in main_text
     assert "checked: app.fastPdfConversion" in main_text
     assert "target: fastPdfConversionToggle" in main_text
     assert "function onToggled(enabled)" in main_text
     assert "app.setFastPdfConversion(enabled)" in main_text
+    assert "required property string backendKey" in main_text
 
 
 def test_fast_pdf_conversion_toggle_updates_controller(monkeypatch, tmp_path):
@@ -159,6 +162,22 @@ def test_fast_pdf_conversion_toggle_updates_controller(monkeypatch, tmp_path):
         app.processEvents()
 
         assert controller.fastPdfConversion is True
+    finally:
+        _close_main_qml(app, controller, engine)
+
+
+def test_fast_pdf_conversion_strings_follow_language_setting(monkeypatch, tmp_path):
+    app, controller, engine, root = _load_main_qml(monkeypatch, tmp_path)
+
+    try:
+        controller.addFiles([str(tmp_path / "digital.pdf")])
+        app.processEvents()
+        toggle = _find_by_property(root, "title", "Fast PDF conversion")
+        controller.settings.set_current_language("zh_CN")
+        controller.settingsChanged.emit()
+        app.processEvents()
+
+        assert toggle.property("title") == "快速 PDF 转换"
     finally:
         _close_main_qml(app, controller, engine)
 

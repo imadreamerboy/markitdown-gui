@@ -96,6 +96,11 @@ ApplicationWindow {
         return "Azure + Tesseract"
     }
 
+    function tr(key) {
+        var language = app.currentLanguage
+        return app.translate(key)
+    }
+
     function ocrFallbackIndex(provider) {
         if (app.ocrProvider === "http" && provider === "http")
             return 0
@@ -1206,8 +1211,8 @@ ApplicationWindow {
 
                         ThemeToggleRow {
                             id: fastPdfConversionToggle
-                            title: "Fast PDF conversion"
-                            detail: "Use the fast local parser for clear digital PDFs. Mixed, scanned, or uncertain PDFs keep the existing conversion path."
+                            title: root.tr("home_fast_pdf_conversion_label")
+                            detail: root.tr("home_fast_pdf_conversion_detail")
                             enabled: !app.converting && !app.preservePdfImages
                             checked: app.fastPdfConversion
                             textColor: colors.text
@@ -1532,6 +1537,7 @@ ApplicationWindow {
                         required property int index
                         required property string name
                         required property string backend
+                        required property string backendKey
                         required property bool failed
                         required property int wordCount
                         property bool selected: index === resultList.currentIndex
@@ -1634,7 +1640,7 @@ ApplicationWindow {
                                     spacing: 8
 
                                     Label {
-                                        text: failed ? "Failed" : backend
+                                        text: failed ? "Failed" : (backendKey ? root.tr(backendKey) : backend)
                                         color: failed ? colors.danger : colors.muted
                                         font.pixelSize: 11
                                     }
