@@ -23,6 +23,7 @@
 - 儲存模式支援合併為單一檔案或分別儲存。
 - 常用操作：複製 Markdown、儲存輸出、重試失敗轉換、返回佇列、重新開始。
 - 可選 OCR，支援掃描版 PDF 和圖片檔案，可選擇 `Azure + Tesseract`、`GLM-OCR` 和通用 `HTTP OCR` 提供者。
+- 可選的快速本機轉換，適用於清晰的數位 PDF；掃描、混合、信心不足或存在編碼問題的 PDF 會繼續使用既有轉換與 OCR 流程。
 - 設定項包含輸出資料夾、儲存模式、儲存到來源資料夾、批次大小、OCR、更新、語言和主題模式（淺色/深色/跟隨系統）。
 - 說明頁包含專案連結、OCR 參考、轉換參考、診斷資訊和鍵盤快速鍵。
 
@@ -79,6 +80,7 @@ pip install -e .[dev]
 ### OCR 說明
 
 - OCR 是可選功能，預設關閉。
+- **快速 PDF 轉換** 可選且預設關閉。需要速度時，可在轉換控制項中為文字型 PDF 啟用；保留 PDF 圖片時不會使用，掃描、混合、信心不足或存在編碼問題的 PDF 會回退到既有 PDF 流程。
 - `Azure + Tesseract` 在設定後會優先使用 Azure Document Intelligence，然後使用 Tesseract 作為本機回退。
 - `GLM-OCR` 是獨立 OCR 提供者，適用於 PDF 和圖片。可在設定中選擇另一個已設定提供者作為回退。
 - `HTTP OCR` 是給本機或自架 OCR 服務使用的通用接入點。應用會傳送帶有 `file` part 的 multipart `POST`，可附帶 `model` 欄位，並可從設定的環境變數讀取 Bearer token。JSON 回應可使用 `markdown`、`text`、`result`、`content` 或 `output`；純文字回應會直接使用。

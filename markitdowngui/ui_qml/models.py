@@ -47,6 +47,21 @@ class ResultItem:
         return labels.get(self.outcome.backend, self.outcome.backend or "Native")
 
     @property
+    def backend_key(self) -> str:
+        keys = {
+            "azure": "conversion_backend_azure",
+            "defuddle": "conversion_backend_defuddle",
+            "glmocr": "conversion_backend_glmocr",
+            "http-ocr": "conversion_backend_http_ocr",
+            "local": "conversion_backend_local",
+            "native": "conversion_backend_native",
+            "docx-images": "conversion_backend_docx_images",
+            "pdf-images": "conversion_backend_pdf_images",
+            "pdf-inspector": "conversion_backend_pdf_inspector",
+        }
+        return keys.get(self.outcome.backend, "")
+
+    @property
     def word_count(self) -> int:
         return len(self.outcome.markdown.split())
 
@@ -126,6 +141,7 @@ class ResultModel(QAbstractListModel):
     BackendRole = SourceRole + 2
     FailedRole = SourceRole + 3
     WordCountRole = SourceRole + 4
+    BackendKeyRole = SourceRole + 5
 
     def __init__(self) -> None:
         super().__init__()
@@ -147,6 +163,8 @@ class ResultModel(QAbstractListModel):
             return item.source
         if role == self.BackendRole:
             return item.backend_label
+        if role == self.BackendKeyRole:
+            return item.backend_key
         if role == self.FailedRole:
             return item.failed
         if role == self.WordCountRole:
@@ -160,6 +178,7 @@ class ResultModel(QAbstractListModel):
             self.BackendRole: b"backend",
             self.FailedRole: b"failed",
             self.WordCountRole: b"wordCount",
+            self.BackendKeyRole: b"backendKey",
         }
 
     def set_results(

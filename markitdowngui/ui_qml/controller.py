@@ -297,6 +297,10 @@ class AppController(QObject):
     def themeMode(self) -> str:
         return self.settings.get_theme_mode()
 
+    @Property(str, notify=settingsChanged)
+    def currentLanguage(self) -> str:
+        return self.settings.get_current_language() or DEFAULT_LANG
+
     @Property(bool, notify=themeChanged)
     def darkMode(self) -> bool:
         mode = self.settings.get_theme_mode()
@@ -2303,6 +2307,6 @@ class AppController(QObject):
         style = style.replace("margin-bottom:0px;", f"margin-bottom:{margin};")
         return f'<p style="{style}"><span style="{span_style}">'
 
+    @Slot(str, result=str)
     def translate(self, key: str) -> str:
-        lang = self.settings.get_current_language() or DEFAULT_LANG
-        return get_translation(lang, key)
+        return get_translation(self.currentLanguage, key)

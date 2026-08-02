@@ -1132,6 +1132,17 @@ def test_controller_builds_fast_pdf_conversion_option(controller):
     assert options.fast_pdf_conversion is True
 
 
+def test_controller_translates_fast_pdf_strings(controller):
+    assert controller.currentLanguage == "en"
+    assert controller.translate("home_fast_pdf_conversion_label") == "Fast PDF conversion"
+
+    controller.settings.set_current_language("zh_CN")
+    controller.settingsChanged.emit()
+
+    assert controller.currentLanguage == "zh_CN"
+    assert controller.translate("home_fast_pdf_conversion_label") == "快速 PDF 转换"
+
+
 def test_diagnostic_readiness_does_not_create_temp_asset_root(controller, monkeypatch):
     controller.setPreservePdfImages(True)
     monkeypatch.setattr(
