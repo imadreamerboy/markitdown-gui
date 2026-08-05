@@ -1143,6 +1143,22 @@ def test_controller_translates_fast_pdf_strings(controller):
     assert controller.translate("home_fast_pdf_conversion_label") == "快速 PDF 转换"
 
 
+def test_controller_exposes_and_persists_qml_languages(controller):
+    assert controller.availableLanguageCodes == ["en", "zh_CN", "zh_TW"]
+    assert controller.availableLanguageLabels == [
+        "English",
+        "简体中文",
+        "繁體中文",
+    ]
+
+    controller.setLanguage("zh_TW")
+    assert controller.currentLanguage == "zh_TW"
+    assert controller.settings.get_current_language() == "zh_TW"
+
+    controller.setLanguage("not-a-language")
+    assert controller.currentLanguage == "zh_TW"
+
+
 def test_diagnostic_readiness_does_not_create_temp_asset_root(controller, monkeypatch):
     controller.setPreservePdfImages(True)
     monkeypatch.setattr(
@@ -2258,6 +2274,12 @@ def test_controller_finished_status_reports_mixed_failures(controller):
 
 
 def test_controller_exposes_completed_items_before_the_worker_finishes(controller):
+    controller._total_count = 2
+    controller._handle_item_started("C:/tmp/first.pdf")
+
+    assert controller.statusText == "Converting first.pdf"
+    assert controller.progressIndeterminate is False
+
     controller._handle_item_finished(
         "C:/tmp/first.pdf",
         ConversionOutcome("# First", backend="native"),
@@ -2267,6 +2289,8 @@ def test_controller_exposes_completed_items_before_the_worker_finishes(controlle
     assert controller.result_model.rowCount() == 1
     assert controller.selectedResultIndex == 0
     assert controller.hasUnsavedSuccessfulResults is True
+    assert controller.completedCount == 1
+    assert controller.totalCount == 2
 
     controller.worker = SimpleNamespace(is_cancelled=False, failed_files=set())
     controller._converting = True

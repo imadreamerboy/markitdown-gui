@@ -21,6 +21,7 @@ def _settings(tmp_path, name="settings.ini"):
 def test_settings_profile_exports_portable_settings_without_recent_paths(tmp_path):
     settings = _settings(tmp_path)
     settings.set_theme_mode("dark")
+    settings.set_reduce_motion(True)
     settings.set_default_output_folder(str(tmp_path / "private-exports"))
     settings.set_recent_files([str(tmp_path / "private.pdf")])
     settings.set_recent_outputs([str(tmp_path / "private.md")])
@@ -38,6 +39,7 @@ def test_settings_profile_exports_portable_settings_without_recent_paths(tmp_pat
     assert profile["schema"] == 1
     assert profile["generatedAt"] == "2026-01-02T03:04:05+00:00"
     assert profile["settings"]["appearance"]["themeMode"] == "dark"
+    assert profile["settings"]["appearance"]["reduceMotion"] is True
     assert profile["settings"]["conversion"]["fastPdfConversion"] is False
     assert profile["settings"]["ocr"]["provider"] == "http"
     assert profile["settings"]["ocr"]["httpEndpoint"] == "http://localhost:8000/ocr"
@@ -54,7 +56,11 @@ def test_settings_profile_import_applies_safe_settings(tmp_path):
     profile = {
         "schema": 1,
         "settings": {
-            "appearance": {"themeMode": "system", "language": "de"},
+            "appearance": {
+                "themeMode": "system",
+                "language": "de",
+                "reduceMotion": True,
+            },
             "output": {
                 "defaultFormat": ".txt",
                 "saveToSourceFolder": True,
@@ -90,6 +96,7 @@ def test_settings_profile_import_applies_safe_settings(tmp_path):
 
     assert settings.get_theme_mode() == "system"
     assert settings.get_current_language() == "de"
+    assert settings.get_reduce_motion() is True
     assert settings.get_default_output_format() == ".txt"
     assert settings.get_save_to_source_folder() is True
     assert settings.get_save_mode() is False

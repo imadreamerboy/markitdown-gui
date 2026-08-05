@@ -29,6 +29,7 @@ def build_settings_profile(
             "appearance": {
                 "themeMode": settings.get_theme_mode(),
                 "language": settings.get_current_language(),
+                "reduceMotion": settings.get_reduce_motion(),
             },
             "output": {
                 "defaultFormat": settings.get_default_output_format(),
@@ -104,6 +105,8 @@ def apply_settings_profile(settings: SettingsManager, payload: dict[str, Any]) -
         settings.set_theme_mode(str(appearance["themeMode"]))
     if "language" in appearance:
         settings.set_current_language(str(appearance["language"]))
+    if "reduceMotion" in appearance:
+        settings.set_reduce_motion(_bool_value(appearance["reduceMotion"]))
 
     if "defaultFormat" in output:
         settings.set_default_output_format(str(output["defaultFormat"]))

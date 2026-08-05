@@ -11,11 +11,17 @@ SpinBox {
     property color accentColor: "#88C0D0"
     property color textColor: "#18212B"
     property color mutedTextColor: "#647283"
+    property bool reduceMotion: ApplicationWindow.window ? ApplicationWindow.window.reduceMotion : false
 
     implicitWidth: 140
     implicitHeight: 40
     editable: false
+    hoverEnabled: true
     font.pixelSize: 13
+
+    HoverHandler {
+        cursorShape: Qt.PointingHandCursor
+    }
 
     contentItem: TextInput {
         z: 2
@@ -36,12 +42,14 @@ SpinBox {
         y: 0
         width: 40
         height: control.height
-        color: control.up.pressed ? control.hoverColor : control.stepColor
+        color: control.up.pressed
+            ? control.hoverColor
+            : (control.up.hovered ? Qt.lighter(control.stepColor, 1.05) : control.stepColor)
         radius: 8
 
         Behavior on color {
             ColorAnimation {
-                duration: 90
+                duration: control.reduceMotion ? 0 : 90
             }
         }
 
@@ -65,12 +73,14 @@ SpinBox {
         y: 0
         width: 40
         height: control.height
-        color: control.down.pressed ? control.hoverColor : control.stepColor
+        color: control.down.pressed
+            ? control.hoverColor
+            : (control.down.hovered ? Qt.lighter(control.stepColor, 1.05) : control.stepColor)
         radius: 8
 
         Behavior on color {
             ColorAnimation {
-                duration: 90
+                duration: control.reduceMotion ? 0 : 90
             }
         }
 
@@ -97,7 +107,7 @@ SpinBox {
 
         Behavior on border.color {
             ColorAnimation {
-                duration: 110
+                duration: control.reduceMotion ? 0 : 110
             }
         }
     }

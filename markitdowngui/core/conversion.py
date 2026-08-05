@@ -1587,6 +1587,7 @@ def _run_tesseract_ocr(image, options: ConversionOptions) -> str:
 
 class ConversionWorker(QThread):
     progress = Signal(int, str)
+    itemStarted = Signal(str)
     itemFinished = Signal(str, object, bool)
     finished = Signal(dict)
     error = Signal(str)
@@ -1623,6 +1624,7 @@ class ConversionWorker(QThread):
                 break
 
             failed = False
+            self.itemStarted.emit(file_path)
             try:
                 outcome = convert_file_with_details(
                     file_path,

@@ -113,6 +113,17 @@ def test_release_workflow_packages_signed_macos_app_bundle():
     assert "hdiutil create -volname \"MarkItDown\" -srcfolder dmg_root" in workflow
 
 
+def test_release_workflow_smokes_packaged_app_before_packaging():
+    workflow = Path(".github/workflows/release.yml").read_text(encoding="utf-8")
+
+    build_index = workflow.index("- name: Build executable")
+    smoke_index = workflow.index("- name: Run packaged-app smoke test")
+    package_index = workflow.index("- name: Package artifact")
+
+    assert build_index < smoke_index < package_index
+    assert "uv run python packaging/smoke_packaged_app.py" in workflow[smoke_index:package_index]
+
+
 def test_release_workflow_builds_windows_setup_and_linux_appimage():
     workflow = Path(".github/workflows/release.yml").read_text(encoding="utf-8")
     inno_script = Path("packaging/windows/MarkItDown.iss").read_text(encoding="utf-8")

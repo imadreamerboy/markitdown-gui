@@ -35,6 +35,13 @@ def test_theme_mode(settings_manager):
     settings_manager.set_theme_mode("invalid")
     assert settings_manager.get_theme_mode() == "light"
 
+
+def test_reduce_motion(settings_manager):
+    """Test the reduced-motion preference and its default."""
+    assert settings_manager.get_reduce_motion() is False
+    settings_manager.set_reduce_motion(True)
+    assert settings_manager.get_reduce_motion() is True
+
 def test_format_settings(settings_manager):
     """Test getting and saving format settings."""
     default_settings = settings_manager.get_format_settings()

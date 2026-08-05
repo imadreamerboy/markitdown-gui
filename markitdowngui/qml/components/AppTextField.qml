@@ -9,6 +9,7 @@ TextField {
     property color accentColor: "#88C0D0"
     property color textColor: "#18212B"
     property color placeholderColor: "#718091"
+    property bool reduceMotion: ApplicationWindow.window ? ApplicationWindow.window.reduceMotion : false
 
     implicitHeight: 38
     leftPadding: 12
@@ -27,9 +28,8 @@ TextField {
 
         Behavior on border.color {
             ColorAnimation {
-                duration: 110
+                duration: control.reduceMotion ? 0 : 110
             }
         }
     }
 }
-

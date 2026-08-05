@@ -1799,6 +1799,8 @@ def test_conversion_worker_reuses_markitdown_instance_for_native_files(
         batch_size=10,
     )
     completed: list[tuple[str, bool]] = []
+    started: list[str] = []
+    worker.itemStarted.connect(started.append)
     worker.itemFinished.connect(
         lambda source, _outcome, failed: completed.append((source, failed))
     )
@@ -1807,6 +1809,7 @@ def test_conversion_worker_reuses_markitdown_instance_for_native_files(
 
     assert constructions == [{}]
     assert converted == ["first.txt", "second.txt", "third.txt"]
+    assert started == ["first.txt", "second.txt", "third.txt"]
     assert completed == [
         ("first.txt", False),
         ("second.txt", False),

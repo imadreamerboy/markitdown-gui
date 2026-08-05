@@ -1,12 +1,13 @@
 from pathlib import Path
 
-from PySide6.QtCore import QCoreApplication, QObject, QPoint, QSettings, QUrl, Qt
+from PySide6.QtCore import QCoreApplication, QObject, QPoint, QPointF, QSettings, QUrl, Qt
 from PySide6.QtGui import QAccessible, QColor, QGuiApplication
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuick import QQuickItem
 from PySide6.QtTest import QTest
 from PySide6.QtQuickControls2 import QQuickStyle
 
+from markitdowngui.core.conversion import ConversionOutcome
 from markitdowngui.core.settings import SettingsManager
 from markitdowngui.ui_qml.controller import AppController
 
@@ -33,7 +34,7 @@ def _contrast_ratio(foreground: str, background: str) -> float:
     return (lighter + 0.05) / (darker + 0.05)
 
 
-def _load_main_qml(monkeypatch, tmp_path):
+def _load_main_qml(monkeypatch, tmp_path, qml_warnings=None):
     monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
     QGuiApplication.setHighDpiScaleFactorRoundingPolicy(
         Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
@@ -53,6 +54,12 @@ def _load_main_qml(monkeypatch, tmp_path):
 
     engine = QQmlApplicationEngine()
     engine.rootContext().setContextProperty("app", controller)
+    if qml_warnings is not None:
+        engine.warnings.connect(
+            lambda warnings: qml_warnings.extend(
+                warning.toString() for warning in warnings
+            )
+        )
     qml_path = (
         Path(__file__).resolve().parents[2]
         / "markitdowngui"
@@ -88,11 +95,250 @@ def _accessible_name(item):
     return interface.text(QAccessible.Text.Name)
 
 
+def _visible_app_buttons(root):
+    return [
+        item
+        for item in root.findChildren(QQuickItem)
+        if "AppButton" in item.metaObject().className() and item.isVisible()
+    ]
+
+
 def test_main_qml_loads_with_controller_context(monkeypatch, tmp_path):
     app, controller, engine, _ = _load_main_qml(monkeypatch, tmp_path)
 
     try:
         assert len(engine.rootObjects()) == 1
+    finally:
+        _close_main_qml(app, controller, engine)
+
+
+def test_main_qml_loads_secondary_pages_on_demand(monkeypatch, tmp_path):
+    app, controller, engine, root = _load_main_qml(monkeypatch, tmp_path)
+
+    try:
+        loaders = {
+            item.objectName(): item
+            for item in root.findChildren(QObject)
+            if item.objectName() in {
+                "workspacePageLoader",
+                "settingsPageLoader",
+                "helpPageLoader",
+            }
+        }
+
+        assert loaders["workspacePageLoader"].property("item") is not None
+        assert loaders["settingsPageLoader"].property("item") is None
+        assert loaders["helpPageLoader"].property("item") is None
+
+        root.setProperty("pageIndex", 1)
+        app.processEvents()
+
+        assert loaders["settingsPageLoader"].property("item") is not None
+    finally:
+        _close_main_qml(app, controller, engine)
+
+
+def test_app_buttons_are_hoverable_and_accessible_across_pages(monkeypatch, tmp_path):
+    app, controller, engine, root = _load_main_qml(monkeypatch, tmp_path)
+
+    try:
+        controller.addFiles([str(tmp_path / "digital.pdf")])
+        for page_index in (0, 1, 2):
+            root.setProperty("pageIndex", page_index)
+            QTest.qWait(220)
+            app.processEvents()
+
+            buttons = _visible_app_buttons(root)
+            assert buttons
+            for button in buttons:
+                text = button.property("text")
+                if not text:
+                    continue
+                interface = QAccessible.queryAccessibleInterface(button)
+                assert interface is not None
+                assert interface.role() == QAccessible.Role.Button
+                assert button.property("hoverEnabled") is True
+                assert interface.text(QAccessible.Text.Name) == text
+
+        controller.result_model.set_results(
+            {
+                str(tmp_path / "digital.md"): ConversionOutcome("# Converted\n\nPreview")
+            }
+        )
+        controller._selected_result_index = 0
+        controller.resultsChanged.emit()
+        controller.selectedResultChanged.emit()
+        root.setProperty("pageIndex", 0)
+        QTest.qWait(220)
+        app.processEvents()
+
+        for button in _visible_app_buttons(root):
+            text = button.property("text")
+            if not text:
+                continue
+            interface = QAccessible.queryAccessibleInterface(button)
+            assert interface is not None
+            assert interface.role() == QAccessible.Role.Button
+            assert button.property("hoverEnabled") is True
+            assert interface.text(QAccessible.Text.Name) == text
+    finally:
+        _close_main_qml(app, controller, engine)
+
+
+def test_buttons_and_setting_rows_provide_press_and_click_feedback(monkeypatch, tmp_path):
+    app, controller, engine, root = _load_main_qml(monkeypatch, tmp_path)
+
+    try:
+        root.setWidth(820)
+        root.setHeight(560)
+        app.processEvents()
+
+        button = next(
+            item
+            for item in _visible_app_buttons(root)
+            if item.property("text") == "Add webpage"
+        )
+        button_point = button.mapToScene(button.boundingRect().center())
+        point = QPoint(round(button_point.x()), round(button_point.y()))
+        QTest.mouseMove(root, point)
+        app.processEvents()
+        assert button.property("hovered") is True
+
+        QTest.mousePress(root, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, point)
+        QTest.qWait(60)
+        app.processEvents()
+        assert button.property("down") is True
+        assert button.scale() < 1
+        QTest.mouseRelease(root, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, point)
+
+        controller.addFiles([str(tmp_path / "digital.pdf")])
+        app.processEvents()
+        toggle = _find_by_property(root, "title", "OCR")
+        toggle_point = toggle.mapToScene(QPointF(40, toggle.height() / 2))
+        QTest.mouseClick(
+            root,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+            QPoint(round(toggle_point.x()), round(toggle_point.y())),
+        )
+        app.processEvents()
+        assert controller.ocrEnabled is True
+    finally:
+        _close_main_qml(app, controller, engine)
+
+
+def test_compact_workspace_keeps_inspector_rows_inside_the_scroll_body(monkeypatch, tmp_path):
+    app, controller, engine, root = _load_main_qml(monkeypatch, tmp_path)
+
+    try:
+        root.setWidth(820)
+        root.setHeight(560)
+        controller.addFiles([str(tmp_path / "digital.pdf")])
+        app.processEvents()
+
+        rows = [
+            _find_by_property(root, "title", title)
+            for title in {
+                "OCR",
+                "Fast PDF conversion",
+                "Preserve PDF images",
+                "Preserve DOCX images",
+            }
+        ]
+        available_width = float(rows[0].parent().property("width"))
+
+        assert available_width > 0
+        assert all(float(row.property("width")) <= available_width + 0.1 for row in rows)
+    finally:
+        _close_main_qml(app, controller, engine)
+
+
+def test_compact_results_keep_preview_actions_inside_the_panel(monkeypatch, tmp_path):
+    app, controller, engine, root = _load_main_qml(monkeypatch, tmp_path)
+
+    try:
+        controller.result_model.set_results(
+            {
+                str(tmp_path / "digital.md"): ConversionOutcome(
+                    "# Converted\n\nA compact preview.",
+                )
+            }
+        )
+        controller._selected_result_index = 0
+        controller.resultsChanged.emit()
+        controller.selectedResultChanged.emit()
+        root.setWidth(820)
+        root.setHeight(560)
+        app.processEvents()
+
+        toolbar = next(
+            item
+            for item in root.findChildren(QQuickItem)
+            if item.property("compactActions") is True
+        )
+        save_button = next(
+            item
+            for item in root.findChildren(QQuickItem)
+            if item.isVisible()
+            and item.property("text") == "Save"
+                and item.property("iconName") == "save"
+        )
+        right_edge = save_button.mapToItem(
+            toolbar,
+            QPointF(save_button.width(), 0),
+        ).x()
+
+        assert toolbar.width() <= root.width()
+        assert right_edge <= toolbar.width() + 0.1
+    finally:
+        _close_main_qml(app, controller, engine)
+
+
+def test_reduce_motion_updates_qml_controls(monkeypatch, tmp_path):
+    app, controller, engine, root = _load_main_qml(monkeypatch, tmp_path)
+
+    try:
+        motion_controls = [
+            item
+            for item in root.findChildren(QObject)
+            if item.property("reduceMotion") is not None
+        ]
+
+        assert motion_controls
+        assert {bool(item.property("reduceMotion")) for item in motion_controls} == {False}
+
+        controller.setReduceMotion(True)
+        app.processEvents()
+
+        assert root.property("reduceMotion") is True
+        assert {bool(item.property("reduceMotion")) for item in motion_controls} == {True}
+    finally:
+        _close_main_qml(app, controller, engine)
+
+
+def test_toggle_row_exposes_a_valid_accessible_role(monkeypatch, tmp_path):
+    qml_warnings = []
+    app, controller, engine, root = _load_main_qml(
+        monkeypatch,
+        tmp_path,
+        qml_warnings=qml_warnings,
+    )
+
+    try:
+        controller.addFiles([str(tmp_path / "digital.pdf")])
+        app.processEvents()
+        toggle = _find_by_property(root, "title", "Fast PDF conversion")
+        switch = next(
+            item
+            for item in toggle.findChildren(QQuickItem)
+            if item.property("checked") is not None
+        )
+        interface = QAccessible.queryAccessibleInterface(switch)
+
+        assert interface is not None
+        assert interface.role() == QAccessible.Role.CheckBox
+        assert not any("QAccessible::Role" in warning for warning in qml_warnings)
+        assert not any("multiple key bindings" in warning for warning in qml_warnings)
     finally:
         _close_main_qml(app, controller, engine)
 
@@ -116,8 +362,8 @@ def test_ocr_fallback_selector_is_provider_independent():
     qml_root = Path(__file__).resolve().parents[2] / "markitdowngui" / "qml"
     main_text = (qml_root / "Main.qml").read_text(encoding="utf-8")
 
-    fallback_marker = 'label: "Fallback provider"'
-    glm_panel_marker = 'title: "GLM-OCR"'
+    fallback_marker = 'label: root.tr("qml_fallback_provider")'
+    glm_panel_marker = 'title: root.tr("settings_glmocr_group")'
 
     assert main_text.count(fallback_marker) == 1
     assert main_text.index(fallback_marker) < main_text.index(glm_panel_marker)
@@ -182,6 +428,27 @@ def test_fast_pdf_conversion_strings_follow_language_setting(monkeypatch, tmp_pa
         _close_main_qml(app, controller, engine)
 
 
+def test_qml_language_selector_updates_visible_interface(monkeypatch, tmp_path):
+    app, controller, engine, root = _load_main_qml(monkeypatch, tmp_path)
+
+    try:
+        root.setProperty("pageIndex", 1)
+        app.processEvents()
+
+        language_combo = _find_by_property(root, "currentText", "English")
+        assert _accessible_name(language_combo) == "Language"
+
+        controller.setLanguage("zh_CN")
+        app.processEvents()
+
+        assert language_combo.property("currentText") == "简体中文"
+        assert _find_by_property(root, "label", "语言")
+        assert _find_by_property(root, "title", "外观")
+        assert _find_by_property(root, "text", "工作区")
+    finally:
+        _close_main_qml(app, controller, engine)
+
+
 def test_toggle_row_emits_the_switch_value():
     toggle_row = (
         Path(__file__).resolve().parents[2]
@@ -220,7 +487,7 @@ def test_workspace_keeps_conversion_controls_with_progressive_results():
         / "Main.qml"
     ).read_text(encoding="utf-8")
 
-    assert main_text.count('text: "Stop after current"') == 2
+    assert main_text.count('text: root.tr("qml_stop_after_current")') == 2
     assert "id: activeResultControls" in main_text
     assert "visible: app.converting" in main_text
 
@@ -288,34 +555,40 @@ def test_settings_controls_have_explicit_accessible_names():
     ).read_text(encoding="utf-8")
 
     expected_names = (
-        'Accessible.name: "Application theme"',
-        'Accessible.name: "Primary OCR provider"',
-        'Accessible.name: "Fallback OCR provider"',
-        'Accessible.name: "GLM-OCR mode"',
-        'Accessible.name: "GLM-OCR Ollama host"',
-        'Accessible.name: "GLM-OCR Ollama port"',
-        'Accessible.name: "GLM-OCR Ollama model"',
-        'Accessible.name: "GLM-OCR SDK server endpoint"',
-        'Accessible.name: "HTTP OCR endpoint"',
-        'Accessible.name: "HTTP OCR model"',
-        'Accessible.name: "HTTP OCR timeout in seconds"',
-        'Accessible.name: "HTTP OCR API key environment variable"',
-        'Accessible.name: "Dismiss update notification"',
+        'Accessible.name: root.tr("qml_application_theme")',
+        'Accessible.name: root.tr("qml_primary_ocr_provider")',
+        'Accessible.name: root.tr("qml_fallback_ocr_provider")',
+        'Accessible.name: root.tr("qml_glmocr_mode")',
+        'Accessible.name: root.tr("qml_glmocr_ollama_host")',
+        'Accessible.name: root.tr("qml_glmocr_ollama_port")',
+        'Accessible.name: root.tr("qml_glmocr_ollama_model")',
+        'Accessible.name: root.tr("qml_glmocr_sdk_server_endpoint")',
+        'Accessible.name: root.tr("qml_http_ocr_endpoint")',
+        'Accessible.name: root.tr("qml_http_ocr_model")',
+        'Accessible.name: root.tr("qml_http_ocr_timeout")',
+        'Accessible.name: root.tr("qml_http_ocr_api_key_environment_variable")',
+        'Accessible.name: root.tr("qml_dismiss_update")',
     )
 
     for accessible_name in expected_names:
         assert accessible_name in main_text
 
     assert (
-        'Accessible.name: app.ocrProvider === "glmocr" ? "Fallback Azure endpoint" : "Azure endpoint"'
+        'Accessible.name: app.ocrProvider === "glmocr"\n'
+        '                            ? root.tr("qml_fallback_azure_endpoint")\n'
+        '                            : root.tr("qml_azure_endpoint")'
         in main_text
     )
     assert (
-        'Accessible.name: app.ocrProvider === "glmocr" ? "Fallback Tesseract languages" : "Tesseract languages"'
+        'Accessible.name: app.ocrProvider === "glmocr"\n'
+        '                            ? root.tr("qml_fallback_tesseract_languages")\n'
+        '                            : root.tr("qml_tesseract_languages")'
         in main_text
     )
     assert (
-        'Accessible.name: app.ocrProvider === "glmocr" ? "Fallback Tesseract executable" : "Tesseract executable"'
+        'Accessible.name: app.ocrProvider === "glmocr"\n'
+        '                            ? root.tr("qml_fallback_tesseract_executable")\n'
+        '                            : root.tr("qml_tesseract_executable")'
         in main_text
     )
 
@@ -333,7 +606,7 @@ def test_settings_accessible_names_are_exposed_to_qt_accessibility(monkeypatch, 
             _find_by_property(root, "currentText", "Solarized Light")
         ) == "Application theme"
         assert _accessible_name(
-            _find_by_property(root, "currentText", "Azure + Tesseract")
+            _find_by_property(root, "currentText", "Azure/Tesseract OCR")
         ) == "Primary OCR provider"
         assert _accessible_name(
             _find_by_property(

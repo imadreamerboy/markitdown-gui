@@ -75,7 +75,11 @@ from markitdowngui.utils.support_bundle import (
     create_support_bundle,
     redact_diagnostic_text,
 )
-from markitdowngui.utils.translations import DEFAULT_LANG, get_translation
+from markitdowngui.utils.translations import (
+    DEFAULT_LANG,
+    get_available_languages,
+    get_translation,
+)
 from markitdowngui.utils.update_checker import (
     ReleaseAsset,
     UpdateChecker,
@@ -151,6 +155,7 @@ class SourceUpdateInstaller(QThread):
 class AppController(QObject):
     statusChanged = Signal()
     progressChanged = Signal()
+    conversionActivityChanged = Signal()
     convertingChanged = Signal()
     pausedChanged = Signal()
     queueChanged = Signal()
@@ -178,6 +183,9 @@ class AppController(QObject):
         self.worker: ConversionWorker | None = None
         self._status = "Ready to convert"
         self._progress = 0
+        self._completed_count = 0
+        self._total_count = 0
+        self._active_source = ""
         self._converting = False
         self._paused = False
         self._selected_result_index = -1
@@ -221,6 +229,18 @@ class AppController(QObject):
     @Property(int, notify=progressChanged)
     def progress(self) -> int:
         return self._progress
+
+    @Property(int, notify=conversionActivityChanged)
+    def completedCount(self) -> int:
+        return self._completed_count
+
+    @Property(int, notify=conversionActivityChanged)
+    def totalCount(self) -> int:
+        return self._total_count
+
+    @Property(bool, notify=conversionActivityChanged)
+    def progressIndeterminate(self) -> bool:
+        return self._converting and not self._paused
 
     @Property(bool, notify=convertingChanged)
     def converting(self) -> bool:
@@ -300,6 +320,25 @@ class AppController(QObject):
     @Property(str, notify=settingsChanged)
     def currentLanguage(self) -> str:
         return self.settings.get_current_language() or DEFAULT_LANG
+
+    @Property(bool, notify=settingsChanged)
+    def reduceMotion(self) -> bool:
+        return self.settings.get_reduce_motion()
+
+    @Property("QVariant", constant=True)
+    def availableLanguageCodes(self) -> list[str]:
+        return list(get_available_languages())
+
+    @Property("QVariant", constant=True)
+    def availableLanguageLabels(self) -> list[str]:
+        return [
+            label.replace(" (&S)", "")
+            .replace(" (&T)", "")
+            .replace("(&S)", "")
+            .replace("(&T)", "")
+            .replace("&", "")
+            for label in get_available_languages().values()
+        ]
 
     @Property(bool, notify=themeChanged)
     def darkMode(self) -> bool:
@@ -677,10 +716,14 @@ class AppController(QObject):
         self._unsaved_result_sources.clear()
         self._selected_result_index = -1
         self._progress = 0
+        self._completed_count = 0
+        self._total_count = 0
+        self._active_source = ""
         self._cleanup_temp_assets()
         self.resultsChanged.emit()
         self.selectedResultChanged.emit()
         self.progressChanged.emit()
+        self.conversionActivityChanged.emit()
         self.saveDefaultsChanged.emit()
 
     @Slot()
@@ -746,11 +789,15 @@ class AppController(QObject):
         if not preserve_results:
             self._clear_results()
         self._cancel_requested = False
+        self._completed_count = 0
+        self._total_count = len(sources)
+        self._active_source = ""
         self.worker = ConversionWorker(
             files=sources,
             batch_size=self.settings.get_batch_size(),
             options=self._build_conversion_options(),
         )
+        self.worker.itemStarted.connect(self._handle_item_started)
         self.worker.progress.connect(self._handle_progress)
         self.worker.itemFinished.connect(self._handle_item_finished)
         self.worker.finished.connect(self._handle_finished)
@@ -763,6 +810,7 @@ class AppController(QObject):
         self.convertingChanged.emit()
         self.pausedChanged.emit()
         self.progressChanged.emit()
+        self.conversionActivityChanged.emit()
 
     @Slot()
     def togglePause(self) -> None:
@@ -772,6 +820,7 @@ class AppController(QObject):
         self.worker.is_paused = self._paused
         self._set_status("Paused" if self._paused else "Converting")
         self.pausedChanged.emit()
+        self.conversionActivityChanged.emit()
 
     @Slot()
     def cancel(self) -> None:
@@ -938,6 +987,15 @@ class AppController(QObject):
         if self._selected_result_index >= 0:
             self.selectedResultChanged.emit()
 
+    @Slot(str)
+    def setLanguage(self, language: str) -> None:
+        if language not in get_available_languages():
+            return
+        if language == self.currentLanguage:
+            return
+        self.settings.set_current_language(language)
+        self.settingsChanged.emit()
+
     @Slot(bool)
     def setSaveCombined(self, enabled: bool) -> None:
         self.settings.set_save_mode(enabled)
@@ -948,6 +1006,11 @@ class AppController(QObject):
         self.settings.set_save_to_source_folder(enabled)
         self.settingsChanged.emit()
         self.saveDefaultsChanged.emit()
+
+    @Slot(bool)
+    def setReduceMotion(self, enabled: bool) -> None:
+        self.settings.set_reduce_motion(enabled)
+        self.settingsChanged.emit()
 
     @Slot(int)
     def setBatchSize(self, value: int) -> None:
@@ -1964,10 +2027,18 @@ class AppController(QObject):
             http_ocr_timeout_seconds=self.settings.get_http_ocr_timeout_seconds(),
         )
 
+    def _handle_item_started(self, current_source: str) -> None:
+        self._active_source = current_source
+        self._set_status(f"Converting {Path(current_source).name or current_source}")
+        self.conversionActivityChanged.emit()
+
     def _handle_progress(self, progress: int, current_source: str) -> None:
         self._progress = progress
-        self._set_status(f"Converting {Path(current_source).name or current_source}")
+        if current_source != self._active_source:
+            self._active_source = current_source
+            self._set_status(f"Converting {Path(current_source).name or current_source}")
         self.progressChanged.emit()
+        self.conversionActivityChanged.emit()
 
     def _handle_item_finished(
         self,
@@ -1976,6 +2047,10 @@ class AppController(QObject):
         failed: bool,
     ) -> None:
         self.result_model.add_result(source, outcome, failed=failed)
+        self._completed_count += 1
+        if self._total_count:
+            self._completed_count = min(self._total_count, self._completed_count)
+        self._active_source = source
         if not failed:
             self._unsaved_result_sources.add(source)
         if self._selected_result_index < 0:
@@ -1983,6 +2058,7 @@ class AppController(QObject):
         self.resultsChanged.emit()
         self.selectedResultChanged.emit()
         self.saveDefaultsChanged.emit()
+        self.conversionActivityChanged.emit()
 
     def _handle_finished(self, results: dict) -> None:
         worker = self.worker
@@ -1998,6 +2074,12 @@ class AppController(QObject):
             self._selected_result_index = 0 if results else -1
         self._converting = False
         self._paused = False
+        self._completed_count = (
+            min(self._total_count, len(results))
+            if self._total_count
+            else len(results)
+        )
+        self._active_source = ""
         self._progress = self._progress if was_cancelled else 100 if results else 0
         if was_cancelled:
             self._set_status(
@@ -2022,6 +2104,7 @@ class AppController(QObject):
         self.convertingChanged.emit()
         self.pausedChanged.emit()
         self.progressChanged.emit()
+        self.conversionActivityChanged.emit()
         self.saveDefaultsChanged.emit()
         if was_cancelled:
             self.toastRequested.emit("success", "Conversion cancelled.")

@@ -64,6 +64,14 @@ class SettingsManager:
             normalized = 'light'
         self.settings.setValue('themeMode', normalized)
 
+    def get_reduce_motion(self) -> bool:
+        """Get whether interface animations should be reduced."""
+        return bool(self.settings.value('reduceMotion', False, type=bool))
+
+    def set_reduce_motion(self, enabled: bool) -> None:
+        """Set whether interface animations should be reduced."""
+        self.settings.setValue('reduceMotion', bool(enabled))
+
     def get_dark_mode(self) -> bool:
         """Backward compatible dark mode getter."""
         return self.get_theme_mode() == 'dark'

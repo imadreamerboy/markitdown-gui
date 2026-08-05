@@ -11,8 +11,10 @@ ComboBox {
     property color accentColor: "#88C0D0"
     property color textColor: "#18212B"
     property color mutedTextColor: "#647283"
+    property bool reduceMotion: ApplicationWindow.window ? ApplicationWindow.window.reduceMotion : false
 
     implicitHeight: 40
+    hoverEnabled: true
     leftPadding: 12
     rightPadding: 40
     font.pixelSize: 13
@@ -38,7 +40,7 @@ ComboBox {
 
             Behavior on color {
                 ColorAnimation {
-                    duration: 110
+                    duration: control.reduceMotion ? 0 : 110
                 }
             }
         }
@@ -58,7 +60,7 @@ ComboBox {
 
             Behavior on rotation {
                 NumberAnimation {
-                    duration: 120
+                    duration: control.reduceMotion ? 0 : 120
                     easing.type: Easing.OutCubic
                 }
             }
@@ -95,15 +97,25 @@ ComboBox {
         elide: Text.ElideRight
     }
 
+    HoverHandler {
+        cursorShape: Qt.PointingHandCursor
+    }
+
     background: Rectangle {
         radius: 8
-        color: control.surfaceColor
+        color: control.hovered ? control.hoverColor : control.surfaceColor
         border.color: control.activeFocus ? control.accentColor : control.borderColor
         border.width: control.activeFocus ? 2 : 1
 
+        Behavior on color {
+            ColorAnimation {
+                duration: control.reduceMotion ? 0 : 110
+            }
+        }
+
         Behavior on border.color {
             ColorAnimation {
-                duration: 110
+                duration: control.reduceMotion ? 0 : 110
             }
         }
     }

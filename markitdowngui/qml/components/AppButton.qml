@@ -17,6 +17,25 @@ Button {
     property string iconName: ""
     property int iconSize: 16
     property int iconSpacing: 7
+    property bool reduceMotion: ApplicationWindow.window ? ApplicationWindow.window.reduceMotion : false
+    property color hoverColor: Qt.rgba(accentColor.r, accentColor.g, accentColor.b, 0.10)
+
+    scale: control.down && control.enabled && !control.reduceMotion ? 0.98 : 1
+    hoverEnabled: true
+    Accessible.role: Accessible.Button
+    Accessible.name: control.text
+
+    HoverHandler {
+        cursorShape: Qt.PointingHandCursor
+        enabled: control.enabled
+    }
+
+    Behavior on scale {
+        NumberAnimation {
+            duration: control.reduceMotion ? 0 : 110
+            easing.type: Easing.OutCubic
+        }
+    }
 
     implicitHeight: 36
     leftPadding: 14
@@ -66,27 +85,30 @@ Button {
                     ? "transparent"
                     : (control.primary ? control.disabledPrimaryColor : control.surfaceColor)
             if (control.primary)
-                return control.down ? Qt.darker(control.accentColor, 1.12) : control.accentColor
+                return control.down
+                    ? Qt.darker(control.accentColor, 1.12)
+                    : (control.hovered ? Qt.lighter(control.accentColor, 1.06) : control.accentColor)
             if (control.subtle)
-                return control.hovered ? Qt.rgba(0.5, 0.6, 0.7, 0.12) : "transparent"
-            return control.hovered ? Qt.rgba(0.5, 0.6, 0.7, 0.14) : control.surfaceColor
+                return control.down ? Qt.darker(control.hoverColor, 1.08) : (control.hovered ? control.hoverColor : "transparent")
+            return control.down ? Qt.darker(control.hoverColor, 1.08) : (control.hovered ? control.hoverColor : control.surfaceColor)
         }
         border.color: control.activeFocus && control.enabled
             ? control.focusColor
-            : (control.primary || control.subtle ? "transparent" : control.borderColor)
+            : (control.subtle && control.hovered && control.enabled
+                ? Qt.rgba(control.accentColor.r, control.accentColor.g, control.accentColor.b, 0.45)
+                : (control.primary || control.subtle ? "transparent" : control.borderColor))
         border.width: control.activeFocus && control.enabled ? 2 : 1
 
         Behavior on color {
             ColorAnimation {
-                duration: 110
+                duration: control.reduceMotion ? 0 : 110
             }
         }
 
         Behavior on border.color {
             ColorAnimation {
-                duration: 110
+                duration: control.reduceMotion ? 0 : 110
             }
         }
     }
 }
-
