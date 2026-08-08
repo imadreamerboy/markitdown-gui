@@ -59,6 +59,12 @@ def _install_fake_pdf_inspector(monkeypatch, conversion, process_pdf):
     monkeypatch.setattr(conversion, "process_pdf", process_pdf)
 
 
+def _install_fake_anydoc(monkeypatch, to_markdown):
+    package = types.ModuleType("anydoc")
+    package.to_markdown = to_markdown
+    monkeypatch.setitem(sys.modules, "anydoc", package)
+
+
 def _install_fake_docx_dependencies(
     monkeypatch,
     *,
@@ -134,6 +140,69 @@ def test_convert_pdf_without_preserve_images_keeps_native_path(monkeypatch, conv
 
     assert result == "native pdf text"
     assert calls == [("scan.pdf", False)]
+
+
+def test_anydoc_conversion_is_opt_in(monkeypatch, conversion):
+    native_calls = []
+
+    _install_fake_anydoc(monkeypatch, lambda file_path: "# anydoc output")
+    monkeypatch.setattr(
+        conversion,
+        "_convert_with_markitdown",
+        lambda *args, **kwargs: native_calls.append((args, kwargs)) or "native output",
+    )
+
+    outcome = conversion.convert_file_with_details(
+        "report.docx",
+        conversion.ConversionOptions(anydoc_conversion=True),
+    )
+
+    assert outcome.markdown == "# anydoc output"
+    assert outcome.backend == conversion.BACKEND_ANYDOC
+    assert native_calls == []
+
+
+def test_anydoc_conversion_falls_back_to_native(monkeypatch, conversion):
+    _install_fake_anydoc(
+        monkeypatch,
+        lambda _file_path: (_ for _ in ()).throw(RuntimeError("unsupported")),
+    )
+    monkeypatch.setattr(
+        conversion,
+        "_convert_with_markitdown",
+        lambda *_args, **_kwargs: "native fallback",
+    )
+
+    outcome = conversion.convert_file_with_details(
+        "report.docx",
+        conversion.ConversionOptions(anydoc_conversion=True),
+    )
+
+    assert outcome.markdown == "native fallback"
+    assert outcome.backend == conversion.BACKEND_NATIVE
+
+
+def test_anydoc_does_not_override_docx_image_preservation(monkeypatch, conversion):
+    _install_fake_anydoc(
+        monkeypatch,
+        lambda _file_path: pytest.fail("anydoc must not run when preserving DOCX images"),
+    )
+    expected = conversion.ConversionOutcome("with assets", backend="docx-images")
+    monkeypatch.setattr(
+        conversion,
+        "_convert_docx_with_preserved_images",
+        lambda *_args: expected,
+    )
+
+    outcome = conversion.convert_file_with_details(
+        "illustrated.docx",
+        conversion.ConversionOptions(
+            anydoc_conversion=True,
+            preserve_docx_images=True,
+        ),
+    )
+
+    assert outcome is expected
 
 
 def test_fast_pdf_conversion_uses_pdf_inspector_for_trusted_text_pdf(monkeypatch, conversion):

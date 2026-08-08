@@ -23,6 +23,8 @@ def test_build_hiddenimports_includes_charset_normalizer_mypyc_runtime():
     assert "glmocr.api" in hiddenimports
     assert "markitdown_pdf_images.converter" in hiddenimports
     assert "pdf_inspector.pdf_inspector" in hiddenimports
+    assert "anydoc" in hiddenimports
+    assert "anydoc._anydoc" in hiddenimports
     assert calls[:2] == ["markitdown", "charset_normalizer"]
 
 
@@ -100,7 +102,21 @@ def test_spec_defines_macos_app_bundle():
     assert 'if sys.platform == "darwin":' in spec
     assert "BUNDLE(" in spec
     assert 'name="MarkItDown.app"' in spec
+    assert 'icon=os.path.abspath("markitdowngui/resources/markitdown-gui.icns")' in spec
     assert 'bundle_identifier="com.imadreamerboy.markitdown-gui"' in spec
+
+
+def test_native_app_icon_assets_are_present():
+    resources = Path("markitdowngui/resources")
+
+    for filename in (
+        "markitdown-gui.png",
+        "markitdown-gui.ico",
+        "markitdown-gui.icns",
+    ):
+        asset = resources / filename
+        assert asset.is_file(), asset
+        assert asset.stat().st_size > 0
 
 
 def test_release_workflow_packages_signed_macos_app_bundle():

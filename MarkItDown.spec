@@ -60,7 +60,7 @@ if sys.platform == "darwin":
     app = BUNDLE(
         coll,
         name="MarkItDown.app",
-        icon=None,
+        icon=os.path.abspath("markitdowngui/resources/markitdown-gui.icns"),
         bundle_identifier="com.imadreamerboy.markitdown-gui",
         info_plist={
             "CFBundleName": "MarkItDown",

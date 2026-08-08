@@ -1402,6 +1402,18 @@ ApplicationWindow {
                         }
 
                         ThemeToggleRow {
+                            title: root.tr("home_anydoc_conversion_label")
+                            detail: root.tr("home_anydoc_conversion_detail")
+                            enabled: !app.converting
+                            checked: app.anydocForConversion
+                            textColor: colors.text
+                            mutedTextColor: colors.muted
+                            onToggled: checked => app.setAnydocForConversion(checked)
+                            Layout.fillWidth: true
+                            Layout.minimumWidth: 0
+                        }
+
+                        ThemeToggleRow {
                             title: root.tr("home_preserve_pdf_images_label")
                             detail: root.tr("home_preserve_pdf_images_tooltip")
                             enabled: !app.converting
@@ -2324,6 +2336,30 @@ ApplicationWindow {
                     textColor: colors.text
                     mutedTextColor: colors.muted
                     onToggled: checked => app.setUpdateNotificationsEnabled(checked)
+                    Layout.fillWidth: true
+                }
+            }
+
+            SectionPanel {
+                title: root.tr("settings_conversion_group")
+                subtitle: root.tr("settings_conversion_detail")
+                surfaceColor: colors.surface
+                borderColor: colors.border
+                textColor: colors.text
+                mutedTextColor: colors.muted
+                panelPadding: 14
+                contentSpacing: 10
+                bodySpacing: 9
+                borderOpacity: dark ? 0.90 : 0.72
+                Layout.fillWidth: true
+
+                ThemeToggleRow {
+                    title: root.tr("settings_anydoc_default_label")
+                    detail: root.tr("settings_anydoc_default_detail")
+                    checked: app.anydocDefaultEnabled
+                    textColor: colors.text
+                    mutedTextColor: colors.muted
+                    onToggled: checked => app.setAnydocDefaultEnabled(checked)
                     Layout.fillWidth: true
                 }
             }

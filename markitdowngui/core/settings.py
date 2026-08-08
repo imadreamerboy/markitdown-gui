@@ -177,6 +177,14 @@ class SettingsManager:
         """Set whether eligible digital PDFs use pdf-inspector first."""
         self.settings.setValue('fastPdfConversion', enabled)
 
+    def get_anydoc_enabled(self) -> bool:
+        """Get whether anydoc should be used for conversions by default."""
+        return bool(self.settings.value('anydocEnabled', False, type=bool))
+
+    def set_anydoc_enabled(self, enabled: bool) -> None:
+        """Set whether anydoc should be used for conversions by default."""
+        self.settings.setValue('anydocEnabled', enabled)
+
     def get_preserve_pdf_images(self) -> bool:
         """Get whether PDF image preservation is enabled by default."""
         return bool(self.settings.value('preservePdfImages', False, type=bool))

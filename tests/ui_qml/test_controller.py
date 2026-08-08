@@ -1132,6 +1132,24 @@ def test_controller_builds_fast_pdf_conversion_option(controller):
     assert options.fast_pdf_conversion is True
 
 
+def test_controller_supports_anydoc_default_and_per_conversion_override(controller):
+    assert controller.anydocDefaultEnabled is False
+    assert controller.anydocForConversion is False
+    assert controller._build_conversion_options(create_asset_root=False).anydoc_conversion is False
+
+    controller.setAnydocDefaultEnabled(True)
+    assert controller.anydocDefaultEnabled is True
+    assert controller.anydocForConversion is True
+    assert controller._build_conversion_options(create_asset_root=False).anydoc_conversion is True
+
+    controller.setAnydocForConversion(False)
+    assert controller.anydocForConversion is False
+    assert controller._build_conversion_options(create_asset_root=False).anydoc_conversion is False
+
+    controller._clear_queue()
+    assert controller.anydocForConversion is True
+
+
 def test_controller_translates_fast_pdf_strings(controller):
     assert controller.currentLanguage == "en"
     assert controller.translate("home_fast_pdf_conversion_label") == "Fast PDF conversion"

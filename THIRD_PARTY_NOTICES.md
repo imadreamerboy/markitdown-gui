@@ -24,6 +24,7 @@ terms.
 ## Conversion, OCR, And Document Processing
 
 - MarkItDown: MIT License.
+- anydoc / firecrawl-anydoc: MIT License.
 - markitdown-pdf-images: MIT License.
 - pdf-inspector: MIT License.
 - Docling Core and Docling Parse: MIT License for the codebases; any model usage

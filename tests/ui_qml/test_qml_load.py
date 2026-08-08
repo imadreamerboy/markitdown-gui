@@ -241,6 +241,7 @@ def test_compact_workspace_keeps_inspector_rows_inside_the_scroll_body(monkeypat
             for title in {
                 "OCR",
                 "Fast PDF conversion",
+                "Use anydoc for this conversion",
                 "Preserve PDF images",
                 "Preserve DOCX images",
             }
@@ -385,6 +386,19 @@ def test_workspace_exposes_fast_pdf_conversion_control():
     assert "required property string backendKey" in main_text
 
 
+def test_workspace_exposes_anydoc_conversion_control():
+    qml_root = Path(__file__).resolve().parents[2] / "markitdowngui" / "qml"
+    main_text = (qml_root / "Main.qml").read_text(encoding="utf-8")
+
+    assert 'title: root.tr("home_anydoc_conversion_label")' in main_text
+    assert 'root.tr("home_anydoc_conversion_detail")' in main_text
+    assert "checked: app.anydocForConversion" in main_text
+    assert "app.setAnydocForConversion(checked)" in main_text
+    assert 'title: root.tr("settings_anydoc_default_label")' in main_text
+    assert "checked: app.anydocDefaultEnabled" in main_text
+    assert "app.setAnydocDefaultEnabled(checked)" in main_text
+
+
 def test_fast_pdf_conversion_toggle_updates_controller(monkeypatch, tmp_path):
     app, controller, engine, root = _load_main_qml(monkeypatch, tmp_path)
 
@@ -408,6 +422,62 @@ def test_fast_pdf_conversion_toggle_updates_controller(monkeypatch, tmp_path):
         app.processEvents()
 
         assert controller.fastPdfConversion is True
+    finally:
+        _close_main_qml(app, controller, engine)
+
+
+def test_anydoc_conversion_toggle_updates_controller(monkeypatch, tmp_path):
+    app, controller, engine, root = _load_main_qml(monkeypatch, tmp_path)
+
+    try:
+        controller.addFiles([str(tmp_path / "report.docx")])
+        app.processEvents()
+        toggle = _find_by_property(root, "title", "Use anydoc for this conversion")
+        switch = next(
+            item
+            for item in toggle.findChildren(QQuickItem)
+            if item.property("checked") is not None
+        )
+        position = switch.mapToScene(switch.boundingRect().center())
+
+        QTest.mouseClick(
+            root,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+            QPoint(round(position.x()), round(position.y())),
+        )
+        app.processEvents()
+
+        assert controller.anydocForConversion is True
+        assert controller.anydocDefaultEnabled is False
+    finally:
+        _close_main_qml(app, controller, engine)
+
+
+def test_anydoc_default_setting_toggle_updates_controller(monkeypatch, tmp_path):
+    app, controller, engine, root = _load_main_qml(monkeypatch, tmp_path)
+
+    try:
+        root.setProperty("pageIndex", 1)
+        app.processEvents()
+        toggle = _find_by_property(root, "title", "Use anydoc by default")
+        switch = next(
+            item
+            for item in toggle.findChildren(QQuickItem)
+            if item.property("checked") is not None
+        )
+        position = switch.mapToScene(switch.boundingRect().center())
+
+        QTest.mouseClick(
+            root,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+            QPoint(round(position.x()), round(position.y())),
+        )
+        app.processEvents()
+
+        assert controller.anydocDefaultEnabled is True
+        assert controller.anydocForConversion is True
     finally:
         _close_main_qml(app, controller, engine)
 

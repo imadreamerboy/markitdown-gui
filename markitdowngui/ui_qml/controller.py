@@ -190,6 +190,7 @@ class AppController(QObject):
         self._paused = False
         self._selected_result_index = -1
         self._preview_mode = "rendered"
+        self._anydoc_override: bool | None = None
         self._temp_asset_root: str | None = None
         # Failed-only retries retain successful outputs, so their asset roots must
         # outlive the next conversion worker until the result set is cleared.
@@ -405,6 +406,16 @@ class AppController(QObject):
     @Property(bool, notify=settingsChanged)
     def fastPdfConversion(self) -> bool:
         return self.settings.get_fast_pdf_conversion()
+
+    @Property(bool, notify=settingsChanged)
+    def anydocDefaultEnabled(self) -> bool:
+        return self.settings.get_anydoc_enabled()
+
+    @Property(bool, notify=conversionActivityChanged)
+    def anydocForConversion(self) -> bool:
+        if self._anydoc_override is not None:
+            return self._anydoc_override
+        return self.settings.get_anydoc_enabled()
 
     @Property(bool, notify=settingsChanged)
     def preservePdfImages(self) -> bool:
@@ -673,6 +684,7 @@ class AppController(QObject):
 
     def _clear_queue(self) -> None:
         self.queue_model.clear()
+        self._reset_anydoc_conversion_override()
         self._clear_results_after_queue_change()
         self.queueChanged.emit()
         self._set_status("Queue cleared")
@@ -1027,6 +1039,18 @@ class AppController(QObject):
     def setFastPdfConversion(self, enabled: bool) -> None:
         self.settings.set_fast_pdf_conversion(enabled)
         self.settingsChanged.emit()
+
+    @Slot(bool)
+    def setAnydocDefaultEnabled(self, enabled: bool) -> None:
+        self.settings.set_anydoc_enabled(enabled)
+        self.settingsChanged.emit()
+        if self._anydoc_override is None:
+            self.conversionActivityChanged.emit()
+
+    @Slot(bool)
+    def setAnydocForConversion(self, enabled: bool) -> None:
+        self._anydoc_override = bool(enabled)
+        self.conversionActivityChanged.emit()
 
     @Slot(bool)
     def setPreservePdfImages(self, enabled: bool) -> None:
@@ -2006,6 +2030,11 @@ class AppController(QObject):
         return ConversionOptions(
             ocr_enabled=self.settings.get_ocr_enabled(),
             fast_pdf_conversion=self.settings.get_fast_pdf_conversion(),
+            anydoc_conversion=(
+                self._anydoc_override
+                if self._anydoc_override is not None
+                else self.settings.get_anydoc_enabled()
+            ),
             preserve_pdf_images=preserve_pdf_images,
             preserve_docx_images=preserve_docx_images,
             ocr_provider=self.settings.get_ocr_provider(),
@@ -2026,6 +2055,12 @@ class AppController(QObject):
             http_ocr_api_key_env=self.settings.get_http_ocr_api_key_env(),
             http_ocr_timeout_seconds=self.settings.get_http_ocr_timeout_seconds(),
         )
+
+    def _reset_anydoc_conversion_override(self) -> None:
+        if self._anydoc_override is None:
+            return
+        self._anydoc_override = None
+        self.conversionActivityChanged.emit()
 
     def _handle_item_started(self, current_source: str) -> None:
         self._active_source = current_source
