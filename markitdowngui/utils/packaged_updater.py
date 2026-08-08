@@ -117,6 +117,7 @@ def install_packaged_update(
     executable: str | None = None,
     process_id: int | None = None,
     progress_callback: ProgressCallback | None = None,
+    launch_helper: bool = True,
 ) -> Path:
     plan = build_packaged_update_plan(asset)
     if not plan.supported:
@@ -169,12 +170,18 @@ def install_packaged_update(
         helper_path.write_text(script, encoding="utf-8")
         if sys.platform.startswith("linux") or sys.platform == "darwin":
             helper_path.chmod(0o755)
-        _emit_progress(progress_callback, "Starting restart helper", 98)
-        launch_replace_helper(helper_path)
+        if launch_helper:
+            _emit_progress(progress_callback, "Starting restart helper", 98)
+            launch_replace_helper(helper_path)
     except Exception:
         shutil.rmtree(runtime_dir, ignore_errors=True)
         raise
     return helper_path
+
+
+def cleanup_prepared_update(helper_path: Path | str) -> None:
+    """Remove a prepared update that has not been handed to its helper."""
+    shutil.rmtree(Path(helper_path).parent, ignore_errors=True)
 
 
 def download_and_open_dmg(

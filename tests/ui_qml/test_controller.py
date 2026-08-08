@@ -70,7 +70,7 @@ class _FakeUpdateInstaller:
     def __init__(self, action: str = "success"):
         self.action = action
         self.progressChanged = _FakeSignal()
-        self.installStarted = _FakeSignal()
+        self.installReady = _FakeSignal()
         self.manualInstallOpened = _FakeSignal()
         self.installError = _FakeSignal()
         self.finished = _FakeSignal()
@@ -86,8 +86,8 @@ class _FakeUpdateInstaller:
             self.progressChanged.emit("DMG opened", 100)
             self.manualInstallOpened.emit("C:/Users/test/Downloads/MarkItDown.dmg")
         else:
-            self.progressChanged.emit("Starting restart helper", 98)
-            self.installStarted.emit()
+            self.progressChanged.emit("Preparing restart helper", 92)
+            self.installReady.emit("/tmp/markitdown-update/apply-update.ps1")
         self.finished.emit()
 
     def isRunning(self):
@@ -257,6 +257,10 @@ def test_controller_exposes_release_assets_for_packaged_updates(controller, monk
         "_create_update_checker",
         lambda: _FakeUpdateChecker(("available", "v1.2.0"), release),
     )
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.launch_replace_helper",
+        lambda _path: None,
+    )
     monkeypatch.setattr(controller, "openExternalUrl", lambda url: opened.append(url))
 
     controller.startAutomaticUpdateCheck()
@@ -425,6 +429,10 @@ def test_controller_installs_supported_preferred_update(controller, monkeypatch)
         lambda asset: created.append(asset) or _FakeUpdateInstaller(),
     )
     monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.launch_replace_helper",
+        lambda _path: None,
+    )
+    monkeypatch.setattr(
         controller,
         "_create_update_checker",
         lambda: _FakeUpdateChecker(("available", "v1.2.0"), release),
@@ -468,6 +476,10 @@ def test_controller_confirms_before_starting_update_with_unsaved_results(
         lambda asset: created.append(asset) or _FakeUpdateInstaller(),
     )
     monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.launch_replace_helper",
+        lambda _path: None,
+    )
+    monkeypatch.setattr(
         "markitdowngui.ui_qml.controller.QGuiApplication.quit",
         lambda: quit_calls.append(None),
     )
@@ -487,13 +499,15 @@ def test_controller_confirms_before_starting_update_with_unsaved_results(
 
 def test_packaged_update_installer_emits_progress_and_success(monkeypatch):
     progress: list[tuple[str, int]] = []
-    started: list[None] = []
+    ready: list[str] = []
     opened: list[str] = []
     errors: list[str] = []
 
-    def fake_install(_asset, progress_callback):
+    def fake_install(_asset, progress_callback, launch_helper):
+        assert launch_helper is False
         progress_callback("Downloading update", 25)
-        progress_callback("Starting restart helper", 98)
+        progress_callback("Preparing restart helper", 92)
+        return "/tmp/markitdown-update/apply-update.ps1"
 
     monkeypatch.setattr(
         "markitdowngui.ui_qml.controller.install_packaged_update",
@@ -501,25 +515,26 @@ def test_packaged_update_installer_emits_progress_and_success(monkeypatch):
     )
     installer = PackagedUpdateInstaller({"url": "https://example.com/windows.zip"})
     installer.progressChanged.connect(lambda status, value: progress.append((status, value)))
-    installer.installStarted.connect(lambda: started.append(None))
+    installer.installReady.connect(lambda path: ready.append(path))
     installer.manualInstallOpened.connect(lambda path: opened.append(path))
     installer.installError.connect(lambda message: errors.append(message))
 
     installer.run()
 
-    assert progress == [("Downloading update", 25), ("Starting restart helper", 98)]
-    assert started == [None]
+    assert progress == [("Downloading update", 25), ("Preparing restart helper", 92)]
+    assert ready == ["/tmp/markitdown-update/apply-update.ps1"]
     assert opened == []
     assert errors == []
 
 
 def test_packaged_update_installer_emits_manual_open_for_dmg(monkeypatch):
     progress: list[tuple[str, int]] = []
-    started: list[None] = []
+    ready: list[str] = []
     opened: list[str] = []
     errors: list[str] = []
 
-    def fake_install(_asset, progress_callback):
+    def fake_install(_asset, progress_callback, launch_helper):
+        assert launch_helper is False
         progress_callback("DMG opened", 100)
         return "/Users/test/Downloads/MarkItDown.dmg"
 
@@ -535,14 +550,14 @@ def test_packaged_update_installer_emits_manual_open_for_dmg(monkeypatch):
         {"name": "MarkItDown.dmg", "url": "https://example.com/macos.dmg"}
     )
     installer.progressChanged.connect(lambda status, value: progress.append((status, value)))
-    installer.installStarted.connect(lambda: started.append(None))
+    installer.installReady.connect(lambda path: ready.append(path))
     installer.manualInstallOpened.connect(lambda path: opened.append(path))
     installer.installError.connect(lambda message: errors.append(message))
 
     installer.run()
 
     assert progress == [("DMG opened", 100)]
-    assert started == []
+    assert ready == []
     assert opened == ["/Users/test/Downloads/MarkItDown.dmg"]
     assert errors == []
 
@@ -1409,22 +1424,56 @@ def test_controller_confirms_before_closing_for_update_with_unsaved_results(
         {source: ConversionOutcome("# Converted", backend="native")},
     )
     requests: list[str] = []
+    launched: list[Path] = []
     quit_calls: list[None] = []
     controller.discardResultsRequested.connect(requests.append)
+    helper_path = tmp_path / "runtime" / "apply-update.sh"
+    helper_path.parent.mkdir()
+    helper_path.write_text("#!/bin/sh\n", encoding="utf-8")
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.launch_replace_helper",
+        lambda path: launched.append(path),
+    )
     monkeypatch.setattr(
         "markitdowngui.ui_qml.controller.QGuiApplication.quit",
         lambda: quit_calls.append(None),
     )
 
-    controller._on_update_install_started()
+    controller._on_update_install_ready(str(helper_path))
 
     assert requests == ["close the application and install the update"]
+    assert launched == []
     assert quit_calls == []
 
     controller.discardPendingResults()
 
     assert controller.hasResults is False
+    assert launched == [helper_path]
     assert quit_calls == [None]
+
+
+def test_controller_cancelling_update_discard_cleans_prepared_helper(
+    controller, monkeypatch, tmp_path
+):
+    source = str(tmp_path / "result.pdf")
+    _complete_results(
+        controller,
+        {source: ConversionOutcome("# Converted", backend="native")},
+    )
+    helper_path = tmp_path / "runtime" / "apply-update.sh"
+    helper_path.parent.mkdir()
+    helper_path.write_text("#!/bin/sh\n", encoding="utf-8")
+    cleaned: list[Path] = []
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.cleanup_prepared_update",
+        lambda path: cleaned.append(path),
+    )
+
+    controller._on_update_install_ready(str(helper_path))
+    controller.cancelPendingResultDiscard()
+
+    assert cleaned == [helper_path]
+    assert controller.hasResults is True
 
 
 def test_controller_reports_restart_failure(controller, monkeypatch):

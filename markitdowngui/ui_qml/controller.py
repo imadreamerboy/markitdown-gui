@@ -56,9 +56,11 @@ from markitdowngui.utils.logger import AppLogger, build_diagnostic_report
 from markitdowngui.utils.packaged_updater import (
     PackagedUpdateError,
     build_packaged_update_plan,
+    cleanup_prepared_update,
     clear_packaged_update_result,
     install_packaged_update,
     is_packaged_app,
+    launch_replace_helper,
     read_packaged_update_result,
 )
 from markitdowngui.utils.source_updater import (
@@ -100,7 +102,7 @@ _DEFAULT_HTTP_OCR_ENDPOINT = "http://127.0.0.1:8000/ocr"
 
 class PackagedUpdateInstaller(QThread):
     progressChanged = Signal(str, int)
-    installStarted = Signal()
+    installReady = Signal(str)
     manualInstallOpened = Signal(str)
     installError = Signal(str)
 
@@ -114,6 +116,7 @@ class PackagedUpdateInstaller(QThread):
             opened_path = install_packaged_update(
                 self.asset,
                 progress_callback=self.progressChanged.emit,
+                launch_helper=False,
             )
         except PackagedUpdateError as exc:
             self.installError.emit(str(exc))
@@ -124,7 +127,7 @@ class PackagedUpdateInstaller(QThread):
         if plan.mode == "dmg":
             self.manualInstallOpened.emit(str(opened_path))
             return
-        self.installStarted.emit()
+        self.installReady.emit(str(opened_path))
 
 
 class SourceUpdateInstaller(QThread):
@@ -198,6 +201,7 @@ class AppController(QObject):
         self._cancel_requested = False
         self._unsaved_result_sources: set[str] = set()
         self._pending_result_discard: Callable[[], None] | None = None
+        self._pending_update_helper: Path | None = None
         self._update_checker: UpdateChecker | None = None
         self._update_installer: PackagedUpdateInstaller | None = None
         self._update_check_manual = False
@@ -722,6 +726,7 @@ class AppController(QObject):
     @Slot()
     def cancelPendingResultDiscard(self) -> None:
         self._pending_result_discard = None
+        self._cleanup_pending_update_helper()
 
     def _clear_results(self) -> None:
         self.result_model.clear()
@@ -1360,7 +1365,7 @@ class AppController(QObject):
         self._update_installer.manualInstallOpened.connect(
             self._on_manual_update_install_opened
         )
-        self._update_installer.installStarted.connect(self._on_update_install_started)
+        self._update_installer.installReady.connect(self._on_update_install_ready)
         self._update_installer.finished.connect(self._clear_update_installer)
         self._update_installer.start()
 
@@ -1592,21 +1597,52 @@ class AppController(QObject):
         self.diagnosticsChanged.emit()
         self.toastRequested.emit("error", message)
 
-    def _on_update_install_started(self) -> None:
+    def _on_update_install_ready(self, helper_path: str) -> None:
+        self._pending_update_helper = Path(helper_path)
         self._update_install_running = False
-        self._update_install_status = "Restarting app"
-        self._update_install_progress = 100
+        self._update_install_status = "Update ready to install"
+        self._update_install_progress = 98
         self.updateInstallChanged.emit()
         self.updateNotificationChanged.emit()
         self.sourceUpdateChanged.emit()
         self.diagnosticsChanged.emit()
         if self._request_result_discard(
             "close the application and install the update",
-            lambda: self._discard_results_and_continue(
-                self._quit_for_packaged_update
-            ),
+            self._discard_results_and_continue_prepared_update,
         ):
             return
+        self._launch_prepared_update()
+
+    def _discard_results_and_continue_prepared_update(self) -> None:
+        self._discard_results_and_continue(self._launch_prepared_update)
+
+    def _launch_prepared_update(self) -> None:
+        helper_path = self._pending_update_helper
+        self._pending_update_helper = None
+        if helper_path is None:
+            return
+        try:
+            self._on_update_install_progress("Starting restart helper", 98)
+            launch_replace_helper(helper_path)
+        except Exception as exc:
+            cleanup_prepared_update(helper_path)
+            self._on_update_install_error(f"Could not start update helper: {exc}")
+            return
+        self._finish_update_install()
+
+    def _cleanup_pending_update_helper(self) -> None:
+        helper_path = self._pending_update_helper
+        self._pending_update_helper = None
+        if helper_path is not None:
+            cleanup_prepared_update(helper_path)
+
+    def _finish_update_install(self) -> None:
+        self._update_install_status = "Restarting app"
+        self._update_install_progress = 100
+        self.updateInstallChanged.emit()
+        self.updateNotificationChanged.emit()
+        self.sourceUpdateChanged.emit()
+        self.diagnosticsChanged.emit()
         self._quit_for_packaged_update()
 
     def _quit_for_packaged_update(self) -> None:

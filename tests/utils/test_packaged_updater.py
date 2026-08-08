@@ -355,6 +355,56 @@ def test_install_packaged_update_reports_progress(monkeypatch, tmp_path):
     ]
 
 
+def test_install_packaged_update_can_prepare_without_starting_helper(
+    monkeypatch, tmp_path
+):
+    app_dir = tmp_path / "current" / "MarkItDown"
+    app_dir.mkdir(parents=True)
+    executable = app_dir / "MarkItDown.exe"
+    executable.write_text("old", encoding="utf-8")
+    archive = tmp_path / "MarkItDown-Windows-2.0.0.zip"
+    with zipfile.ZipFile(archive, "w") as zf:
+        zf.writestr("MarkItDown/MarkItDown.exe", "new")
+
+    progress: list[tuple[str, int]] = []
+    launched: list[Path] = []
+    monkeypatch.setattr(packaged_updater.sys, "platform", "win32")
+    monkeypatch.setattr(packaged_updater.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(
+        packaged_updater,
+        "download_asset",
+        lambda _url, target, **_kwargs: target.write_bytes(archive.read_bytes()),
+    )
+    monkeypatch.setattr(
+        packaged_updater,
+        "launch_replace_helper",
+        lambda helper_path: launched.append(helper_path),
+    )
+
+    helper = packaged_updater.install_packaged_update(
+        {
+            "name": archive.name,
+            "url": "https://example.com/app.zip",
+        },
+        app_dir=app_dir,
+        executable=str(executable),
+        launch_helper=False,
+        progress_callback=lambda status, value: progress.append((status, value)),
+    )
+
+    assert helper.is_file()
+    assert launched == []
+    assert progress == [
+        ("Downloading update", 5),
+        ("Verifying update", 72),
+        ("Extracting update", 84),
+        ("Preparing restart helper", 92),
+    ]
+
+    packaged_updater.cleanup_prepared_update(helper)
+    assert not helper.parent.exists()
+
+
 def test_install_packaged_update_downloads_and_opens_macos_dmg(monkeypatch, tmp_path):
     dmg = tmp_path / "MarkItDown-macOS-2.0.0.dmg"
     dmg.write_bytes(b"disk image")
