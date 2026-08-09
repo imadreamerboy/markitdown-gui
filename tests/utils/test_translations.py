@@ -1,3 +1,6 @@
+import re
+from pathlib import Path
+
 from markitdowngui.utils.translations import get_translation, get_available_languages, TRANSLATIONS
 
 def test_get_translation_english():
@@ -30,6 +33,18 @@ def test_get_available_languages():
     assert 'zh_CN' in langs
     assert langs['en'] == "&English"
     assert langs['zh_CN'] == "简体中文(&S)" 
+
+
+def test_qml_translation_keys_exist_in_every_configured_language():
+    qml_root = Path(__file__).resolve().parents[2] / "markitdowngui" / "qml"
+    qml_text = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in qml_root.rglob("*.qml")
+    )
+    keys = set(re.findall(r'root\.tr\("([^"]+)"\)', qml_text))
+
+    for language in TRANSLATIONS:
+        assert keys <= TRANSLATIONS[language].keys()
 
 def test_home_translation_keys_exist():
     """Ensure new Home UX translation keys exist in every configured language."""

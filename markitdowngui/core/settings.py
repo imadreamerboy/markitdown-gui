@@ -64,6 +64,14 @@ class SettingsManager:
             normalized = 'light'
         self.settings.setValue('themeMode', normalized)
 
+    def get_reduce_motion(self) -> bool:
+        """Get whether interface animations should be reduced."""
+        return bool(self.settings.value('reduceMotion', False, type=bool))
+
+    def set_reduce_motion(self, enabled: bool) -> None:
+        """Set whether interface animations should be reduced."""
+        self.settings.setValue('reduceMotion', bool(enabled))
+
     def get_dark_mode(self) -> bool:
         """Backward compatible dark mode getter."""
         return self.get_theme_mode() == 'dark'
@@ -168,6 +176,14 @@ class SettingsManager:
     def set_fast_pdf_conversion(self, enabled: bool) -> None:
         """Set whether eligible digital PDFs use pdf-inspector first."""
         self.settings.setValue('fastPdfConversion', enabled)
+
+    def get_anydoc_enabled(self) -> bool:
+        """Get whether anydoc should be used for conversions by default."""
+        return bool(self.settings.value('anydocEnabled', False, type=bool))
+
+    def set_anydoc_enabled(self, enabled: bool) -> None:
+        """Set whether anydoc should be used for conversions by default."""
+        self.settings.setValue('anydocEnabled', enabled)
 
     def get_preserve_pdf_images(self) -> bool:
         """Get whether PDF image preservation is enabled by default."""

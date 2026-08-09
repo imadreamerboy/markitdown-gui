@@ -1,10 +1,16 @@
 [English](README.md) | [简体中文](README_zh.md) | [繁體中文](README_zh_TW.md)
 
 
+<p align="center">
+  <img src="markitdowngui/resources/markitdown-gui.png" alt="MarkItDown GUI icon" width="128">
+</p>
+
 # MarkItDown GUI Wrapper
 
 A desktop GUI for `MarkItDown`, built with `PySide6` and official Qt Quick Controls/QML.
 It focuses on fast multi-file conversion to Markdown with a modern, native-styled desktop interface.
+
+The same Markdown document icon is used by the macOS app bundle, Windows installer, Linux AppImage, and application window.
 
 ![Current UI screenshot](image.png)
 

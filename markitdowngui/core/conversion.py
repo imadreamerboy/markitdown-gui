@@ -49,6 +49,32 @@ BACKEND_NATIVE = "native"
 BACKEND_DOCX_IMAGES = "docx-images"
 BACKEND_PDF_IMAGES = "pdf-images"
 BACKEND_PDF_INSPECTOR = "pdf-inspector"
+BACKEND_ANYDOC = "anydoc"
+ANYDOC_EXTENSIONS = frozenset(
+    {
+        ".csv",
+        ".doc",
+        ".docm",
+        ".docx",
+        ".epub",
+        ".ods",
+        ".odp",
+        ".odt",
+        ".pdf",
+        ".pot",
+        ".ppt",
+        ".pptm",
+        ".pptx",
+        ".pps",
+        ".ppsm",
+        ".ppsx",
+        ".rtf",
+        ".xls",
+        ".xlsb",
+        ".xlsm",
+        ".xlsx",
+    }
+)
 PDF_INSPECTOR_MIN_CONFIDENCE = 0.9
 process_pdf = None
 OCR_PROVIDER_AZURE_TESSERACT = "azure_tesseract"
@@ -149,6 +175,7 @@ class ConversionOptions:
 
     ocr_enabled: bool = False
     fast_pdf_conversion: bool = False
+    anydoc_conversion: bool = False
     preserve_pdf_images: bool = False
     preserve_docx_images: bool = False
     ocr_provider: str = OCR_PROVIDER_AZURE_TESSERACT
@@ -194,6 +221,10 @@ class ConversionOptions:
     @property
     def normalized_fast_pdf_conversion(self) -> bool:
         return bool(self.fast_pdf_conversion)
+
+    @property
+    def normalized_anydoc_conversion(self) -> bool:
+        return bool(self.anydoc_conversion)
 
     @property
     def normalized_preserve_docx_images(self) -> bool:
@@ -674,6 +705,11 @@ def convert_file_with_details(
     if extension == PDF_EXTENSION and effective_options.normalized_preserve_pdf_images:
         return _convert_pdf_with_preserved_images(file_path, effective_options)
 
+    if _should_try_anydoc(file_path, effective_options):
+        anydoc_outcome = _try_convert_with_anydoc(file_path)
+        if anydoc_outcome is not None:
+            return anydoc_outcome
+
     if extension == PDF_EXTENSION and effective_options.normalized_fast_pdf_conversion:
         fast_outcome = _try_convert_pdf_with_pdf_inspector(file_path)
         if fast_outcome is not None:
@@ -770,6 +806,47 @@ def _try_convert_pdf_with_pdf_inspector(file_path: str) -> ConversionOutcome | N
         return None
 
     return ConversionOutcome(markdown=markdown, backend=BACKEND_PDF_INSPECTOR)
+
+
+def _should_try_anydoc(file_path: str, options: ConversionOptions) -> bool:
+    if not options.normalized_anydoc_conversion:
+        return False
+
+    extension = Path(file_path).suffix.lower()
+    if extension not in ANYDOC_EXTENSIONS:
+        return False
+    if extension == PDF_EXTENSION and options.normalized_preserve_pdf_images:
+        return False
+    if extension == DOCX_EXTENSION and options.normalized_preserve_docx_images:
+        return False
+    return True
+
+
+def _try_convert_with_anydoc(file_path: str) -> ConversionOutcome | None:
+    """Return an anydoc result, or None so the established path can continue."""
+    try:
+        import anydoc
+    except ImportError as exc:
+        logging.warning(
+            "Anydoc conversion fell back: anydoc is unavailable (%s)",
+            type(exc).__name__,
+        )
+        return None
+
+    try:
+        markdown = anydoc.to_markdown(file_path)
+    except Exception as exc:
+        logging.warning(
+            "Anydoc conversion fell back after an error (%s)",
+            type(exc).__name__,
+        )
+        return None
+
+    if not isinstance(markdown, str) or not markdown.strip():
+        logging.warning("Anydoc conversion fell back: no Markdown returned")
+        return None
+
+    return ConversionOutcome(markdown=markdown, backend=BACKEND_ANYDOC)
 
 
 def convert_file(file_path: str, options: ConversionOptions | None = None) -> str:
@@ -1587,6 +1664,7 @@ def _run_tesseract_ocr(image, options: ConversionOptions) -> str:
 
 class ConversionWorker(QThread):
     progress = Signal(int, str)
+    itemStarted = Signal(str)
     itemFinished = Signal(str, object, bool)
     finished = Signal(dict)
     error = Signal(str)
@@ -1623,6 +1701,7 @@ class ConversionWorker(QThread):
                 break
 
             failed = False
+            self.itemStarted.emit(file_path)
             try:
                 outcome = convert_file_with_details(
                     file_path,

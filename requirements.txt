@@ -57,6 +57,8 @@ docling-parse==5.6.2
     # via markitdown-pdf-images
 et-xmlfile==2.0.0
     # via openpyxl
+firecrawl-anydoc==0.1.6
+    # via markitdowngui (pyproject.toml)
 flatbuffers==25.2.10
     # via onnxruntime
 glmocr==0.1.4

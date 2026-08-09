@@ -29,6 +29,7 @@ def build_settings_profile(
             "appearance": {
                 "themeMode": settings.get_theme_mode(),
                 "language": settings.get_current_language(),
+                "reduceMotion": settings.get_reduce_motion(),
             },
             "output": {
                 "defaultFormat": settings.get_default_output_format(),
@@ -38,6 +39,7 @@ def build_settings_profile(
             "conversion": {
                 "batchSize": settings.get_batch_size(),
                 "fastPdfConversion": settings.get_fast_pdf_conversion(),
+                "anydocEnabled": settings.get_anydoc_enabled(),
                 "preservePdfImages": settings.get_preserve_pdf_images(),
                 "preserveDocxImages": settings.get_preserve_docx_images(),
             },
@@ -104,6 +106,8 @@ def apply_settings_profile(settings: SettingsManager, payload: dict[str, Any]) -
         settings.set_theme_mode(str(appearance["themeMode"]))
     if "language" in appearance:
         settings.set_current_language(str(appearance["language"]))
+    if "reduceMotion" in appearance:
+        settings.set_reduce_motion(_bool_value(appearance["reduceMotion"]))
 
     if "defaultFormat" in output:
         settings.set_default_output_format(str(output["defaultFormat"]))
@@ -116,6 +120,8 @@ def apply_settings_profile(settings: SettingsManager, payload: dict[str, Any]) -
         settings.set_batch_size(_int_value(conversion["batchSize"]))
     if "fastPdfConversion" in conversion:
         settings.set_fast_pdf_conversion(_bool_value(conversion["fastPdfConversion"]))
+    if "anydocEnabled" in conversion:
+        settings.set_anydoc_enabled(_bool_value(conversion["anydocEnabled"]))
     if "preservePdfImages" in conversion:
         settings.set_preserve_pdf_images(_bool_value(conversion["preservePdfImages"]))
     if "preserveDocxImages" in conversion:

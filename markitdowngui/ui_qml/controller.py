@@ -56,9 +56,11 @@ from markitdowngui.utils.logger import AppLogger, build_diagnostic_report
 from markitdowngui.utils.packaged_updater import (
     PackagedUpdateError,
     build_packaged_update_plan,
+    cleanup_prepared_update,
     clear_packaged_update_result,
     install_packaged_update,
     is_packaged_app,
+    launch_replace_helper,
     read_packaged_update_result,
 )
 from markitdowngui.utils.source_updater import (
@@ -75,7 +77,11 @@ from markitdowngui.utils.support_bundle import (
     create_support_bundle,
     redact_diagnostic_text,
 )
-from markitdowngui.utils.translations import DEFAULT_LANG, get_translation
+from markitdowngui.utils.translations import (
+    DEFAULT_LANG,
+    get_available_languages,
+    get_translation,
+)
 from markitdowngui.utils.update_checker import (
     ReleaseAsset,
     UpdateChecker,
@@ -96,7 +102,7 @@ _DEFAULT_HTTP_OCR_ENDPOINT = "http://127.0.0.1:8000/ocr"
 
 class PackagedUpdateInstaller(QThread):
     progressChanged = Signal(str, int)
-    installStarted = Signal()
+    installReady = Signal(str)
     manualInstallOpened = Signal(str)
     installError = Signal(str)
 
@@ -110,6 +116,7 @@ class PackagedUpdateInstaller(QThread):
             opened_path = install_packaged_update(
                 self.asset,
                 progress_callback=self.progressChanged.emit,
+                launch_helper=False,
             )
         except PackagedUpdateError as exc:
             self.installError.emit(str(exc))
@@ -120,7 +127,7 @@ class PackagedUpdateInstaller(QThread):
         if plan.mode == "dmg":
             self.manualInstallOpened.emit(str(opened_path))
             return
-        self.installStarted.emit()
+        self.installReady.emit(str(opened_path))
 
 
 class SourceUpdateInstaller(QThread):
@@ -151,6 +158,7 @@ class SourceUpdateInstaller(QThread):
 class AppController(QObject):
     statusChanged = Signal()
     progressChanged = Signal()
+    conversionActivityChanged = Signal()
     convertingChanged = Signal()
     pausedChanged = Signal()
     queueChanged = Signal()
@@ -178,10 +186,14 @@ class AppController(QObject):
         self.worker: ConversionWorker | None = None
         self._status = "Ready to convert"
         self._progress = 0
+        self._completed_count = 0
+        self._total_count = 0
+        self._active_source = ""
         self._converting = False
         self._paused = False
         self._selected_result_index = -1
         self._preview_mode = "rendered"
+        self._anydoc_override: bool | None = None
         self._temp_asset_root: str | None = None
         # Failed-only retries retain successful outputs, so their asset roots must
         # outlive the next conversion worker until the result set is cleared.
@@ -189,6 +201,7 @@ class AppController(QObject):
         self._cancel_requested = False
         self._unsaved_result_sources: set[str] = set()
         self._pending_result_discard: Callable[[], None] | None = None
+        self._pending_update_helper: Path | None = None
         self._update_checker: UpdateChecker | None = None
         self._update_installer: PackagedUpdateInstaller | None = None
         self._update_check_manual = False
@@ -221,6 +234,18 @@ class AppController(QObject):
     @Property(int, notify=progressChanged)
     def progress(self) -> int:
         return self._progress
+
+    @Property(int, notify=conversionActivityChanged)
+    def completedCount(self) -> int:
+        return self._completed_count
+
+    @Property(int, notify=conversionActivityChanged)
+    def totalCount(self) -> int:
+        return self._total_count
+
+    @Property(bool, notify=conversionActivityChanged)
+    def progressIndeterminate(self) -> bool:
+        return self._converting and not self._paused
 
     @Property(bool, notify=convertingChanged)
     def converting(self) -> bool:
@@ -301,6 +326,25 @@ class AppController(QObject):
     def currentLanguage(self) -> str:
         return self.settings.get_current_language() or DEFAULT_LANG
 
+    @Property(bool, notify=settingsChanged)
+    def reduceMotion(self) -> bool:
+        return self.settings.get_reduce_motion()
+
+    @Property("QVariant", constant=True)
+    def availableLanguageCodes(self) -> list[str]:
+        return list(get_available_languages())
+
+    @Property("QVariant", constant=True)
+    def availableLanguageLabels(self) -> list[str]:
+        return [
+            label.replace(" (&S)", "")
+            .replace(" (&T)", "")
+            .replace("(&S)", "")
+            .replace("(&T)", "")
+            .replace("&", "")
+            for label in get_available_languages().values()
+        ]
+
     @Property(bool, notify=themeChanged)
     def darkMode(self) -> bool:
         mode = self.settings.get_theme_mode()
@@ -366,6 +410,16 @@ class AppController(QObject):
     @Property(bool, notify=settingsChanged)
     def fastPdfConversion(self) -> bool:
         return self.settings.get_fast_pdf_conversion()
+
+    @Property(bool, notify=settingsChanged)
+    def anydocDefaultEnabled(self) -> bool:
+        return self.settings.get_anydoc_enabled()
+
+    @Property(bool, notify=conversionActivityChanged)
+    def anydocForConversion(self) -> bool:
+        if self._anydoc_override is not None:
+            return self._anydoc_override
+        return self.settings.get_anydoc_enabled()
 
     @Property(bool, notify=settingsChanged)
     def preservePdfImages(self) -> bool:
@@ -634,6 +688,7 @@ class AppController(QObject):
 
     def _clear_queue(self) -> None:
         self.queue_model.clear()
+        self._reset_anydoc_conversion_override()
         self._clear_results_after_queue_change()
         self.queueChanged.emit()
         self._set_status("Queue cleared")
@@ -671,16 +726,21 @@ class AppController(QObject):
     @Slot()
     def cancelPendingResultDiscard(self) -> None:
         self._pending_result_discard = None
+        self._cleanup_pending_update_helper()
 
     def _clear_results(self) -> None:
         self.result_model.clear()
         self._unsaved_result_sources.clear()
         self._selected_result_index = -1
         self._progress = 0
+        self._completed_count = 0
+        self._total_count = 0
+        self._active_source = ""
         self._cleanup_temp_assets()
         self.resultsChanged.emit()
         self.selectedResultChanged.emit()
         self.progressChanged.emit()
+        self.conversionActivityChanged.emit()
         self.saveDefaultsChanged.emit()
 
     @Slot()
@@ -746,11 +806,15 @@ class AppController(QObject):
         if not preserve_results:
             self._clear_results()
         self._cancel_requested = False
+        self._completed_count = 0
+        self._total_count = len(sources)
+        self._active_source = ""
         self.worker = ConversionWorker(
             files=sources,
             batch_size=self.settings.get_batch_size(),
             options=self._build_conversion_options(),
         )
+        self.worker.itemStarted.connect(self._handle_item_started)
         self.worker.progress.connect(self._handle_progress)
         self.worker.itemFinished.connect(self._handle_item_finished)
         self.worker.finished.connect(self._handle_finished)
@@ -763,6 +827,7 @@ class AppController(QObject):
         self.convertingChanged.emit()
         self.pausedChanged.emit()
         self.progressChanged.emit()
+        self.conversionActivityChanged.emit()
 
     @Slot()
     def togglePause(self) -> None:
@@ -772,6 +837,7 @@ class AppController(QObject):
         self.worker.is_paused = self._paused
         self._set_status("Paused" if self._paused else "Converting")
         self.pausedChanged.emit()
+        self.conversionActivityChanged.emit()
 
     @Slot()
     def cancel(self) -> None:
@@ -938,6 +1004,15 @@ class AppController(QObject):
         if self._selected_result_index >= 0:
             self.selectedResultChanged.emit()
 
+    @Slot(str)
+    def setLanguage(self, language: str) -> None:
+        if language not in get_available_languages():
+            return
+        if language == self.currentLanguage:
+            return
+        self.settings.set_current_language(language)
+        self.settingsChanged.emit()
+
     @Slot(bool)
     def setSaveCombined(self, enabled: bool) -> None:
         self.settings.set_save_mode(enabled)
@@ -948,6 +1023,11 @@ class AppController(QObject):
         self.settings.set_save_to_source_folder(enabled)
         self.settingsChanged.emit()
         self.saveDefaultsChanged.emit()
+
+    @Slot(bool)
+    def setReduceMotion(self, enabled: bool) -> None:
+        self.settings.set_reduce_motion(enabled)
+        self.settingsChanged.emit()
 
     @Slot(int)
     def setBatchSize(self, value: int) -> None:
@@ -964,6 +1044,18 @@ class AppController(QObject):
     def setFastPdfConversion(self, enabled: bool) -> None:
         self.settings.set_fast_pdf_conversion(enabled)
         self.settingsChanged.emit()
+
+    @Slot(bool)
+    def setAnydocDefaultEnabled(self, enabled: bool) -> None:
+        self.settings.set_anydoc_enabled(enabled)
+        self.settingsChanged.emit()
+        if self._anydoc_override is None:
+            self.conversionActivityChanged.emit()
+
+    @Slot(bool)
+    def setAnydocForConversion(self, enabled: bool) -> None:
+        self._anydoc_override = bool(enabled)
+        self.conversionActivityChanged.emit()
 
     @Slot(bool)
     def setPreservePdfImages(self, enabled: bool) -> None:
@@ -1273,7 +1365,7 @@ class AppController(QObject):
         self._update_installer.manualInstallOpened.connect(
             self._on_manual_update_install_opened
         )
-        self._update_installer.installStarted.connect(self._on_update_install_started)
+        self._update_installer.installReady.connect(self._on_update_install_ready)
         self._update_installer.finished.connect(self._clear_update_installer)
         self._update_installer.start()
 
@@ -1505,21 +1597,52 @@ class AppController(QObject):
         self.diagnosticsChanged.emit()
         self.toastRequested.emit("error", message)
 
-    def _on_update_install_started(self) -> None:
+    def _on_update_install_ready(self, helper_path: str) -> None:
+        self._pending_update_helper = Path(helper_path)
         self._update_install_running = False
-        self._update_install_status = "Restarting app"
-        self._update_install_progress = 100
+        self._update_install_status = "Update ready to install"
+        self._update_install_progress = 98
         self.updateInstallChanged.emit()
         self.updateNotificationChanged.emit()
         self.sourceUpdateChanged.emit()
         self.diagnosticsChanged.emit()
         if self._request_result_discard(
             "close the application and install the update",
-            lambda: self._discard_results_and_continue(
-                self._quit_for_packaged_update
-            ),
+            self._discard_results_and_continue_prepared_update,
         ):
             return
+        self._launch_prepared_update()
+
+    def _discard_results_and_continue_prepared_update(self) -> None:
+        self._discard_results_and_continue(self._launch_prepared_update)
+
+    def _launch_prepared_update(self) -> None:
+        helper_path = self._pending_update_helper
+        self._pending_update_helper = None
+        if helper_path is None:
+            return
+        try:
+            self._on_update_install_progress("Starting restart helper", 98)
+            launch_replace_helper(helper_path)
+        except Exception as exc:
+            cleanup_prepared_update(helper_path)
+            self._on_update_install_error(f"Could not start update helper: {exc}")
+            return
+        self._finish_update_install()
+
+    def _cleanup_pending_update_helper(self) -> None:
+        helper_path = self._pending_update_helper
+        self._pending_update_helper = None
+        if helper_path is not None:
+            cleanup_prepared_update(helper_path)
+
+    def _finish_update_install(self) -> None:
+        self._update_install_status = "Restarting app"
+        self._update_install_progress = 100
+        self.updateInstallChanged.emit()
+        self.updateNotificationChanged.emit()
+        self.sourceUpdateChanged.emit()
+        self.diagnosticsChanged.emit()
         self._quit_for_packaged_update()
 
     def _quit_for_packaged_update(self) -> None:
@@ -1943,6 +2066,11 @@ class AppController(QObject):
         return ConversionOptions(
             ocr_enabled=self.settings.get_ocr_enabled(),
             fast_pdf_conversion=self.settings.get_fast_pdf_conversion(),
+            anydoc_conversion=(
+                self._anydoc_override
+                if self._anydoc_override is not None
+                else self.settings.get_anydoc_enabled()
+            ),
             preserve_pdf_images=preserve_pdf_images,
             preserve_docx_images=preserve_docx_images,
             ocr_provider=self.settings.get_ocr_provider(),
@@ -1964,10 +2092,24 @@ class AppController(QObject):
             http_ocr_timeout_seconds=self.settings.get_http_ocr_timeout_seconds(),
         )
 
+    def _reset_anydoc_conversion_override(self) -> None:
+        if self._anydoc_override is None:
+            return
+        self._anydoc_override = None
+        self.conversionActivityChanged.emit()
+
+    def _handle_item_started(self, current_source: str) -> None:
+        self._active_source = current_source
+        self._set_status(f"Converting {Path(current_source).name or current_source}")
+        self.conversionActivityChanged.emit()
+
     def _handle_progress(self, progress: int, current_source: str) -> None:
         self._progress = progress
-        self._set_status(f"Converting {Path(current_source).name or current_source}")
+        if current_source != self._active_source:
+            self._active_source = current_source
+            self._set_status(f"Converting {Path(current_source).name or current_source}")
         self.progressChanged.emit()
+        self.conversionActivityChanged.emit()
 
     def _handle_item_finished(
         self,
@@ -1976,6 +2118,10 @@ class AppController(QObject):
         failed: bool,
     ) -> None:
         self.result_model.add_result(source, outcome, failed=failed)
+        self._completed_count += 1
+        if self._total_count:
+            self._completed_count = min(self._total_count, self._completed_count)
+        self._active_source = source
         if not failed:
             self._unsaved_result_sources.add(source)
         if self._selected_result_index < 0:
@@ -1983,6 +2129,7 @@ class AppController(QObject):
         self.resultsChanged.emit()
         self.selectedResultChanged.emit()
         self.saveDefaultsChanged.emit()
+        self.conversionActivityChanged.emit()
 
     def _handle_finished(self, results: dict) -> None:
         worker = self.worker
@@ -1998,6 +2145,12 @@ class AppController(QObject):
             self._selected_result_index = 0 if results else -1
         self._converting = False
         self._paused = False
+        self._completed_count = (
+            min(self._total_count, len(results))
+            if self._total_count
+            else len(results)
+        )
+        self._active_source = ""
         self._progress = self._progress if was_cancelled else 100 if results else 0
         if was_cancelled:
             self._set_status(
@@ -2022,6 +2175,7 @@ class AppController(QObject):
         self.convertingChanged.emit()
         self.pausedChanged.emit()
         self.progressChanged.emit()
+        self.conversionActivityChanged.emit()
         self.saveDefaultsChanged.emit()
         if was_cancelled:
             self.toastRequested.emit("success", "Conversion cancelled.")

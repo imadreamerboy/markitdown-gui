@@ -1,4 +1,7 @@
 import hashlib
+import os
+import subprocess
+import sys
 import zipfile
 from pathlib import Path
 
@@ -180,6 +183,8 @@ def test_install_packaged_update_prepares_helper_without_replacing_app(
     assert "Backup: $backupDir" in script
     assert "$backupCreated = $false" in script
     assert "$backupCreated = $true" in script
+    assert "$waitTimeoutSeconds = 90" in script
+    assert "Remove-UpdateRuntime" in script
     assert "if ($backupCreated -and (Test-Path -LiteralPath $currentDir))" in script
 
 
@@ -197,7 +202,119 @@ def test_build_posix_replace_helper_writes_update_result(monkeypatch, tmp_path):
     assert "write_update_result" in script
     assert "Status: %s\\n" in script
     assert str(tmp_path / "update-result.txt") in script
+    assert "wait_timeout_seconds=90" in script
+    assert "trap cleanup_update_runtime EXIT" in script
     assert "Update failed and rollback was attempted." in script
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX helper execution test")
+def test_posix_replace_helper_times_out_before_replacing_and_cleans_runtime(
+    monkeypatch,
+    tmp_path,
+):
+    monkeypatch.setattr(packaged_updater.sys, "platform", "linux")
+
+    current_dir = tmp_path / "current" / "MarkItDown"
+    current_dir.mkdir(parents=True)
+    (current_dir / "old.txt").write_text("old", encoding="utf-8")
+    runtime_dir = tmp_path / "runtime"
+    runtime_dir.mkdir()
+    replacement_dir = runtime_dir / "replacement"
+    replacement_dir.mkdir()
+    result_path = tmp_path / "update-result.txt"
+    helper_path = runtime_dir / "apply-update.sh"
+    helper_path.write_text(
+        packaged_updater.build_replace_helper_script(
+            current_dir=current_dir,
+            replacement_dir=replacement_dir,
+            executable_name="MarkItDown",
+            process_id=0,
+            result_path=result_path,
+            cleanup_dir=runtime_dir,
+            wait_timeout_seconds=1,
+        ),
+        encoding="utf-8",
+    )
+    helper_path.chmod(0o755)
+
+    sleeper = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(5)"])
+    helper_path.write_text(
+        helper_path.read_text(encoding="utf-8").replace(
+            "pid_to_wait=0",
+            f"pid_to_wait={sleeper.pid}",
+        ),
+        encoding="utf-8",
+    )
+    helper_path.chmod(0o755)
+
+    try:
+        completed = subprocess.run(
+            [str(helper_path)],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    finally:
+        sleeper.terminate()
+        sleeper.wait(timeout=5)
+
+    assert completed.returncode == 1
+    assert current_dir.exists()
+    assert (current_dir / "old.txt").read_text(encoding="utf-8") == "old"
+    assert "Status: failed" in result_path.read_text(encoding="utf-8")
+    assert "Timed out waiting" in result_path.read_text(encoding="utf-8")
+    assert not runtime_dir.exists()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX helper execution test")
+def test_posix_replace_helper_replaces_app_and_cleans_runtime(
+    monkeypatch,
+    tmp_path,
+):
+    monkeypatch.setattr(packaged_updater.sys, "platform", "linux")
+
+    current_dir = tmp_path / "current" / "MarkItDown"
+    current_dir.mkdir(parents=True)
+    (current_dir / "MarkItDown").write_text("old", encoding="utf-8")
+    runtime_dir = tmp_path / "runtime"
+    runtime_dir.mkdir()
+    replacement_dir = runtime_dir / "replacement"
+    replacement_dir.mkdir()
+    replacement_executable = replacement_dir / "MarkItDown"
+    replacement_executable.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    replacement_executable.chmod(0o755)
+    result_path = tmp_path / "update-result.txt"
+    helper_path = runtime_dir / "apply-update.sh"
+
+    exited_process = subprocess.Popen([sys.executable, "-c", "pass"])
+    exited_process.wait(timeout=5)
+    helper_path.write_text(
+        packaged_updater.build_replace_helper_script(
+            current_dir=current_dir,
+            replacement_dir=replacement_dir,
+            executable_name="MarkItDown",
+            process_id=exited_process.pid,
+            result_path=result_path,
+            cleanup_dir=runtime_dir,
+            wait_timeout_seconds=1,
+        ),
+        encoding="utf-8",
+    )
+    helper_path.chmod(0o755)
+
+    completed = subprocess.run(
+        [str(helper_path)],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=5,
+    )
+
+    assert completed.returncode == 0
+    assert (current_dir / "MarkItDown").read_text(encoding="utf-8") == "#!/bin/sh\nexit 0\n"
+    assert "Status: success" in result_path.read_text(encoding="utf-8")
+    assert not runtime_dir.exists()
 
 
 def test_install_packaged_update_reports_progress(monkeypatch, tmp_path):
@@ -236,6 +353,56 @@ def test_install_packaged_update_reports_progress(monkeypatch, tmp_path):
         ("Preparing restart helper", 92),
         ("Starting restart helper", 98),
     ]
+
+
+def test_install_packaged_update_can_prepare_without_starting_helper(
+    monkeypatch, tmp_path
+):
+    app_dir = tmp_path / "current" / "MarkItDown"
+    app_dir.mkdir(parents=True)
+    executable = app_dir / "MarkItDown.exe"
+    executable.write_text("old", encoding="utf-8")
+    archive = tmp_path / "MarkItDown-Windows-2.0.0.zip"
+    with zipfile.ZipFile(archive, "w") as zf:
+        zf.writestr("MarkItDown/MarkItDown.exe", "new")
+
+    progress: list[tuple[str, int]] = []
+    launched: list[Path] = []
+    monkeypatch.setattr(packaged_updater.sys, "platform", "win32")
+    monkeypatch.setattr(packaged_updater.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(
+        packaged_updater,
+        "download_asset",
+        lambda _url, target, **_kwargs: target.write_bytes(archive.read_bytes()),
+    )
+    monkeypatch.setattr(
+        packaged_updater,
+        "launch_replace_helper",
+        lambda helper_path: launched.append(helper_path),
+    )
+
+    helper = packaged_updater.install_packaged_update(
+        {
+            "name": archive.name,
+            "url": "https://example.com/app.zip",
+        },
+        app_dir=app_dir,
+        executable=str(executable),
+        launch_helper=False,
+        progress_callback=lambda status, value: progress.append((status, value)),
+    )
+
+    assert helper.is_file()
+    assert launched == []
+    assert progress == [
+        ("Downloading update", 5),
+        ("Verifying update", 72),
+        ("Extracting update", 84),
+        ("Preparing restart helper", 92),
+    ]
+
+    packaged_updater.cleanup_prepared_update(helper)
+    assert not helper.parent.exists()
 
 
 def test_install_packaged_update_downloads_and_opens_macos_dmg(monkeypatch, tmp_path):

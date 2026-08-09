@@ -24,6 +24,8 @@ OPTIONAL_HIDDENIMPORTS = (
     "docling_core.types.doc.document",
     "docling_core.types.doc.labels",
     "docling_parse.pdf_parser",
+    "anydoc",
+    "anydoc._anydoc",
     "glmocr",
     "glmocr.api",
     "glmocr.config",

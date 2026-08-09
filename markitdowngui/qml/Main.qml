@@ -9,19 +9,24 @@ ApplicationWindow {
 
     width: 1180
     height: 760
-    minimumWidth: 980
-    minimumHeight: 620
+    minimumWidth: 820
+    minimumHeight: 560
     visible: true
-    title: "MarkItDown GUI"
+    title: root.tr("qml_app_title")
     color: colors.window
     font.family: Qt.platform.os === "windows" ? "Segoe UI" : Qt.platform.os === "osx" ? ".AppleSystemUIFont" : "Noto Sans"
     onClosing: close => close.accepted = app.requestShutdown()
 
     property int pageIndex: 0
+    property bool compactLayout: width < 1040
+    property bool reduceMotion: app.reduceMotion
     property bool dark: app.darkMode
-    property int pageMargin: 22
+    property int pageMargin: compactLayout ? 14 : 22
     property int panelRadius: 8
     property int controlRadius: 8
+    property int motionFastDuration: reduceMotion ? 0 : 120
+    property int motionStandardDuration: reduceMotion ? 0 : 180
+    property bool instantPageTransition: false
     property var colors: ({
         window: dark ? Qt.color("#2E3440") : Qt.color("#FBF4E1"),
         nav: dark ? Qt.color("#242A34") : Qt.color("#EEE8D5"),
@@ -43,6 +48,20 @@ ApplicationWindow {
         success: dark ? Qt.color("#A3BE8C") : Qt.color("#397D54"),
         warning: dark ? Qt.color("#EBCB8B") : Qt.color("#7A5900")
     })
+
+    Timer {
+        id: pageTransitionResetTimer
+        interval: 0
+        onTriggered: root.instantPageTransition = false
+    }
+
+    function navigateToPage(index, animate) {
+        pageTransitionResetTimer.stop()
+        root.instantPageTransition = !animate
+        root.pageIndex = index
+        if (!animate)
+            pageTransitionResetTimer.restart()
+    }
 
     function requestSave() {
         if (!app.hasResults) {
@@ -90,10 +109,10 @@ ApplicationWindow {
 
     function ocrProviderLabel(provider) {
         if (provider === "glmocr")
-            return "GLM-OCR"
+            return root.tr("settings_ocr_provider_glmocr")
         if (provider === "http")
-            return "HTTP OCR"
-        return "Azure + Tesseract"
+            return root.tr("conversion_backend_http_ocr")
+        return root.tr("settings_ocr_provider_azure_tesseract")
     }
 
     function tr(key) {
@@ -121,14 +140,14 @@ ApplicationWindow {
 
     function ocrFallbackLabels() {
         if (app.ocrProvider === "http")
-            return ["None", "Azure + Tesseract"]
-        return ["None", "Azure + Tesseract", "HTTP OCR"]
+            return [root.tr("qml_none"), root.tr("settings_ocr_provider_azure_tesseract")]
+        return [root.tr("qml_none"), root.tr("settings_ocr_provider_azure_tesseract"), root.tr("conversion_backend_http_ocr")]
     }
 
     function ocrFallbackDetail() {
         if (app.ocrProvider === "http")
-            return "Optional provider used if HTTP OCR fails or returns no text."
-        return "Optional provider used if GLM-OCR fails or returns no text."
+            return root.tr("qml_ocr_fallback_http_detail")
+        return root.tr("qml_ocr_fallback_glm_detail")
     }
 
     function focusedTextControl() {
@@ -140,6 +159,19 @@ ApplicationWindow {
         } catch (error) {
             return false
         }
+    }
+
+    function conversionProgressText() {
+        if (app.totalCount <= 0)
+            return ""
+        return root.tr("qml_conversion_progress")
+            .replace("{completed}", app.completedCount)
+            .replace("{total}", app.totalCount)
+    }
+
+    function conversionStatusText() {
+        var progressText = root.conversionProgressText()
+        return progressText.length > 0 ? app.statusText + " · " + progressText : app.statusText
     }
 
     palette.window: colors.window
@@ -154,7 +186,7 @@ ApplicationWindow {
 
     FileDialog {
         id: openFileDialog
-        title: "Add files"
+        title: root.tr("home_add_files_button")
         fileMode: FileDialog.OpenFiles
         currentFolder: app.outputFolderUrl
         nameFilters: [
@@ -166,7 +198,7 @@ ApplicationWindow {
 
     FileDialog {
         id: saveCombinedDialog
-        title: "Save combined Markdown"
+        title: root.tr("save_combined_title")
         fileMode: FileDialog.SaveFile
         defaultSuffix: "md"
         currentFolder: app.outputFolderUrl
@@ -177,7 +209,7 @@ ApplicationWindow {
 
     FolderDialog {
         id: saveSeparateDialog
-        title: "Save separate Markdown files"
+        title: root.tr("select_directory_title")
         currentFolder: app.suggestedSeparateOutputFolderUrl
         onAccepted: app.saveSeparateOutputs(selectedFolder)
     }
@@ -186,7 +218,7 @@ ApplicationWindow {
         id: discardResultsDialog
         property string actionDescription: ""
 
-        title: "Discard unsaved results?"
+        title: root.tr("qml_discard_unsaved_title")
         modal: true
         focus: true
         width: 440
@@ -202,8 +234,10 @@ ApplicationWindow {
         }
 
         contentItem: Label {
-            text: "Successful conversion results have not been saved. Save them before you "
-                + discardResultsDialog.actionDescription + ", or explicitly discard them."
+            text: root.tr("qml_discard_unsaved_message").replace(
+                "{action}",
+                discardResultsDialog.actionDescription
+            )
             color: colors.text
             wrapMode: Text.WordWrap
             padding: 4
@@ -223,7 +257,7 @@ ApplicationWindow {
                 }
 
                 AppButton {
-                    text: "Keep results"
+                    text: root.tr("qml_keep_results")
                     subtle: true
                     accentColor: colors.action
                     textColor: colors.text
@@ -231,7 +265,7 @@ ApplicationWindow {
                 }
 
                 AppButton {
-                    text: "Discard results"
+                    text: root.tr("qml_discard_results")
                     primary: true
                     accentColor: colors.danger
                     primaryTextColor: colors.onAccent
@@ -246,14 +280,14 @@ ApplicationWindow {
 
     FolderDialog {
         id: outputFolderDialog
-        title: "Choose output folder"
+        title: root.tr("settings_output_folder_dialog")
         currentFolder: app.outputFolderUrl
         onAccepted: app.setOutputFolderFromUrl(selectedFolder)
     }
 
     FileDialog {
         id: exportSettingsProfileDialog
-        title: "Export settings profile"
+        title: root.tr("qml_export_settings_profile")
         fileMode: FileDialog.SaveFile
         defaultSuffix: "json"
         currentFolder: app.outputFolderUrl
@@ -264,7 +298,7 @@ ApplicationWindow {
 
     FileDialog {
         id: importSettingsProfileDialog
-        title: "Import settings profile"
+        title: root.tr("qml_import_settings_profile")
         fileMode: FileDialog.OpenFile
         currentFolder: app.outputFolderUrl
         nameFilters: ["JSON files (*.json)", "All files (*)"]
@@ -276,7 +310,7 @@ ApplicationWindow {
         function onToastRequested(kind, message) {
             toast.kind = kind
             toast.message = message
-            toast.visible = true
+            toast.showing = true
             toastTimer.restart()
         }
 
@@ -292,7 +326,8 @@ ApplicationWindow {
 
     Rectangle {
         id: updateBanner
-        visible: app.hasUpdateNotification
+        visible: app.hasUpdateNotification || opacity > 0
+        opacity: app.hasUpdateNotification ? 1 : 0
         z: 20
         width: Math.min(480, root.width - 48)
         height: updateBannerRow.implicitHeight + 24
@@ -303,6 +338,13 @@ ApplicationWindow {
         anchors.right: parent.right
         anchors.topMargin: 22
         anchors.rightMargin: 22
+
+        Behavior on opacity {
+            NumberAnimation {
+                duration: root.motionStandardDuration
+                easing.type: Easing.OutCubic
+            }
+        }
 
         RowLayout {
             id: updateBannerRow
@@ -329,7 +371,7 @@ ApplicationWindow {
                 Layout.fillWidth: true
 
                 Label {
-                    text: "Update " + app.availableUpdateVersion + " is available"
+                    text: root.tr("qml_update_available").replace("{version}", app.availableUpdateVersion)
                     color: colors.text
                     font.pixelSize: 13
                     font.weight: Font.DemiBold
@@ -341,8 +383,8 @@ ApplicationWindow {
                     text: app.updateInstallRunning
                         ? app.updateInstallStatus
                         : app.canInstallPreferredUpdate
-                        ? "Install can run after download and will restart the app."
-                        : "Use Releases for packaged builds, or the source updater for Git checkouts."
+                        ? root.tr("qml_update_install_detail")
+                        : root.tr("qml_update_source_detail")
                     color: colors.muted
                     font.pixelSize: 12
                     elide: Text.ElideRight
@@ -361,10 +403,10 @@ ApplicationWindow {
 
             AppButton {
                 text: app.updateInstallRunning
-                    ? "Installing"
+                    ? root.tr("qml_installing")
                     : app.canInstallPreferredUpdate
-                    ? "Install"
-                    : app.preferredReleaseAsset.url ? app.preferredReleaseAsset.installLabel || "Download" : "Releases"
+                    ? root.tr("qml_install")
+                    : app.preferredReleaseAsset.url ? app.preferredReleaseAsset.installLabel || root.tr("qml_download") : root.tr("qml_releases")
                 primary: true
                 iconName: app.updateInstallRunning || app.canInstallPreferredUpdate ? "rotate-ccw" : "external-link"
                 accentColor: colors.action
@@ -383,15 +425,15 @@ ApplicationWindow {
                 iconName: "x"
                 accentColor: colors.action
                 textColor: colors.muted
-                Accessible.name: "Dismiss update notification"
+                Accessible.name: root.tr("qml_dismiss_update")
                 ToolTip.visible: hovered
                 ToolTip.delay: 550
-                ToolTip.text: "Dismiss"
+                ToolTip.text: root.tr("qml_dismiss")
                 onClicked: app.dismissUpdateNotification()
             }
 
             AppButton {
-                text: "Don't notify"
+                text: root.tr("qml_dont_notify")
                 subtle: true
                 accentColor: colors.action
                 textColor: colors.muted
@@ -401,7 +443,7 @@ ApplicationWindow {
     }
 
     Shortcut {
-        sequence: StandardKey.Open
+        sequences: [StandardKey.Open]
         context: Qt.ApplicationShortcut
         enabled: !app.converting
         onActivated: openFileDialog.open()
@@ -426,14 +468,14 @@ ApplicationWindow {
     }
 
     Shortcut {
-        sequence: StandardKey.Save
+        sequences: [StandardKey.Save]
         context: Qt.ApplicationShortcut
         enabled: app.hasSuccessfulResults
         onActivated: root.requestSave()
     }
 
     Shortcut {
-        sequence: StandardKey.Copy
+        sequences: [StandardKey.Copy]
         context: Qt.ApplicationShortcut
         enabled: root.pageIndex === 0 && app.hasResults && !root.focusedTextControl()
         onActivated: app.copySelectedMarkdown()
@@ -456,7 +498,7 @@ ApplicationWindow {
     Shortcut {
         sequence: "Ctrl+K"
         context: Qt.ApplicationShortcut
-        onActivated: root.pageIndex = 2
+        onActivated: root.navigateToPage(2, false)
     }
 
     RowLayout {
@@ -465,6 +507,18 @@ ApplicationWindow {
 
         SideNav {
             currentIndex: root.pageIndex
+            compact: root.compactLayout
+            reduceMotion: root.reduceMotion
+            brandTitle: root.tr("qml_brand_title")
+            brandSubtitle: root.tr("qml_brand_subtitle")
+            workspaceLabel: root.tr("qml_workspace_label")
+            workspaceDescription: root.tr("qml_workspace_description")
+            workspaceDetail: root.tr("qml_workspace_detail")
+            workspaceHelp: root.tr("qml_workspace_help")
+            helpLabel: root.tr("nav_help")
+            helpDescription: root.tr("qml_help_nav_description")
+            settingsLabel: root.tr("nav_settings")
+            settingsDescription: root.tr("qml_settings_nav_description")
             backgroundColor: colors.nav
             activeColor: colors.surface
             textColor: colors.text
@@ -474,7 +528,9 @@ ApplicationWindow {
             utilityHoverColor: Qt.rgba(colors.accent.r, colors.accent.g, colors.accent.b, dark ? 0.16 : 0.10)
             accentTextColor: colors.onAccent
             Layout.fillHeight: true
-            onPageRequested: index => root.pageIndex = index
+            Layout.preferredWidth: root.compactLayout ? 68 : 224
+            Layout.minimumWidth: root.compactLayout ? 68 : 224
+            onPageRequested: index => root.navigateToPage(index, true)
         }
 
         Rectangle {
@@ -492,16 +548,81 @@ ApplicationWindow {
                 Layout.fillWidth: true
             }
 
-            StackLayout {
-                currentIndex: root.pageIndex
+            Item {
+                id: pageStack
                 Layout.fillWidth: true
                 Layout.fillHeight: true
 
-                WorkspacePage {}
-                SettingsPage {}
-                HelpPage {}
+                Loader {
+                    id: workspacePageLoader
+                    objectName: "workspacePageLoader"
+                    anchors.fill: parent
+                    active: root.pageIndex === 0 || status === Loader.Ready
+                    sourceComponent: workspacePageComponent
+                    visible: root.pageIndex === 0 || opacity > 0
+                    opacity: root.pageIndex === 0 ? 1 : 0
+                    z: root.pageIndex === 0 ? 1 : 0
+
+                    Behavior on opacity {
+                        NumberAnimation {
+                            duration: root.instantPageTransition ? 0 : root.motionStandardDuration
+                            easing.type: Easing.OutCubic
+                        }
+                    }
+                }
+
+                Loader {
+                    id: settingsPageLoader
+                    objectName: "settingsPageLoader"
+                    anchors.fill: parent
+                    active: root.pageIndex === 1 || status === Loader.Ready
+                    sourceComponent: settingsPageComponent
+                    visible: root.pageIndex === 1 || opacity > 0
+                    opacity: root.pageIndex === 1 ? 1 : 0
+                    z: root.pageIndex === 1 ? 1 : 0
+
+                    Behavior on opacity {
+                        NumberAnimation {
+                            duration: root.instantPageTransition ? 0 : root.motionStandardDuration
+                            easing.type: Easing.OutCubic
+                        }
+                    }
+                }
+
+                Loader {
+                    id: helpPageLoader
+                    objectName: "helpPageLoader"
+                    anchors.fill: parent
+                    active: root.pageIndex === 2 || status === Loader.Ready
+                    sourceComponent: helpPageComponent
+                    visible: root.pageIndex === 2 || opacity > 0
+                    opacity: root.pageIndex === 2 ? 1 : 0
+                    z: root.pageIndex === 2 ? 1 : 0
+
+                    Behavior on opacity {
+                        NumberAnimation {
+                            duration: root.instantPageTransition ? 0 : root.motionStandardDuration
+                            easing.type: Easing.OutCubic
+                        }
+                    }
+                }
             }
         }
+    }
+
+    Component {
+        id: workspacePageComponent
+        WorkspacePage {}
+    }
+
+    Component {
+        id: settingsPageComponent
+        SettingsPage {}
+    }
+
+    Component {
+        id: helpPageComponent
+        HelpPage {}
     }
 
     component HeaderTitle: ColumnLayout {
@@ -583,7 +704,9 @@ ApplicationWindow {
         borderColor: colors.border
         focusColor: colors.action
         textColor: selected ? colors.text : colors.muted
-        Accessible.name: text + " preview" + (selected ? ", selected" : "")
+        Accessible.name: root.tr("qml_preview_accessible")
+            .replace("{name}", text)
+            .replace("{selected}", selected ? root.tr("qml_selected") : "")
     }
 
     component UtilitySectionPanel: SectionPanel {
@@ -611,15 +734,15 @@ ApplicationWindow {
 
             HeaderTitle {
                 title: root.pageIndex === 0
-                    ? (app.hasResults ? "Review Markdown" : "Convert to Markdown")
-                    : root.pageIndex === 1 ? "Settings" : "Help"
+                    ? (app.hasResults ? root.tr("qml_review_markdown") : root.tr("nav_convert"))
+                    : root.pageIndex === 1 ? root.tr("settings_title") : root.tr("help_title")
                 detail: root.pageIndex === 0
                     ? (app.hasResults
-                        ? "Inspect converted output, then copy or save Markdown."
-                        : "Add documents or a webpage, review the Markdown, then save clean output.")
+                        ? root.tr("qml_review_markdown_detail")
+                        : root.tr("qml_convert_detail"))
                     : root.pageIndex === 1
-                        ? "Set export, theme, and OCR defaults."
-                        : "Project links, OCR references, and shortcuts."
+                        ? root.tr("qml_settings_detail")
+                        : root.tr("qml_help_detail")
                 Layout.fillWidth: true
             }
 
@@ -632,41 +755,58 @@ ApplicationWindow {
         }
     }
 
-    component WorkspaceStats: RowLayout {
-        spacing: 8
+    component WorkspaceStats: GridLayout {
+        columns: 3
+        columnSpacing: 8
+        rowSpacing: 8
+        Layout.fillWidth: true
+        Layout.minimumWidth: 0
 
         MetricPill {
-            label: "INPUTS"
+            compact: root.compactLayout
+            label: root.tr("qml_stats_inputs")
             value: app.queueCount.toString()
             backgroundColor: "transparent"
             borderColor: colors.border
             borderOpacity: 0
             textColor: colors.text
             mutedTextColor: colors.muted
+            Layout.fillWidth: true
+            Layout.minimumWidth: 0
         }
 
         MetricPill {
-            label: "DONE"
-            value: app.progress + "%"
+            compact: root.compactLayout
+            label: root.tr("qml_stats_done")
+            value: app.totalCount > 0
+                ? app.completedCount + "/" + app.totalCount
+                : app.progress + "%"
             backgroundColor: "transparent"
             borderColor: colors.border
             borderOpacity: 0
             textColor: colors.text
             mutedTextColor: colors.muted
+            Layout.fillWidth: true
+            Layout.minimumWidth: 0
         }
 
         MetricPill {
-            label: "SAVE"
-            value: app.saveCombined ? "Combined" : "Separate"
+            compact: root.compactLayout
+            label: root.tr("qml_stats_save")
+            value: app.saveCombined ? root.tr("home_save_mode_combined") : root.tr("home_save_mode_separate")
             backgroundColor: "transparent"
             borderColor: colors.border
             borderOpacity: 0
             textColor: colors.text
             mutedTextColor: colors.muted
+            Layout.fillWidth: true
+            Layout.minimumWidth: 0
         }
     }
 
     component ThemeToggleRow: ToggleRow {
+        Layout.minimumWidth: 0
+        Layout.preferredWidth: 0
         accentColor: colors.accent
         trackColor: colors.surfaceAlt
         handleColor: colors.surface
@@ -697,6 +837,9 @@ ApplicationWindow {
     component ThemeProgressBar: ProgressBar {
         id: progressControl
 
+        property bool busy: false
+        property bool reducedMotion: root.reduceMotion
+
         from: 0
         to: 100
         implicitHeight: 6
@@ -711,10 +854,35 @@ ApplicationWindow {
             implicitHeight: 6
 
             Rectangle {
+                id: determinateProgressFill
+                visible: !progressControl.busy
                 width: progressControl.visualPosition * parent.width
                 height: parent.height
                 radius: 3
                 color: colors.accent
+            }
+
+            Rectangle {
+                id: indeterminateProgressFill
+                property real busyOffset: -width
+                visible: progressControl.busy
+                width: progressControl.reducedMotion ? parent.width * 0.42 : parent.width * 0.28
+                height: parent.height
+                x: progressControl.reducedMotion
+                    ? (parent.width - width) / 2
+                    : busyOffset
+                radius: 3
+                color: colors.accent
+
+                NumberAnimation on busyOffset {
+                    from: -indeterminateProgressFill.width
+                    to: indeterminateProgressFill.parent.width
+                    duration: 1050
+                    loops: Animation.Infinite
+                    running: progressControl.busy
+                        && !progressControl.reducedMotion
+                        && indeterminateProgressFill.parent.width > 0
+                }
             }
         }
     }
@@ -860,14 +1028,14 @@ ApplicationWindow {
                 AppTextField {
                     id: compactUrlInput
                     enabled: !app.converting
-                    placeholderText: urlBar.compact ? "Add webpage URL" : "Paste webpage URL"
+                    placeholderText: urlBar.compact ? root.tr("home_add_url_placeholder") : root.tr("home_url_placeholder")
                     surfaceColor: colors.input
                     borderColor: colors.border
                     accentColor: colors.accent
                     textColor: colors.text
                     placeholderColor: colors.subtle
-                    Accessible.name: "Webpage URL"
-                    Accessible.description: "Enter an http or https webpage URL to convert"
+                    Accessible.name: root.tr("qml_webpage_url")
+                    Accessible.description: root.tr("qml_webpage_url_description")
                     Layout.fillWidth: true
                     onAccepted: {
                         if (app.addUrl(text))
@@ -885,7 +1053,7 @@ ApplicationWindow {
                 }
 
                 AppButton {
-                    text: "Add webpage"
+                    text: root.tr("qml_add_webpage")
                     enabled: !app.converting
                     iconName: "link"
                     accentColor: colors.action
@@ -893,7 +1061,7 @@ ApplicationWindow {
                     surfaceColor: colors.surfaceAlt
                     borderColor: colors.border
                     textColor: colors.text
-                    Accessible.name: "Add webpage URL"
+                    Accessible.name: root.tr("qml_add_webpage")
                     onClicked: {
                         if (app.addUrl(compactUrlInput.text))
                             compactUrlInput.text = ""
@@ -943,7 +1111,7 @@ ApplicationWindow {
                     }
 
                     Label {
-                        text: "Start with files or a webpage"
+                        text: root.tr("home_empty_state_title")
                         color: colors.text
                         font.pixelSize: 18
                         font.weight: Font.DemiBold
@@ -952,7 +1120,7 @@ ApplicationWindow {
                     }
 
                     Label {
-                        text: "Drop files anywhere in this window, choose files from your system, or paste a URL above."
+                        text: root.tr("home_empty_subtitle")
                         color: colors.muted
                         font.pixelSize: 13
                         lineHeight: 1.16
@@ -962,7 +1130,7 @@ ApplicationWindow {
                     }
 
                     AppButton {
-                        text: "Choose files"
+                        text: root.tr("home_add_files_button")
                         primary: true
                         iconName: "folder-plus"
                         accentColor: colors.action
@@ -989,8 +1157,8 @@ ApplicationWindow {
                 Layout.fillHeight: true
 
                 SectionPanel {
-                    title: "Documents"
-                    subtitle: "Files and webpages are converted in order."
+                    title: root.tr("home_queue_title")
+                    subtitle: root.tr("qml_queue_detail")
                     surfaceColor: colors.surface
                     borderColor: colors.border
                     textColor: colors.text
@@ -1003,7 +1171,7 @@ ApplicationWindow {
                         Layout.fillWidth: true
 
                         AppButton {
-                            text: "Add files"
+                            text: root.tr("home_add_files_button")
                             enabled: !app.converting
                             iconName: "folder-plus"
                             accentColor: colors.action
@@ -1015,7 +1183,7 @@ ApplicationWindow {
                         }
 
                         AppButton {
-                            text: "Clear"
+                            text: root.tr("home_clear_queue_button")
                             enabled: !app.converting
                             subtle: true
                             iconName: "x"
@@ -1096,13 +1264,13 @@ ApplicationWindow {
                                 }
 
                                 AppButton {
-                                    text: "Remove"
+                                    text: root.tr("home_remove_selected_button")
                                     enabled: !app.converting
                                     subtle: true
                                     iconName: "trash-2"
                                     accentColor: colors.action
                                     textColor: colors.muted
-                                    Accessible.name: "Remove " + name + " from queue"
+                                    Accessible.name: root.tr("qml_remove_from_queue").replace("{name}", name)
                                     onClicked: app.removeQueued(index)
                                 }
                             }
@@ -1111,8 +1279,8 @@ ApplicationWindow {
                 }
 
                 SectionPanel {
-                    title: "Markdown review"
-                    subtitle: root.height < 700 ? "" : "Converted output opens here before export."
+                    title: root.tr("home_markdown_preview_label")
+                    subtitle: root.height < 700 ? "" : root.tr("qml_preview_before_export")
                     surfaceColor: colors.surface
                     borderColor: colors.border
                     textColor: colors.text
@@ -1145,7 +1313,7 @@ ApplicationWindow {
                                 Layout.fillWidth: true
 
                                 Label {
-                                    text: "Preview after conversion"
+                                    text: root.tr("qml_preview_after_conversion")
                                     color: colors.text
                                     font.pixelSize: 12
                                     font.weight: Font.Medium
@@ -1154,8 +1322,8 @@ ApplicationWindow {
 
                                 Label {
                                     text: root.height < 700
-                                        ? "Converted Markdown opens here."
-                                        : "Inspect rendered Markdown or source text, then export combined or separate files."
+                                        ? root.tr("qml_preview_empty_detail")
+                                        : root.tr("qml_preview_queue_detail")
                                     color: colors.muted
                                     font.pixelSize: 12
                                     wrapMode: Text.WordWrap
@@ -1168,14 +1336,14 @@ ApplicationWindow {
             }
 
             InspectorRail {
-                title: app.converting ? "Converting" : "Convert"
-                subtitle: app.queueCount + " item" + (app.queueCount === 1 ? "" : "s") + " queued"
+                title: app.converting ? root.tr("qml_converting") : root.tr("nav_convert")
+                subtitle: root.tr("qml_items_queued").replace("{count}", app.queueCount)
                 surfaceColor: colors.window
                 borderColor: colors.border
                 textColor: colors.text
                 mutedTextColor: colors.muted
-                Layout.preferredWidth: 360
-                Layout.minimumWidth: 330
+                Layout.preferredWidth: root.compactLayout ? 280 : 360
+                Layout.minimumWidth: root.compactLayout ? 250 : 330
                 Layout.fillHeight: true
 
                 ScrollView {
@@ -1199,14 +1367,18 @@ ApplicationWindow {
                         }
 
                         ThemeToggleRow {
-                            title: "OCR"
-                            detail: "Provider: " + root.ocrProviderLabel(app.ocrProvider) + ". Use for scanned or image-heavy inputs."
+                            title: root.tr("settings_ocr_group")
+                            detail: root.tr("qml_ocr_toggle_detail").replace(
+                                "{provider}",
+                                root.ocrProviderLabel(app.ocrProvider)
+                            )
                             enabled: !app.converting
                             checked: app.ocrEnabled
                             textColor: colors.text
                             mutedTextColor: colors.muted
                             onToggled: checked => app.setOcrEnabled(checked)
                             Layout.fillWidth: true
+                            Layout.minimumWidth: 0
                         }
 
                         ThemeToggleRow {
@@ -1218,6 +1390,7 @@ ApplicationWindow {
                             textColor: colors.text
                             mutedTextColor: colors.muted
                             Layout.fillWidth: true
+                            Layout.minimumWidth: 0
                         }
 
                         Connections {
@@ -1229,25 +1402,39 @@ ApplicationWindow {
                         }
 
                         ThemeToggleRow {
-                            title: "Preserve PDF images"
-                            detail: "Extract PDF page images and keep relative asset links on export."
+                            title: root.tr("home_anydoc_conversion_label")
+                            detail: root.tr("home_anydoc_conversion_detail")
+                            enabled: !app.converting
+                            checked: app.anydocForConversion
+                            textColor: colors.text
+                            mutedTextColor: colors.muted
+                            onToggled: checked => app.setAnydocForConversion(checked)
+                            Layout.fillWidth: true
+                            Layout.minimumWidth: 0
+                        }
+
+                        ThemeToggleRow {
+                            title: root.tr("home_preserve_pdf_images_label")
+                            detail: root.tr("home_preserve_pdf_images_tooltip")
                             enabled: !app.converting
                             checked: app.preservePdfImages
                             textColor: colors.text
                             mutedTextColor: colors.muted
                             onToggled: checked => app.setPreservePdfImages(checked)
                             Layout.fillWidth: true
+                            Layout.minimumWidth: 0
                         }
 
                         ThemeToggleRow {
-                            title: "Preserve DOCX images"
-                            detail: "Extract embedded document images and keep relative asset links on export."
+                            title: root.tr("home_preserve_docx_images_label")
+                            detail: root.tr("home_preserve_docx_images_tooltip")
                             enabled: !app.converting
                             checked: app.preserveDocxImages
                             textColor: colors.text
                             mutedTextColor: colors.muted
                             onToggled: checked => app.setPreserveDocxImages(checked)
                             Layout.fillWidth: true
+                            Layout.minimumWidth: 0
                         }
 
                         Rectangle {
@@ -1263,7 +1450,7 @@ ApplicationWindow {
                             Layout.fillWidth: true
 
                             Label {
-                                text: "Output"
+                                text: root.tr("qml_output_label")
                                 color: colors.text
                                 font.pixelSize: 13
                                 font.weight: Font.Medium
@@ -1281,7 +1468,9 @@ ApplicationWindow {
                                 }
 
                                 Label {
-                                    text: app.saveCombined ? "Combined Markdown file" : "Separate Markdown files"
+                                    text: app.saveCombined
+                                        ? root.tr("qml_combined_markdown_file")
+                                        : root.tr("qml_separate_markdown_files")
                                     color: colors.muted
                                     font.pixelSize: 12
                                     elide: Text.ElideRight
@@ -1291,8 +1480,10 @@ ApplicationWindow {
 
                             Label {
                                 text: app.saveToSourceFolder
-                                    ? "Default: source folders"
-                                    : (app.outputFolder.length > 0 ? app.outputFolder : "Choose location when saving")
+                                    ? root.tr("qml_default_source_folders")
+                                    : (app.outputFolder.length > 0
+                                        ? app.outputFolder
+                                        : root.tr("qml_choose_location_when_saving"))
                                 color: colors.subtle
                                 font.pixelSize: 11
                                 elide: Text.ElideMiddle
@@ -1300,7 +1491,7 @@ ApplicationWindow {
                             }
 
                             AppButton {
-                                text: "Set folder"
+                                text: root.tr("qml_set_folder")
                                 subtle: true
                                 iconName: "folder-plus"
                                 accentColor: colors.action
@@ -1341,11 +1532,13 @@ ApplicationWindow {
 
                     ThemeProgressBar {
                         value: app.progress
+                        busy: app.progressIndeterminate
+                        reducedMotion: root.reduceMotion
                         Layout.fillWidth: true
                     }
 
                     Label {
-                        text: app.statusText
+                        text: root.conversionStatusText()
                         color: colors.muted
                         font.pixelSize: 12
                         elide: Text.ElideMiddle
@@ -1359,7 +1552,7 @@ ApplicationWindow {
                     spacing: 8
 
                     AppButton {
-                        text: app.paused ? "Resume" : "Pause"
+                        text: app.paused ? root.tr("resume_button") : root.tr("pause_button")
                         enabled: app.converting
                         iconName: app.paused ? "play" : "pause"
                         accentColor: colors.action
@@ -1370,15 +1563,15 @@ ApplicationWindow {
                     }
 
                     AppButton {
-                        text: "Stop after current"
+                        text: root.tr("qml_stop_after_current")
                         enabled: app.converting
                         iconName: "x"
                         accentColor: colors.action
                         surfaceColor: colors.surfaceAlt
                         borderColor: colors.border
                         textColor: colors.text
-                        Accessible.name: "Stop after the current conversion"
-                        Accessible.description: "The active file finishes before remaining queued items are cancelled."
+                        Accessible.name: root.tr("qml_stop_after_current_accessible")
+                        Accessible.description: root.tr("qml_stop_after_current_description")
                         onClicked: app.cancel()
                     }
                 }
@@ -1386,8 +1579,10 @@ ApplicationWindow {
                 AppButton {
                     visible: !app.converting
                     text: app.converting
-                        ? "Converting"
-                        : "Convert " + app.queueCount + " item" + (app.queueCount === 1 ? "" : "s")
+                        ? root.tr("qml_converting")
+                        : (app.queueCount === 1
+                            ? root.tr("qml_convert_one").replace("{count}", app.queueCount)
+                            : root.tr("qml_convert_many").replace("{count}", app.queueCount))
                     enabled: !app.converting
                     primary: true
                     iconName: "play"
@@ -1409,8 +1604,8 @@ ApplicationWindow {
             Layout.fillHeight: true
 
             SectionPanel {
-                title: "Converted files"
-                subtitle: "Select an item to inspect the generated Markdown."
+                title: root.tr("qml_converted_files")
+                subtitle: root.tr("qml_converted_files_detail")
                 surfaceColor: colors.surface
                 borderColor: colors.border
                 textColor: colors.text
@@ -1434,7 +1629,7 @@ ApplicationWindow {
                         spacing: 7
 
                         Label {
-                            text: app.statusText
+                            text: root.conversionStatusText()
                             color: colors.muted
                             font.pixelSize: 12
                             elide: Text.ElideMiddle
@@ -1443,6 +1638,8 @@ ApplicationWindow {
 
                         ThemeProgressBar {
                             value: app.progress
+                            busy: app.progressIndeterminate
+                            reducedMotion: root.reduceMotion
                             Layout.fillWidth: true
                         }
 
@@ -1451,7 +1648,7 @@ ApplicationWindow {
                             Layout.fillWidth: true
 
                             AppButton {
-                                text: app.paused ? "Resume" : "Pause"
+                                text: app.paused ? root.tr("resume_button") : root.tr("pause_button")
                                 iconName: app.paused ? "play" : "pause"
                                 accentColor: colors.action
                                 surfaceColor: colors.surface
@@ -1462,14 +1659,14 @@ ApplicationWindow {
                             }
 
                             AppButton {
-                                text: "Stop after current"
+                                text: root.tr("qml_stop_after_current")
                                 iconName: "x"
                                 accentColor: colors.action
                                 surfaceColor: colors.surface
                                 borderColor: colors.border
                                 textColor: colors.text
-                                Accessible.name: "Stop after the current conversion"
-                                Accessible.description: "The active file finishes before remaining queued items are cancelled."
+                                Accessible.name: root.tr("qml_stop_after_current_accessible")
+                                Accessible.description: root.tr("qml_stop_after_current_description")
                                 Layout.fillWidth: true
                                 onClicked: app.cancel()
                             }
@@ -1485,7 +1682,7 @@ ApplicationWindow {
                         Layout.fillWidth: true
 
                         AppButton {
-                            text: "Back to queue"
+                            text: root.tr("home_back_to_queue_button")
                             enabled: !app.converting
                             subtle: true
                             iconName: "rotate-ccw"
@@ -1495,7 +1692,7 @@ ApplicationWindow {
                         }
 
                         AppButton {
-                            text: "Start new"
+                            text: root.tr("home_start_over_button")
                             enabled: !app.converting
                             subtle: true
                             iconName: "file-text"
@@ -1512,7 +1709,7 @@ ApplicationWindow {
                     AppButton {
                         visible: app.hasFailedResults
                         enabled: !app.converting
-                        text: "Retry failed conversions"
+                        text: root.tr("qml_retry_failed_conversions")
                         subtle: true
                         iconName: "rotate-ccw"
                         accentColor: colors.danger
@@ -1559,17 +1756,21 @@ ApplicationWindow {
                                 : colors.border
                         border.width: activeFocus ? 2 : 1
                         Accessible.role: Accessible.ListItem
-                        Accessible.name: name + (failed ? ", failed conversion" : ", converted, " + wordCount + " words")
+                        Accessible.name: failed
+                            ? root.tr("qml_failed_conversion_accessible").replace("{name}", name)
+                            : root.tr("qml_converted_words_accessible")
+                                .replace("{name}", name)
+                                .replace("{count}", wordCount)
 
                         Behavior on color {
                             ColorAnimation {
-                                duration: 110
+                                duration: root.motionFastDuration
                             }
                         }
 
                         Behavior on border.color {
                             ColorAnimation {
-                                duration: 110
+                                duration: root.motionFastDuration
                             }
                         }
 
@@ -1581,6 +1782,7 @@ ApplicationWindow {
                             id: rowMouse
                             anchors.fill: parent
                             hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
                             onClicked: {
                                 resultRow.forceActiveFocus()
                                 app.selectResult(index)
@@ -1640,14 +1842,14 @@ ApplicationWindow {
                                     spacing: 8
 
                                     Label {
-                                        text: failed ? "Failed" : (backendKey ? root.tr(backendKey) : backend)
+                                        text: failed ? root.tr("qml_failed") : (backendKey ? root.tr(backendKey) : backend)
                                         color: failed ? colors.danger : colors.muted
                                         font.pixelSize: 11
                                     }
 
                                     Label {
                                         visible: !failed
-                                        text: wordCount + " words"
+                                        text: root.tr("qml_word_count").replace("{count}", wordCount)
                                         color: colors.muted
                                         font.pixelSize: 11
                                     }
@@ -1659,10 +1861,12 @@ ApplicationWindow {
             }
 
             SectionPanel {
-                title: app.selectedResultFailed ? "Conversion failed" : "Markdown preview"
+                title: app.selectedResultFailed
+                    ? root.tr("qml_conversion_failed")
+                    : root.tr("qml_markdown_preview")
                 subtitle: app.selectedResultFailed
-                    ? "Review the error, then return to the queue or try another input."
-                    : "Check the rendered view or source Markdown before export."
+                    ? root.tr("qml_conversion_failed_detail")
+                    : root.tr("qml_markdown_preview_detail")
                 surfaceColor: colors.surface
                 borderColor: colors.border
                 textColor: colors.text
@@ -1674,24 +1878,26 @@ ApplicationWindow {
                 ColumnLayout {
                     id: previewToolbar
 
-                    property bool compactActions: width < 420
+                    property bool compactActions: root.compactLayout || width < 420
 
                     Layout.fillWidth: true
+                    Layout.minimumWidth: 0
                     spacing: 8
 
                     RowLayout {
                         Layout.fillWidth: true
+                        Layout.minimumWidth: 0
 
                         PreviewModeButton {
                             visible: !app.selectedResultFailed
-                            text: "Rendered"
+                            text: root.tr("home_rendered_view_button")
                             selected: app.previewMode === "rendered"
                             onClicked: app.setPreviewMode("rendered")
                         }
 
                         PreviewModeButton {
                             visible: !app.selectedResultFailed
-                            text: "Source"
+                            text: root.tr("home_raw_view_button")
                             selected: app.previewMode === "raw"
                             onClicked: app.setPreviewMode("raw")
                         }
@@ -1702,7 +1908,9 @@ ApplicationWindow {
 
                         AppButton {
                             visible: !previewToolbar.compactActions
-                            text: app.selectedResultFailed ? "Copy details" : "Copy"
+                            text: app.selectedResultFailed
+                                ? root.tr("qml_copy_details")
+                                : root.tr("home_copy_markdown_button")
                             iconName: "copy"
                             accentColor: app.selectedResultFailed ? colors.danger : colors.action
                             primaryTextColor: colors.onAction
@@ -1714,7 +1922,9 @@ ApplicationWindow {
 
                         AppButton {
                             visible: !previewToolbar.compactActions
-                            text: app.saveCombined ? "Save as one file" : "Save files"
+                            text: app.saveCombined
+                                ? root.tr("qml_save_as_one_file")
+                                : root.tr("qml_save_files")
                             enabled: app.hasSuccessfulResults
                             primary: app.hasSuccessfulResults
                             iconName: "save"
@@ -1730,13 +1940,16 @@ ApplicationWindow {
                     RowLayout {
                         visible: previewToolbar.compactActions
                         Layout.fillWidth: true
+                        Layout.minimumWidth: 0
 
                         Item {
                             Layout.fillWidth: true
                         }
 
                         AppButton {
-                            text: app.selectedResultFailed ? "Copy details" : "Copy"
+                            text: app.selectedResultFailed
+                                ? root.tr("qml_copy_details")
+                                : root.tr("home_copy_markdown_button")
                             iconName: "copy"
                             accentColor: app.selectedResultFailed ? colors.danger : colors.action
                             primaryTextColor: colors.onAction
@@ -1747,7 +1960,7 @@ ApplicationWindow {
                         }
 
                         AppButton {
-                            text: "Save"
+                            text: root.tr("save_button")
                             enabled: app.hasSuccessfulResults
                             primary: app.hasSuccessfulResults
                             iconName: "save"
@@ -1854,7 +2067,7 @@ ApplicationWindow {
                                             Layout.fillWidth: true
 
                                             Label {
-                                                text: "This input could not be converted"
+                                                text: root.tr("qml_input_conversion_failed")
                                                 color: colors.text
                                                 font.pixelSize: 15
                                                 font.weight: Font.DemiBold
@@ -1863,7 +2076,7 @@ ApplicationWindow {
                                             }
 
                                             Label {
-                                                text: "The details below can be copied for troubleshooting."
+                                                text: root.tr("qml_failure_details_help")
                                                 color: colors.muted
                                                 font.pixelSize: 12
                                                 wrapMode: Text.WordWrap
@@ -1897,8 +2110,8 @@ ApplicationWindow {
 
                                         Label {
                                             text: app.failedResultCount === 1
-                                                ? "Retry the failed input after adjusting settings."
-                                                : "Retry " + app.failedResultCount + " failed inputs after adjusting settings."
+                                                ? root.tr("qml_retry_one_detail")
+                                                : root.tr("qml_retry_many_detail").replace("{count}", app.failedResultCount)
                                             color: colors.muted
                                             font.pixelSize: 12
                                             wrapMode: Text.WordWrap
@@ -1906,7 +2119,7 @@ ApplicationWindow {
                                         }
 
                                         AppButton {
-                                            text: "Retry failed"
+                                            text: root.tr("qml_retry_failed")
                                             iconName: "rotate-ccw"
                                             accentColor: colors.danger
                                             surfaceColor: colors.surfaceAlt
@@ -1982,7 +2195,7 @@ ApplicationWindow {
                         anchors.bottomMargin: 12
                         z: 3
                         Accessible.role: Accessible.Indicator
-                        Accessible.name: "Preview scroll position"
+                        Accessible.name: root.tr("qml_preview_scroll_position")
 
                         Rectangle {
                             width: 3
@@ -2051,8 +2264,8 @@ ApplicationWindow {
             spacing: 16
 
             SectionPanel {
-                title: "Output"
-                subtitle: "Set where Markdown is saved and how batches are written."
+                title: root.tr("qml_output_title")
+                subtitle: root.tr("qml_output_detail")
                 surfaceColor: colors.surface
                 borderColor: colors.border
                 textColor: colors.text
@@ -2064,8 +2277,8 @@ ApplicationWindow {
                 Layout.fillWidth: true
 
                 SettingsField {
-                    label: "Default folder"
-                    detail: "Leave empty to choose a location when saving."
+                    label: root.tr("qml_default_folder")
+                    detail: root.tr("qml_default_folder_detail")
                     Layout.fillWidth: true
 
                     RowLayout {
@@ -2074,8 +2287,8 @@ ApplicationWindow {
 
                         AppTextField {
                             text: app.outputFolder
-                            placeholderText: "No default folder set"
-                            Accessible.name: "Default output folder"
+                            placeholderText: root.tr("qml_no_default_folder")
+                            Accessible.name: root.tr("qml_default_output_folder")
                             surfaceColor: colors.input
                             borderColor: colors.border
                             accentColor: colors.accent
@@ -2086,7 +2299,7 @@ ApplicationWindow {
                         }
 
                         AppButton {
-                            text: "Browse"
+                            text: root.tr("browse_button_compact")
                             accentColor: colors.action
                             surfaceColor: colors.surfaceAlt
                             borderColor: colors.border
@@ -2097,8 +2310,8 @@ ApplicationWindow {
                 }
 
                 ThemeToggleRow {
-                    title: "Combined save mode"
-                    detail: "Save one Markdown document by default instead of one file per input."
+                    title: root.tr("qml_combined_save_mode")
+                    detail: root.tr("qml_combined_save_mode_detail")
                     checked: app.saveCombined
                     textColor: colors.text
                     mutedTextColor: colors.muted
@@ -2107,8 +2320,8 @@ ApplicationWindow {
                 }
 
                 ThemeToggleRow {
-                    title: "Prefer source folder"
-                    detail: "Use each input file folder when separate exports are saved."
+                    title: root.tr("settings_save_to_source_folder_label")
+                    detail: root.tr("settings_save_to_source_folder_tooltip")
                     checked: app.saveToSourceFolder
                     textColor: colors.text
                     mutedTextColor: colors.muted
@@ -2117,8 +2330,8 @@ ApplicationWindow {
                 }
 
                 ThemeToggleRow {
-                    title: "Update notifications"
-                    detail: "Show a notification when a new release is available."
+                    title: root.tr("qml_update_notifications")
+                    detail: root.tr("qml_update_notifications_detail")
                     checked: app.updateNotificationsEnabled
                     textColor: colors.text
                     mutedTextColor: colors.muted
@@ -2128,8 +2341,32 @@ ApplicationWindow {
             }
 
             SectionPanel {
-                title: "Appearance"
-                subtitle: "Solarized Light for daytime work, Nord Dark for low-light sessions."
+                title: root.tr("settings_conversion_group")
+                subtitle: root.tr("settings_conversion_detail")
+                surfaceColor: colors.surface
+                borderColor: colors.border
+                textColor: colors.text
+                mutedTextColor: colors.muted
+                panelPadding: 14
+                contentSpacing: 10
+                bodySpacing: 9
+                borderOpacity: dark ? 0.90 : 0.72
+                Layout.fillWidth: true
+
+                ThemeToggleRow {
+                    title: root.tr("settings_anydoc_default_label")
+                    detail: root.tr("settings_anydoc_default_detail")
+                    checked: app.anydocDefaultEnabled
+                    textColor: colors.text
+                    mutedTextColor: colors.muted
+                    onToggled: checked => app.setAnydocDefaultEnabled(checked)
+                    Layout.fillWidth: true
+                }
+            }
+
+            SectionPanel {
+                title: root.tr("settings_appearance_group")
+                subtitle: root.tr("settings_appearance_detail")
                 surfaceColor: colors.surface
                 borderColor: colors.border
                 textColor: colors.text
@@ -2141,13 +2378,13 @@ ApplicationWindow {
                 Layout.fillWidth: true
 
                 SettingsField {
-                    label: "Theme"
-                    detail: "Use explicit palettes or follow the operating system."
+                    label: root.tr("settings_theme_label")
+                    detail: root.tr("settings_theme_detail")
                     Layout.fillWidth: true
 
                     ThemeComboBox {
-                        Accessible.name: "Application theme"
-                        model: ["Solarized Light", "Nord Dark", "System"]
+                        Accessible.name: root.tr("qml_application_theme")
+                        model: [root.tr("qml_theme_light"), root.tr("qml_theme_dark"), root.tr("qml_theme_system")]
                         currentIndex: app.themeMode === "dark" ? 1 : app.themeMode === "system" ? 2 : 0
                         onActivated: index => app.setThemeMode(index === 1 ? "dark" : index === 2 ? "system" : "light")
                         Layout.fillWidth: true
@@ -2155,11 +2392,37 @@ ApplicationWindow {
                         Layout.alignment: Qt.AlignLeft
                     }
                 }
+
+                SettingsField {
+                    label: root.tr("settings_language_label")
+                    detail: root.tr("settings_language_detail")
+                    Layout.fillWidth: true
+
+                    ThemeComboBox {
+                        Accessible.name: root.tr("settings_language_label")
+                        model: app.availableLanguageLabels
+                        currentIndex: Math.max(0, app.availableLanguageCodes.indexOf(app.currentLanguage))
+                        onActivated: index => app.setLanguage(app.availableLanguageCodes[index])
+                        Layout.fillWidth: true
+                        Layout.maximumWidth: 380
+                        Layout.alignment: Qt.AlignLeft
+                    }
+                }
+
+                ThemeToggleRow {
+                    title: root.tr("qml_reduce_motion")
+                    detail: root.tr("qml_reduce_motion_detail")
+                    checked: app.reduceMotion
+                    textColor: colors.text
+                    mutedTextColor: colors.muted
+                    onToggled: checked => app.setReduceMotion(checked)
+                    Layout.fillWidth: true
+                }
             }
 
             SectionPanel {
-                title: "OCR"
-                subtitle: "Use OCR only for scanned PDFs, screenshots, or image-heavy files."
+                title: root.tr("settings_ocr_group")
+                subtitle: root.tr("qml_ocr_settings_detail")
                 surfaceColor: colors.surface
                 borderColor: colors.border
                 textColor: colors.text
@@ -2171,8 +2434,8 @@ ApplicationWindow {
                 Layout.fillWidth: true
 
                 ThemeToggleRow {
-                    title: "OCR enabled"
-                    detail: "Use OCR for scanned PDFs and images."
+                    title: root.tr("qml_ocr_enabled")
+                    detail: root.tr("settings_ocr_enable_tooltip")
                     checked: app.ocrEnabled
                     textColor: colors.text
                     mutedTextColor: colors.muted
@@ -2181,8 +2444,8 @@ ApplicationWindow {
                 }
 
                 FieldGroup {
-                    label: "OCR presets"
-                    detail: "Apply common provider defaults, then run Test connection."
+                    label: root.tr("qml_ocr_presets")
+                    detail: root.tr("qml_ocr_presets_detail")
                     Layout.fillWidth: true
 
                     ColumnLayout {
@@ -2219,7 +2482,7 @@ ApplicationWindow {
                                 }
 
                                 AppButton {
-                                    text: "Apply"
+                                    text: root.tr("qml_apply")
                                     iconName: "file-check"
                                     accentColor: colors.action
                                     surfaceColor: colors.surfaceAlt
@@ -2233,14 +2496,18 @@ ApplicationWindow {
                 }
 
                 FieldGroup {
-                    label: "Primary provider"
-                    detail: "Choose the OCR engine used first. A fallback can be configured for model failures."
+                    label: root.tr("qml_primary_provider")
+                    detail: root.tr("qml_primary_provider_detail")
                     visible: app.ocrEnabled
                     Layout.fillWidth: true
 
                     ThemeComboBox {
-                        Accessible.name: "Primary OCR provider"
-                        model: ["Azure + Tesseract", "GLM-OCR", "HTTP OCR"]
+                        Accessible.name: root.tr("qml_primary_ocr_provider")
+                        model: [
+                            root.tr("settings_ocr_provider_azure_tesseract"),
+                            root.tr("settings_ocr_provider_glmocr"),
+                            root.tr("conversion_backend_http_ocr")
+                        ]
                         currentIndex: root.ocrProviderIndex(app.ocrProvider)
                         onActivated: index => app.setOcrProvider(root.ocrProviderFromIndex(index))
                         Layout.fillWidth: true
@@ -2248,13 +2515,13 @@ ApplicationWindow {
                 }
 
                 FieldGroup {
-                    label: "Fallback provider"
+                    label: root.tr("qml_fallback_provider")
                     detail: root.ocrFallbackDetail()
                     visible: app.ocrEnabled && app.ocrProvider !== "azure_tesseract"
                     Layout.fillWidth: true
 
                     ThemeComboBox {
-                        Accessible.name: "Fallback OCR provider"
+                        Accessible.name: root.tr("qml_fallback_ocr_provider")
                         model: root.ocrFallbackLabels()
                         currentIndex: root.ocrFallbackIndex(app.ocrFallbackProvider)
                         onActivated: index => app.setOcrFallbackProvider(root.ocrFallbackFromIndex(index))
@@ -2263,7 +2530,7 @@ ApplicationWindow {
                 }
 
                 FieldGroup {
-                    label: "Provider capabilities"
+                    label: root.tr("qml_provider_capabilities")
                     visible: app.ocrEnabled
                     Layout.fillWidth: true
 
@@ -2301,8 +2568,8 @@ ApplicationWindow {
                 }
 
                 FieldGroup {
-                    label: "Setup actions"
-                    detail: "Open provider docs or copy setup snippets for the selected provider."
+                    label: root.tr("qml_setup_actions")
+                    detail: root.tr("qml_setup_actions_detail")
                     visible: app.ocrEnabled
                     Layout.fillWidth: true
 
@@ -2340,7 +2607,9 @@ ApplicationWindow {
                                 }
 
                                 AppButton {
-                                    text: modelData.action === "open" ? "Open" : "Copy"
+                                    text: modelData.action === "open"
+                                        ? root.tr("qml_open")
+                                        : root.tr("home_copy_markdown_button")
                                     iconName: modelData.action === "open" ? "external-link" : "copy"
                                     accentColor: colors.action
                                     surfaceColor: colors.surfaceAlt
@@ -2358,17 +2627,21 @@ ApplicationWindow {
                 }
 
                 FieldGroup {
-                    label: app.ocrProvider === "glmocr" ? "Fallback Azure endpoint" : "Azure endpoint"
+                    label: app.ocrProvider === "glmocr"
+                        ? root.tr("qml_fallback_azure_endpoint")
+                        : root.tr("qml_azure_endpoint")
                     detail: app.ocrProvider === "glmocr"
-                        ? "Optional fallback endpoint. Uses AZURE_OCR_API_KEY or Azure identity at runtime."
-                        : "Uses AZURE_OCR_API_KEY or Azure identity at runtime."
+                        ? root.tr("qml_fallback_azure_endpoint_detail")
+                        : root.tr("qml_azure_endpoint_detail")
                     visible: root.showAzureTesseractSettings()
                     Layout.fillWidth: true
 
                     AppTextField {
                         text: app.docintelEndpoint
                         placeholderText: "https://example.cognitiveservices.azure.com/"
-                        Accessible.name: app.ocrProvider === "glmocr" ? "Fallback Azure endpoint" : "Azure endpoint"
+                        Accessible.name: app.ocrProvider === "glmocr"
+                            ? root.tr("qml_fallback_azure_endpoint")
+                            : root.tr("qml_azure_endpoint")
                         surfaceColor: colors.input
                         borderColor: colors.border
                         accentColor: colors.accent
@@ -2380,15 +2653,21 @@ ApplicationWindow {
                 }
 
                 FieldGroup {
-                    label: app.ocrProvider === "glmocr" ? "Fallback Tesseract languages" : "Tesseract languages"
-                    detail: app.ocrProvider === "glmocr" ? "Optional language codes used only if fallback runs." : ""
+                    label: app.ocrProvider === "glmocr"
+                        ? root.tr("qml_fallback_tesseract_languages")
+                        : root.tr("qml_tesseract_languages")
+                    detail: app.ocrProvider === "glmocr"
+                        ? root.tr("qml_fallback_tesseract_languages_detail")
+                        : ""
                     visible: root.showAzureTesseractSettings()
                     Layout.fillWidth: true
 
                     AppTextField {
                         text: app.ocrLanguages
                         placeholderText: "eng or eng+deu"
-                        Accessible.name: app.ocrProvider === "glmocr" ? "Fallback Tesseract languages" : "Tesseract languages"
+                        Accessible.name: app.ocrProvider === "glmocr"
+                            ? root.tr("qml_fallback_tesseract_languages")
+                            : root.tr("qml_tesseract_languages")
                         surfaceColor: colors.input
                         borderColor: colors.border
                         accentColor: colors.accent
@@ -2400,15 +2679,21 @@ ApplicationWindow {
                 }
 
                 FieldGroup {
-                    label: app.ocrProvider === "glmocr" ? "Fallback Tesseract executable" : "Tesseract executable"
-                    detail: app.ocrProvider === "glmocr" ? "Optional executable path used only if fallback runs." : ""
+                    label: app.ocrProvider === "glmocr"
+                        ? root.tr("qml_fallback_tesseract_executable")
+                        : root.tr("qml_tesseract_executable")
+                    detail: app.ocrProvider === "glmocr"
+                        ? root.tr("qml_fallback_tesseract_executable_detail")
+                        : ""
                     visible: root.showAzureTesseractSettings()
                     Layout.fillWidth: true
 
                     AppTextField {
                         text: app.tesseractPath
-                        placeholderText: "Optional executable path"
-                        Accessible.name: app.ocrProvider === "glmocr" ? "Fallback Tesseract executable" : "Tesseract executable"
+                        placeholderText: root.tr("qml_optional_executable_path")
+                        Accessible.name: app.ocrProvider === "glmocr"
+                            ? root.tr("qml_fallback_tesseract_executable")
+                            : root.tr("qml_tesseract_executable")
                         surfaceColor: colors.input
                         borderColor: colors.border
                         accentColor: colors.accent
@@ -2425,7 +2710,7 @@ ApplicationWindow {
                     Layout.fillWidth: true
 
                     Label {
-                        text: "Check required provider settings before starting a batch."
+                        text: root.tr("qml_ocr_validation_detail")
                         color: colors.muted
                         font.pixelSize: 12
                         wrapMode: Text.WordWrap
@@ -2433,7 +2718,7 @@ ApplicationWindow {
                     }
 
                     AppButton {
-                        text: "Validate OCR"
+                        text: root.tr("qml_validate_ocr")
                         iconName: "file-check"
                         accentColor: colors.action
                         surfaceColor: colors.surfaceAlt
@@ -2443,7 +2728,7 @@ ApplicationWindow {
                     }
 
                     AppButton {
-                        text: "Test connection"
+                        text: root.tr("qml_test_connection")
                         iconName: "external-link"
                         accentColor: colors.action
                         surfaceColor: colors.surfaceAlt
@@ -2455,8 +2740,8 @@ ApplicationWindow {
             }
 
             SectionPanel {
-                title: "GLM-OCR"
-                subtitle: "Connect to the hosted API, Ollama, or an SDK server."
+                title: root.tr("settings_glmocr_group")
+                subtitle: root.tr("qml_glmocr_detail")
                 surfaceColor: colors.surface
                 borderColor: colors.border
                 textColor: colors.text
@@ -2469,17 +2754,21 @@ ApplicationWindow {
                 Layout.fillWidth: true
 
                 FieldGroup {
-                    label: "Mode"
+                    label: root.tr("settings_glmocr_mode_label")
                     detail: app.glmocrMode === "ollama"
-                        ? "Uses a local Ollama /api/generate endpoint."
+                        ? root.tr("qml_glmocr_ollama_detail")
                         : app.glmocrMode === "sdk_server"
-                            ? "Uses a running GLM-OCR SDK server endpoint."
-                            : "Requires ZHIPU_API_KEY or GLMOCR_API_KEY in the app environment."
+                            ? root.tr("qml_glmocr_sdk_detail")
+                            : root.tr("qml_glmocr_api_detail")
                     Layout.fillWidth: true
 
                     ThemeComboBox {
-                        Accessible.name: "GLM-OCR mode"
-                        model: ["Official API", "Ollama", "SDK Server"]
+                        Accessible.name: root.tr("qml_glmocr_mode")
+                        model: [
+                            root.tr("settings_glmocr_mode_maas"),
+                            root.tr("settings_glmocr_mode_ollama"),
+                            root.tr("settings_glmocr_mode_sdk_server")
+                        ]
                         currentIndex: app.glmocrMode === "ollama" ? 1 : app.glmocrMode === "sdk_server" ? 2 : 0
                         onActivated: index => app.setGlmocrMode(index === 1 ? "ollama" : index === 2 ? "sdk_server" : "maas")
                         Layout.fillWidth: true
@@ -2487,14 +2776,14 @@ ApplicationWindow {
                 }
 
                 FieldGroup {
-                    label: "Ollama host"
+                    label: root.tr("settings_glmocr_ollama_host_label")
                     visible: app.glmocrMode === "ollama"
                     Layout.fillWidth: true
 
                     AppTextField {
                         text: app.glmocrOllamaHost
                         placeholderText: "127.0.0.1"
-                        Accessible.name: "GLM-OCR Ollama host"
+                        Accessible.name: root.tr("qml_glmocr_ollama_host")
                         surfaceColor: colors.input
                         borderColor: colors.border
                         accentColor: colors.accent
@@ -2511,12 +2800,12 @@ ApplicationWindow {
                     spacing: 10
 
                     FieldGroup {
-                        label: "Port"
+                        label: root.tr("settings_glmocr_ollama_port_label")
                         Layout.preferredWidth: 150
                         Layout.fillWidth: false
 
                         ThemeSpinBox {
-                            Accessible.name: "GLM-OCR Ollama port"
+                            Accessible.name: root.tr("qml_glmocr_ollama_port")
                             from: 1
                             to: 65535
                             value: app.glmocrOllamaPort
@@ -2526,13 +2815,13 @@ ApplicationWindow {
                     }
 
                     FieldGroup {
-                        label: "Model"
+                        label: root.tr("settings_glmocr_ollama_model_label")
                         Layout.fillWidth: true
 
                         AppTextField {
                             text: app.glmocrOllamaModel
                             placeholderText: "glm-ocr:latest"
-                            Accessible.name: "GLM-OCR Ollama model"
+                            Accessible.name: root.tr("qml_glmocr_ollama_model")
                             surfaceColor: colors.input
                             borderColor: colors.border
                             accentColor: colors.accent
@@ -2545,14 +2834,14 @@ ApplicationWindow {
                 }
 
                 FieldGroup {
-                    label: "SDK server endpoint"
+                    label: root.tr("settings_glmocr_sdk_server_url_label")
                     visible: app.glmocrMode === "sdk_server"
                     Layout.fillWidth: true
 
                     AppTextField {
                         text: app.glmocrSdkServerUrl
                         placeholderText: "http://127.0.0.1:5002/glmocr/parse"
-                        Accessible.name: "GLM-OCR SDK server endpoint"
+                        Accessible.name: root.tr("qml_glmocr_sdk_server_endpoint")
                         surfaceColor: colors.input
                         borderColor: colors.border
                         accentColor: colors.accent
@@ -2565,8 +2854,8 @@ ApplicationWindow {
             }
 
             SectionPanel {
-                title: "HTTP OCR"
-                subtitle: "Connect any local or self-hosted OCR server that accepts a multipart file upload."
+                title: root.tr("conversion_backend_http_ocr")
+                subtitle: root.tr("qml_http_ocr_detail")
                 surfaceColor: colors.surface
                 borderColor: colors.border
                 textColor: colors.text
@@ -2579,14 +2868,14 @@ ApplicationWindow {
                 Layout.fillWidth: true
 
                 FieldGroup {
-                    label: "Endpoint"
-                    detail: "POST endpoint. The app sends a `file` part plus optional `model`."
+                    label: root.tr("qml_endpoint")
+                    detail: root.tr("qml_http_ocr_endpoint_detail")
                     Layout.fillWidth: true
 
                     AppTextField {
                         text: app.httpOcrEndpoint
                         placeholderText: "http://127.0.0.1:8000/ocr"
-                        Accessible.name: "HTTP OCR endpoint"
+                        Accessible.name: root.tr("qml_http_ocr_endpoint")
                         surfaceColor: colors.input
                         borderColor: colors.border
                         accentColor: colors.accent
@@ -2602,14 +2891,14 @@ ApplicationWindow {
                     Layout.fillWidth: true
 
                     FieldGroup {
-                        label: "Model"
-                        detail: "Optional model field."
+                        label: root.tr("qml_model")
+                        detail: root.tr("qml_optional_model_detail")
                         Layout.fillWidth: true
 
                         AppTextField {
                             text: app.httpOcrModel
                             placeholderText: "surya, doctr, paddleocr, ..."
-                            Accessible.name: "HTTP OCR model"
+                            Accessible.name: root.tr("qml_http_ocr_model")
                             surfaceColor: colors.input
                             borderColor: colors.border
                             accentColor: colors.accent
@@ -2621,13 +2910,13 @@ ApplicationWindow {
                     }
 
                     FieldGroup {
-                        label: "Timeout"
-                        detail: "Seconds."
+                        label: root.tr("qml_timeout")
+                        detail: root.tr("qml_seconds_detail")
                         Layout.preferredWidth: 150
                         Layout.fillWidth: false
 
                         ThemeSpinBox {
-                            Accessible.name: "HTTP OCR timeout in seconds"
+                            Accessible.name: root.tr("qml_http_ocr_timeout")
                             from: 1
                             to: 3600
                             value: app.httpOcrTimeoutSeconds
@@ -2638,14 +2927,14 @@ ApplicationWindow {
                 }
 
                 FieldGroup {
-                    label: "API key environment variable"
-                    detail: "Optional. If set, the value is sent as `Authorization: Bearer ...`."
+                    label: root.tr("qml_api_key_environment_variable")
+                    detail: root.tr("qml_api_key_environment_variable_detail")
                     Layout.fillWidth: true
 
                     AppTextField {
                         text: app.httpOcrApiKeyEnv
                         placeholderText: "OCR_HTTP_API_KEY"
-                        Accessible.name: "HTTP OCR API key environment variable"
+                        Accessible.name: root.tr("qml_http_ocr_api_key_environment_variable")
                         surfaceColor: colors.input
                         borderColor: colors.border
                         accentColor: colors.accent
@@ -2658,8 +2947,8 @@ ApplicationWindow {
             }
 
             SectionPanel {
-                title: "Settings profile"
-                subtitle: "Move OCR, update, and conversion preferences without recent file paths."
+                title: root.tr("qml_settings_profile")
+                subtitle: root.tr("qml_settings_profile_detail")
                 surfaceColor: colors.surface
                 borderColor: colors.border
                 textColor: colors.text
@@ -2675,7 +2964,7 @@ ApplicationWindow {
                     Layout.fillWidth: true
 
                     Label {
-                        text: "Profiles include provider endpoints and env var names, but exclude recent files, outputs, window state, and default output folders."
+                        text: root.tr("qml_settings_profile_explanation")
                         color: colors.muted
                         font.pixelSize: 12
                         wrapMode: Text.WordWrap
@@ -2683,7 +2972,7 @@ ApplicationWindow {
                     }
 
                     AppButton {
-                        text: "Export"
+                        text: root.tr("qml_export")
                         iconName: "save"
                         accentColor: colors.action
                         surfaceColor: colors.surfaceAlt
@@ -2693,7 +2982,7 @@ ApplicationWindow {
                     }
 
                     AppButton {
-                        text: "Import"
+                        text: root.tr("qml_import")
                         iconName: "folder-plus"
                         accentColor: colors.action
                         surfaceColor: colors.surfaceAlt
@@ -2723,15 +3012,15 @@ ApplicationWindow {
             spacing: 16
 
             UtilitySectionPanel {
-                title: "Common tasks"
-                subtitle: "Quick guidance for the conversion workflow."
+                title: root.tr("qml_common_tasks")
+                subtitle: root.tr("qml_common_tasks_detail")
 
                 Repeater {
                     model: [
-                        { icon: "folder-plus", title: "Add documents", detail: "Drop files into the window or choose files from your system." },
-                        { icon: "link", title: "Convert a webpage", detail: "Paste an http:// or https:// URL in the bar at the top of the workspace." },
-                        { icon: "file-text", title: "Use OCR only when needed", detail: "Enable OCR for scanned PDFs, screenshots, and image-heavy files." },
-                        { icon: "save", title: "Save Markdown", detail: "Use combined mode for one document, or separate mode for one Markdown file per input." }
+                        { icon: "folder-plus", title: root.tr("qml_task_add_documents"), detail: root.tr("qml_task_add_documents_detail") },
+                        { icon: "link", title: root.tr("qml_task_convert_webpage"), detail: root.tr("qml_task_convert_webpage_detail") },
+                        { icon: "file-text", title: root.tr("qml_task_use_ocr"), detail: root.tr("qml_task_use_ocr_detail") },
+                        { icon: "save", title: root.tr("qml_task_save_markdown"), detail: root.tr("qml_task_save_markdown_detail") }
                     ]
 
                     delegate: RowLayout {
@@ -2778,8 +3067,8 @@ ApplicationWindow {
             }
 
             UtilitySectionPanel {
-                title: "Reference links"
-                subtitle: "Open project, release, OCR, and conversion references."
+                title: root.tr("qml_reference_links")
+                subtitle: root.tr("qml_reference_links_detail")
 
                 RowLayout {
                     spacing: 10
@@ -2787,8 +3076,8 @@ ApplicationWindow {
 
                     Label {
                         text: app.availableReleaseAssets.length > 0
-                            ? "Packaged release assets are available for " + app.availableUpdateVersion + "."
-                            : "Check whether a newer packaged app release is available."
+                            ? root.tr("qml_packaged_assets_available").replace("{version}", app.availableUpdateVersion)
+                            : root.tr("qml_check_new_release")
                         color: colors.muted
                         font.pixelSize: 12
                         wrapMode: Text.WordWrap
@@ -2796,7 +3085,7 @@ ApplicationWindow {
                     }
 
                     AppButton {
-                        text: "Check for updates"
+                        text: root.tr("menu_check_updates")
                         iconName: "external-link"
                         accentColor: colors.action
                         surfaceColor: colors.surfaceAlt
@@ -2882,8 +3171,8 @@ ApplicationWindow {
                         text: app.sourceUpdateRunning
                             ? app.sourceUpdateStatus
                             : app.sourceUpdateCommand
-                            ? "For source checkouts, pull the checkout and reinstall the app in place."
-                            : "Source updater is available only when the app runs from a Git checkout."
+                            ? root.tr("qml_source_update_detail")
+                            : root.tr("qml_source_update_unavailable")
                         color: colors.muted
                         font.pixelSize: 12
                         wrapMode: Text.WordWrap
@@ -2891,7 +3180,9 @@ ApplicationWindow {
                     }
 
                     AppButton {
-                        text: app.sourceUpdateRunning ? "Updating" : "Run source update"
+                        text: app.sourceUpdateRunning
+                            ? root.tr("qml_updating")
+                            : root.tr("qml_run_source_update")
                         iconName: "rotate-ccw"
                         accentColor: colors.action
                         surfaceColor: colors.surfaceAlt
@@ -2902,7 +3193,7 @@ ApplicationWindow {
                     }
 
                     AppButton {
-                        text: "Restart app"
+                        text: root.tr("qml_restart_app")
                         iconName: "rotate-ccw"
                         accentColor: colors.action
                         surfaceColor: colors.surfaceAlt
@@ -2917,7 +3208,7 @@ ApplicationWindow {
                     }
 
                     AppButton {
-                        text: "Copy command"
+                        text: root.tr("qml_copy_command")
                         iconName: "copy"
                         accentColor: colors.action
                         surfaceColor: colors.surfaceAlt
@@ -2945,12 +3236,12 @@ ApplicationWindow {
 
                     Repeater {
                         model: [
-                            { label: "Repository", url: "https://github.com/imadreamerboy/markitdown-gui" },
-                            { label: "Releases", url: "https://github.com/imadreamerboy/markitdown-gui/releases" },
-                            { label: "GLM-OCR", url: "https://github.com/zai-org/GLM-OCR" },
-                            { label: "Tesseract", url: "https://github.com/tesseract-ocr/tesseract" },
-                            { label: "Defuddle", url: "https://defuddle.md/docs" },
-                            { label: "Azure OCR Pricing", url: "https://azure.microsoft.com/en-us/products/ai-foundry/tools/document-intelligence#Pricing" }
+                            { label: root.tr("help_open_repository"), url: "https://github.com/imadreamerboy/markitdown-gui" },
+                            { label: root.tr("help_open_releases"), url: "https://github.com/imadreamerboy/markitdown-gui/releases" },
+                            { label: root.tr("help_open_glmocr"), url: "https://github.com/zai-org/GLM-OCR" },
+                            { label: root.tr("help_open_tesseract"), url: "https://github.com/tesseract-ocr/tesseract" },
+                            { label: root.tr("help_open_defuddle_docs"), url: "https://defuddle.md/docs" },
+                            { label: root.tr("help_open_azure_ocr_pricing"), url: "https://azure.microsoft.com/en-us/products/ai-foundry/tools/document-intelligence#Pricing" }
                         ]
 
                         delegate: AppButton {
@@ -2968,11 +3259,11 @@ ApplicationWindow {
             }
 
             UtilitySectionPanel {
-                title: "Licensing"
-                subtitle: "Terms for the app and bundled third-party components."
+                title: root.tr("qml_licensing")
+                subtitle: root.tr("qml_licensing_detail")
 
                 Label {
-                    text: "MarkItDown GUI is licensed under the MIT License. Commercial use, private use, modification, redistribution, sublicensing, and sale are permitted when the copyright and licence notice are preserved."
+                    text: root.tr("qml_mit_license_text")
                     color: colors.text
                     font.pixelSize: 13
                     wrapMode: Text.WordWrap
@@ -2980,7 +3271,7 @@ ApplicationWindow {
                 }
 
                 Label {
-                    text: "Bundled dependencies keep their own terms. PySide6/Qt is used under Qt's LGPL/commercial licensing model, and packaged builds include third-party notices."
+                    text: root.tr("qml_third_party_license_text")
                     color: colors.muted
                     font.pixelSize: 12
                     wrapMode: Text.WordWrap
@@ -2995,8 +3286,8 @@ ApplicationWindow {
 
                     Repeater {
                         model: [
-                            { label: "Project licence", url: "https://github.com/imadreamerboy/markitdown-gui/blob/main/LICENSE" },
-                            { label: "Third-party notices", url: "https://github.com/imadreamerboy/markitdown-gui/blob/main/THIRD_PARTY_NOTICES.md" }
+                            { label: root.tr("qml_project_licence"), url: "https://github.com/imadreamerboy/markitdown-gui/blob/main/LICENSE" },
+                            { label: root.tr("qml_third_party_notices"), url: "https://github.com/imadreamerboy/markitdown-gui/blob/main/THIRD_PARTY_NOTICES.md" }
                         ]
 
                         delegate: AppButton {
@@ -3014,8 +3305,8 @@ ApplicationWindow {
             }
 
             UtilitySectionPanel {
-                title: "Diagnostics"
-                subtitle: "Useful when an update, OCR provider, or conversion fails."
+                title: root.tr("qml_diagnostics")
+                subtitle: root.tr("qml_diagnostics_detail")
 
                 GridLayout {
                     columns: helpPage.width < 840 ? 1 : 2
@@ -3068,7 +3359,7 @@ ApplicationWindow {
                     Layout.fillWidth: true
 
                     Label {
-                        text: "Open logs, copy diagnostics, or export a redacted support bundle."
+                        text: root.tr("qml_diagnostics_actions_detail")
                         color: colors.muted
                         font.pixelSize: 12
                         wrapMode: Text.WordWrap
@@ -3076,7 +3367,7 @@ ApplicationWindow {
                     }
 
                     AppButton {
-                        text: "Open logs"
+                        text: root.tr("qml_open_logs")
                         iconName: "external-link"
                         accentColor: colors.action
                         surfaceColor: colors.surfaceAlt
@@ -3086,7 +3377,7 @@ ApplicationWindow {
                     }
 
                     AppButton {
-                        text: "Copy diagnostics"
+                        text: root.tr("qml_copy_diagnostics")
                         iconName: "copy"
                         accentColor: colors.action
                         surfaceColor: colors.surfaceAlt
@@ -3096,7 +3387,7 @@ ApplicationWindow {
                     }
 
                     AppButton {
-                        text: "Export bundle"
+                        text: root.tr("qml_export_bundle")
                         iconName: "save"
                         accentColor: colors.action
                         surfaceColor: colors.surfaceAlt
@@ -3116,7 +3407,7 @@ ApplicationWindow {
                         Layout.fillWidth: true
 
                         Label {
-                            text: "Last packaged update"
+                            text: root.tr("qml_last_packaged_update")
                             color: colors.text
                             font.pixelSize: 12
                             font.weight: Font.DemiBold
@@ -3124,7 +3415,7 @@ ApplicationWindow {
                         }
 
                         AppButton {
-                            text: "Open backup folder"
+                            text: root.tr("qml_open_backup_folder")
                             iconName: "external-link"
                             accentColor: colors.action
                             surfaceColor: colors.surfaceAlt
@@ -3135,7 +3426,7 @@ ApplicationWindow {
                         }
 
                         AppButton {
-                            text: "Clear"
+                            text: root.tr("clear_list_button")
                             iconName: "x"
                             accentColor: colors.action
                             surfaceColor: colors.surfaceAlt
@@ -3156,8 +3447,8 @@ ApplicationWindow {
             }
 
             UtilitySectionPanel {
-                title: "Shortcuts"
-                subtitle: "Keyboard actions for the main workspace."
+                title: root.tr("shortcuts_title")
+                subtitle: root.tr("qml_shortcuts_detail")
 
                 GridLayout {
                     columns: helpPage.width < 760 ? 1 : 2
@@ -3167,15 +3458,15 @@ ApplicationWindow {
 
                     Repeater {
                         model: [
-                            { key: "Ctrl+O", action: "Add files" },
-                            { key: "Ctrl+B", action: "Convert queue" },
-                            { key: "Ctrl+P", action: "Pause or resume" },
-                            { key: "Ctrl+S", action: "Save Markdown" },
-                            { key: "Ctrl+C", action: "Copy selected result" },
-                            { key: "Ctrl+R", action: "Retry failed conversions" },
-                            { key: "Ctrl+L", action: "Clear queue" },
-                            { key: "Ctrl+K", action: "Open Help" },
-                            { key: "Esc", action: "Cancel conversion" }
+                            { key: "Ctrl+O", action: root.tr("qml_shortcut_add_files") },
+                            { key: "Ctrl+B", action: root.tr("qml_shortcut_convert_queue") },
+                            { key: "Ctrl+P", action: root.tr("qml_shortcut_pause_resume") },
+                            { key: "Ctrl+S", action: root.tr("qml_shortcut_save_markdown") },
+                            { key: "Ctrl+C", action: root.tr("qml_shortcut_copy_result") },
+                            { key: "Ctrl+R", action: root.tr("qml_shortcut_retry_failed") },
+                            { key: "Ctrl+L", action: root.tr("qml_shortcut_clear_queue") },
+                            { key: "Ctrl+K", action: root.tr("qml_shortcut_open_help") },
+                            { key: "Esc", action: root.tr("qml_shortcut_cancel_conversion") }
                         ]
 
                         delegate: RowLayout {
@@ -3208,8 +3499,10 @@ ApplicationWindow {
         id: toast
         property string kind: "success"
         property string message: ""
+        property bool showing: false
 
-        visible: false
+        visible: showing || opacity > 0
+        opacity: showing ? 1 : 0
         width: Math.min(420, parent.width - 48)
         height: toastLabel.implicitHeight + 24
         radius: 10
@@ -3219,6 +3512,24 @@ ApplicationWindow {
         anchors.bottom: parent.bottom
         anchors.margins: 24
         z: 20
+
+        Behavior on opacity {
+            NumberAnimation {
+                duration: root.motionStandardDuration
+                easing.type: Easing.OutCubic
+            }
+        }
+
+        transform: Translate {
+            y: toast.showing ? 0 : 8
+
+            Behavior on y {
+                NumberAnimation {
+                    duration: root.motionStandardDuration
+                    easing.type: Easing.OutCubic
+                }
+            }
+        }
 
         Label {
             id: toastLabel
@@ -3235,6 +3546,6 @@ ApplicationWindow {
     Timer {
         id: toastTimer
         interval: 3600
-        onTriggered: toast.visible = false
+        onTriggered: toast.showing = false
     }
 }
