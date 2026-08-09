@@ -30,6 +30,7 @@ class PackagedUpdateError(RuntimeError):
 ProgressCallback = Callable[[str, int], None]
 PACKAGED_UPDATE_RESULT_FILE = "packaged-update-result.txt"
 MAX_UPDATE_RESULT_CHARS = 4000
+PACKAGED_UPDATE_WAIT_TIMEOUT_SECONDS = 90
 
 
 def _emit_progress(callback: ProgressCallback | None, status: str, progress: int) -> None:
@@ -116,6 +117,7 @@ def install_packaged_update(
     executable: str | None = None,
     process_id: int | None = None,
     progress_callback: ProgressCallback | None = None,
+    launch_helper: bool = True,
 ) -> Path:
     plan = build_packaged_update_plan(asset)
     if not plan.supported:
@@ -163,16 +165,23 @@ def install_packaged_update(
             executable_name=target_executable.name,
             process_id=process_id or os.getpid(),
             result_path=result_path,
+            cleanup_dir=runtime_dir,
         )
         helper_path.write_text(script, encoding="utf-8")
         if sys.platform.startswith("linux") or sys.platform == "darwin":
             helper_path.chmod(0o755)
-        _emit_progress(progress_callback, "Starting restart helper", 98)
-        launch_replace_helper(helper_path)
+        if launch_helper:
+            _emit_progress(progress_callback, "Starting restart helper", 98)
+            launch_replace_helper(helper_path)
     except Exception:
         shutil.rmtree(runtime_dir, ignore_errors=True)
         raise
     return helper_path
+
+
+def cleanup_prepared_update(helper_path: Path | str) -> None:
+    """Remove a prepared update that has not been handed to its helper."""
+    shutil.rmtree(Path(helper_path).parent, ignore_errors=True)
 
 
 def download_and_open_dmg(
@@ -309,6 +318,8 @@ def build_replace_helper_script(
     executable_name: str,
     process_id: int,
     result_path: Path | None = None,
+    cleanup_dir: Path | None = None,
+    wait_timeout_seconds: int = PACKAGED_UPDATE_WAIT_TIMEOUT_SECONDS,
 ) -> str:
     backup_dir = current_dir.with_name(
         f"{current_dir.name}.backup-{int(time.time())}"
@@ -322,6 +333,8 @@ def build_replace_helper_script(
             executable_name=executable_name,
             process_id=process_id,
             result_path=result_path,
+            cleanup_dir=cleanup_dir,
+            wait_timeout_seconds=wait_timeout_seconds,
         )
     return _build_posix_helper(
         current_dir=current_dir,
@@ -330,6 +343,8 @@ def build_replace_helper_script(
         executable_name=executable_name,
         process_id=process_id,
         result_path=result_path,
+        cleanup_dir=cleanup_dir,
+        wait_timeout_seconds=wait_timeout_seconds,
     )
 
 
@@ -383,14 +398,19 @@ def _build_windows_helper(
     executable_name: str,
     process_id: int,
     result_path: Path,
+    cleanup_dir: Path | None,
+    wait_timeout_seconds: int,
 ) -> str:
+    cleanup_path = _ps(cleanup_dir) if cleanup_dir is not None else ""
     return f"""$ErrorActionPreference = "Stop"
 $pidToWait = {process_id}
+$waitTimeoutSeconds = {max(1, int(wait_timeout_seconds))}
 $currentDir = '{_ps(current_dir)}'
 $replacementDir = '{_ps(replacement_dir)}'
 $backupDir = '{_ps(backup_dir)}'
 $executableName = '{_ps(executable_name)}'
 $resultPath = '{_ps(result_path)}'
+$cleanupDir = '{cleanup_path}'
 $backupCreated = $false
 
 function Write-UpdateResult([string]$status, [string]$message) {{
@@ -411,11 +431,18 @@ Time: $(Get-Date -Format o)
     }} catch {{}}
 }}
 
-try {{
-    Wait-Process -Id $pidToWait -Timeout 90 -ErrorAction SilentlyContinue
-}} catch {{}}
+function Remove-UpdateRuntime() {{
+    if ($cleanupDir -and (Test-Path -LiteralPath $cleanupDir)) {{
+        Remove-Item -LiteralPath $cleanupDir -Recurse -Force -ErrorAction SilentlyContinue
+    }}
+}}
 
 try {{
+    Wait-Process -Id $pidToWait -Timeout $waitTimeoutSeconds -ErrorAction SilentlyContinue
+    if (Get-Process -Id $pidToWait -ErrorAction SilentlyContinue) {{
+        throw "Timed out waiting for the previous app process to exit."
+    }}
+
     if (Test-Path -LiteralPath $backupDir) {{
         Remove-Item -LiteralPath $backupDir -Recurse -Force
     }}
@@ -427,6 +454,7 @@ try {{
     Start-Process -FilePath (Join-Path $currentDir $executableName)
     Start-Sleep -Seconds 2
     Remove-Item -LiteralPath $backupDir -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-UpdateRuntime
 }} catch {{
     if ($backupCreated -and (Test-Path -LiteralPath $currentDir)) {{
         Remove-Item -LiteralPath $currentDir -Recurse -Force -ErrorAction SilentlyContinue
@@ -435,6 +463,7 @@ try {{
         Move-Item -LiteralPath $backupDir -Destination $currentDir -Force
     }}
     Write-UpdateResult "failed" "Update failed and rollback was attempted: $($_.Exception.Message)"
+    Remove-UpdateRuntime
     throw
 }}
 """
@@ -448,16 +477,21 @@ def _build_posix_helper(
     executable_name: str,
     process_id: int,
     result_path: Path,
+    cleanup_dir: Path | None,
+    wait_timeout_seconds: int,
 ) -> str:
     executable_path = current_dir / executable_name
+    cleanup_path = _sh(cleanup_dir) if cleanup_dir is not None else "''"
     return f"""#!/bin/sh
 set -eu
 pid_to_wait={process_id}
+wait_timeout_seconds={max(1, int(wait_timeout_seconds))}
 current_dir={_sh(current_dir)}
 replacement_dir={_sh(replacement_dir)}
 backup_dir={_sh(backup_dir)}
 executable_path={_sh(executable_path)}
 result_path={_sh(result_path)}
+cleanup_dir={cleanup_path}
 
 write_update_result() {{
     status=$1
@@ -475,8 +509,22 @@ write_update_result() {{
     }} > "$result_path" 2>/dev/null || true
 }}
 
+cleanup_update_runtime() {{
+    if [ -n "$cleanup_dir" ]; then
+        rm -rf "$cleanup_dir" 2>/dev/null || true
+    fi
+}}
+
+trap cleanup_update_runtime EXIT
+
+waited_seconds=0
 while kill -0 "$pid_to_wait" 2>/dev/null; do
+    if [ "$waited_seconds" -ge "$wait_timeout_seconds" ]; then
+        write_update_result "failed" "Timed out waiting for the previous app process to exit."
+        exit 1
+    fi
     sleep 1
+    waited_seconds=$((waited_seconds + 1))
 done
 
 rm -rf "$backup_dir"

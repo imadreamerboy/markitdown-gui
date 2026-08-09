@@ -1,10 +1,16 @@
 [English](README.md) | [简体中文](README_zh.md) | [繁體中文](README_zh_TW.md)
 
 
+<p align="center">
+  <img src="markitdowngui/resources/markitdown-gui.png" alt="MarkItDown GUI icon" width="128">
+</p>
+
 # MarkItDown GUI Wrapper
 
 A desktop GUI for `MarkItDown`, built with `PySide6` and official Qt Quick Controls/QML.
 It focuses on fast multi-file conversion to Markdown with a modern, native-styled desktop interface.
+
+The same Markdown document icon is used by the macOS app bundle, Windows installer, Linux AppImage, and application window.
 
 ![Current UI screenshot](image.png)
 
@@ -37,6 +43,16 @@ Download prebuilt binaries from [Releases](https://github.com/imadreamerboy/mark
 - Windows: use `MarkItDown-Windows-Setup-<version>.exe` for the normal installer, or `MarkItDown-Windows-<version>.zip` for a portable folder.
 - Linux: use `MarkItDown-Linux-<version>.AppImage` for a single-file app, or `MarkItDown-Linux-<version>.zip` for a portable folder.
 - macOS: use `MarkItDown-macOS-<version>.dmg` and drag the app into Applications.
+
+### Arch Linux (AUR)
+
+On Arch Linux and Arch-based distributions, install [`markitdown-gui-appimage`](https://aur.archlinux.org/packages/markitdown-gui-appimage) for `x86_64`:
+
+```bash
+yay -S markitdown-gui-appimage
+# or
+paru -S markitdown-gui-appimage
+```
 
 ### Updating
 

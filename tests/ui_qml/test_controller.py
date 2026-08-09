@@ -70,7 +70,7 @@ class _FakeUpdateInstaller:
     def __init__(self, action: str = "success"):
         self.action = action
         self.progressChanged = _FakeSignal()
-        self.installStarted = _FakeSignal()
+        self.installReady = _FakeSignal()
         self.manualInstallOpened = _FakeSignal()
         self.installError = _FakeSignal()
         self.finished = _FakeSignal()
@@ -86,8 +86,8 @@ class _FakeUpdateInstaller:
             self.progressChanged.emit("DMG opened", 100)
             self.manualInstallOpened.emit("C:/Users/test/Downloads/MarkItDown.dmg")
         else:
-            self.progressChanged.emit("Starting restart helper", 98)
-            self.installStarted.emit()
+            self.progressChanged.emit("Preparing restart helper", 92)
+            self.installReady.emit("/tmp/markitdown-update/apply-update.ps1")
         self.finished.emit()
 
     def isRunning(self):
@@ -257,6 +257,10 @@ def test_controller_exposes_release_assets_for_packaged_updates(controller, monk
         "_create_update_checker",
         lambda: _FakeUpdateChecker(("available", "v1.2.0"), release),
     )
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.launch_replace_helper",
+        lambda _path: None,
+    )
     monkeypatch.setattr(controller, "openExternalUrl", lambda url: opened.append(url))
 
     controller.startAutomaticUpdateCheck()
@@ -425,6 +429,10 @@ def test_controller_installs_supported_preferred_update(controller, monkeypatch)
         lambda asset: created.append(asset) or _FakeUpdateInstaller(),
     )
     monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.launch_replace_helper",
+        lambda _path: None,
+    )
+    monkeypatch.setattr(
         controller,
         "_create_update_checker",
         lambda: _FakeUpdateChecker(("available", "v1.2.0"), release),
@@ -468,6 +476,10 @@ def test_controller_confirms_before_starting_update_with_unsaved_results(
         lambda asset: created.append(asset) or _FakeUpdateInstaller(),
     )
     monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.launch_replace_helper",
+        lambda _path: None,
+    )
+    monkeypatch.setattr(
         "markitdowngui.ui_qml.controller.QGuiApplication.quit",
         lambda: quit_calls.append(None),
     )
@@ -487,13 +499,15 @@ def test_controller_confirms_before_starting_update_with_unsaved_results(
 
 def test_packaged_update_installer_emits_progress_and_success(monkeypatch):
     progress: list[tuple[str, int]] = []
-    started: list[None] = []
+    ready: list[str] = []
     opened: list[str] = []
     errors: list[str] = []
 
-    def fake_install(_asset, progress_callback):
+    def fake_install(_asset, progress_callback, launch_helper):
+        assert launch_helper is False
         progress_callback("Downloading update", 25)
-        progress_callback("Starting restart helper", 98)
+        progress_callback("Preparing restart helper", 92)
+        return "/tmp/markitdown-update/apply-update.ps1"
 
     monkeypatch.setattr(
         "markitdowngui.ui_qml.controller.install_packaged_update",
@@ -501,25 +515,26 @@ def test_packaged_update_installer_emits_progress_and_success(monkeypatch):
     )
     installer = PackagedUpdateInstaller({"url": "https://example.com/windows.zip"})
     installer.progressChanged.connect(lambda status, value: progress.append((status, value)))
-    installer.installStarted.connect(lambda: started.append(None))
+    installer.installReady.connect(lambda path: ready.append(path))
     installer.manualInstallOpened.connect(lambda path: opened.append(path))
     installer.installError.connect(lambda message: errors.append(message))
 
     installer.run()
 
-    assert progress == [("Downloading update", 25), ("Starting restart helper", 98)]
-    assert started == [None]
+    assert progress == [("Downloading update", 25), ("Preparing restart helper", 92)]
+    assert ready == ["/tmp/markitdown-update/apply-update.ps1"]
     assert opened == []
     assert errors == []
 
 
 def test_packaged_update_installer_emits_manual_open_for_dmg(monkeypatch):
     progress: list[tuple[str, int]] = []
-    started: list[None] = []
+    ready: list[str] = []
     opened: list[str] = []
     errors: list[str] = []
 
-    def fake_install(_asset, progress_callback):
+    def fake_install(_asset, progress_callback, launch_helper):
+        assert launch_helper is False
         progress_callback("DMG opened", 100)
         return "/Users/test/Downloads/MarkItDown.dmg"
 
@@ -535,14 +550,14 @@ def test_packaged_update_installer_emits_manual_open_for_dmg(monkeypatch):
         {"name": "MarkItDown.dmg", "url": "https://example.com/macos.dmg"}
     )
     installer.progressChanged.connect(lambda status, value: progress.append((status, value)))
-    installer.installStarted.connect(lambda: started.append(None))
+    installer.installReady.connect(lambda path: ready.append(path))
     installer.manualInstallOpened.connect(lambda path: opened.append(path))
     installer.installError.connect(lambda message: errors.append(message))
 
     installer.run()
 
     assert progress == [("DMG opened", 100)]
-    assert started == []
+    assert ready == []
     assert opened == ["/Users/test/Downloads/MarkItDown.dmg"]
     assert errors == []
 
@@ -1132,6 +1147,24 @@ def test_controller_builds_fast_pdf_conversion_option(controller):
     assert options.fast_pdf_conversion is True
 
 
+def test_controller_supports_anydoc_default_and_per_conversion_override(controller):
+    assert controller.anydocDefaultEnabled is False
+    assert controller.anydocForConversion is False
+    assert controller._build_conversion_options(create_asset_root=False).anydoc_conversion is False
+
+    controller.setAnydocDefaultEnabled(True)
+    assert controller.anydocDefaultEnabled is True
+    assert controller.anydocForConversion is True
+    assert controller._build_conversion_options(create_asset_root=False).anydoc_conversion is True
+
+    controller.setAnydocForConversion(False)
+    assert controller.anydocForConversion is False
+    assert controller._build_conversion_options(create_asset_root=False).anydoc_conversion is False
+
+    controller._clear_queue()
+    assert controller.anydocForConversion is True
+
+
 def test_controller_translates_fast_pdf_strings(controller):
     assert controller.currentLanguage == "en"
     assert controller.translate("home_fast_pdf_conversion_label") == "Fast PDF conversion"
@@ -1141,6 +1174,22 @@ def test_controller_translates_fast_pdf_strings(controller):
 
     assert controller.currentLanguage == "zh_CN"
     assert controller.translate("home_fast_pdf_conversion_label") == "快速 PDF 转换"
+
+
+def test_controller_exposes_and_persists_qml_languages(controller):
+    assert controller.availableLanguageCodes == ["en", "zh_CN", "zh_TW"]
+    assert controller.availableLanguageLabels == [
+        "English",
+        "简体中文",
+        "繁體中文",
+    ]
+
+    controller.setLanguage("zh_TW")
+    assert controller.currentLanguage == "zh_TW"
+    assert controller.settings.get_current_language() == "zh_TW"
+
+    controller.setLanguage("not-a-language")
+    assert controller.currentLanguage == "zh_TW"
 
 
 def test_diagnostic_readiness_does_not_create_temp_asset_root(controller, monkeypatch):
@@ -1375,22 +1424,56 @@ def test_controller_confirms_before_closing_for_update_with_unsaved_results(
         {source: ConversionOutcome("# Converted", backend="native")},
     )
     requests: list[str] = []
+    launched: list[Path] = []
     quit_calls: list[None] = []
     controller.discardResultsRequested.connect(requests.append)
+    helper_path = tmp_path / "runtime" / "apply-update.sh"
+    helper_path.parent.mkdir()
+    helper_path.write_text("#!/bin/sh\n", encoding="utf-8")
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.launch_replace_helper",
+        lambda path: launched.append(path),
+    )
     monkeypatch.setattr(
         "markitdowngui.ui_qml.controller.QGuiApplication.quit",
         lambda: quit_calls.append(None),
     )
 
-    controller._on_update_install_started()
+    controller._on_update_install_ready(str(helper_path))
 
     assert requests == ["close the application and install the update"]
+    assert launched == []
     assert quit_calls == []
 
     controller.discardPendingResults()
 
     assert controller.hasResults is False
+    assert launched == [helper_path]
     assert quit_calls == [None]
+
+
+def test_controller_cancelling_update_discard_cleans_prepared_helper(
+    controller, monkeypatch, tmp_path
+):
+    source = str(tmp_path / "result.pdf")
+    _complete_results(
+        controller,
+        {source: ConversionOutcome("# Converted", backend="native")},
+    )
+    helper_path = tmp_path / "runtime" / "apply-update.sh"
+    helper_path.parent.mkdir()
+    helper_path.write_text("#!/bin/sh\n", encoding="utf-8")
+    cleaned: list[Path] = []
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.cleanup_prepared_update",
+        lambda path: cleaned.append(path),
+    )
+
+    controller._on_update_install_ready(str(helper_path))
+    controller.cancelPendingResultDiscard()
+
+    assert cleaned == [helper_path]
+    assert controller.hasResults is True
 
 
 def test_controller_reports_restart_failure(controller, monkeypatch):
@@ -2258,6 +2341,12 @@ def test_controller_finished_status_reports_mixed_failures(controller):
 
 
 def test_controller_exposes_completed_items_before_the_worker_finishes(controller):
+    controller._total_count = 2
+    controller._handle_item_started("C:/tmp/first.pdf")
+
+    assert controller.statusText == "Converting first.pdf"
+    assert controller.progressIndeterminate is False
+
     controller._handle_item_finished(
         "C:/tmp/first.pdf",
         ConversionOutcome("# First", backend="native"),
@@ -2267,6 +2356,8 @@ def test_controller_exposes_completed_items_before_the_worker_finishes(controlle
     assert controller.result_model.rowCount() == 1
     assert controller.selectedResultIndex == 0
     assert controller.hasUnsavedSuccessfulResults is True
+    assert controller.completedCount == 1
+    assert controller.totalCount == 2
 
     controller.worker = SimpleNamespace(is_cancelled=False, failed_files=set())
     controller._converting = True

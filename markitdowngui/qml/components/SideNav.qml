@@ -6,6 +6,8 @@ Item {
     id: root
 
     property int currentIndex: 0
+    property bool compact: false
+    property bool reduceMotion: ApplicationWindow.window ? ApplicationWindow.window.reduceMotion : false
     property color backgroundColor: "#EEF3F7"
     property color activeColor: "#FFFFFF"
     property color textColor: "#18212B"
@@ -15,6 +17,16 @@ Item {
     property color focusColor: accentColor
     property color utilityHoverColor: Qt.rgba(0.5, 0.6, 0.7, 0.12)
     property color accentTextColor: "#FFFFFF"
+    property string brandTitle: "MarkItDown"
+    property string brandSubtitle: "Document studio"
+    property string workspaceLabel: "Workspace"
+    property string workspaceDescription: "Convert documents and webpages"
+    property string workspaceDetail: "Convert to Markdown"
+    property string workspaceHelp: "Add files, paste a URL, review Markdown, then export."
+    property string helpLabel: "Help"
+    property string helpDescription: "Open help and keyboard shortcuts"
+    property string settingsLabel: "Settings"
+    property string settingsDescription: "Configure output, appearance, and OCR"
     signal pageRequested(int index)
 
     implicitWidth: 224
@@ -48,11 +60,12 @@ Item {
             }
 
             ColumnLayout {
+                visible: !root.compact
                 spacing: 1
                 Layout.fillWidth: true
 
                 Label {
-                    text: "MarkItDown"
+                    text: root.brandTitle
                     color: root.textColor
                     font.pixelSize: 14
                     font.weight: Font.DemiBold
@@ -61,7 +74,7 @@ Item {
                 }
 
                 Label {
-                    text: "Document studio"
+                    text: root.brandSubtitle
                     color: root.mutedTextColor
                     font.pixelSize: 11
                     elide: Text.ElideRight
@@ -73,14 +86,20 @@ Item {
         Button {
             id: workspaceButton
             Layout.fillWidth: true
-            implicitHeight: 56
+            implicitHeight: root.compact ? 44 : 56
             flat: true
-            Accessible.name: "Workspace"
-            Accessible.description: "Convert documents and webpages"
+            hoverEnabled: true
+            scale: pressed && !root.reduceMotion ? 0.98 : 1
+            Accessible.name: root.workspaceLabel
+            Accessible.description: root.workspaceDescription
             onClicked: root.pageRequested(0)
             ToolTip.visible: hovered
             ToolTip.delay: 550
-            ToolTip.text: "Convert documents and webpages"
+            ToolTip.text: root.workspaceDescription
+
+            HoverHandler {
+                cursorShape: Qt.PointingHandCursor
+            }
 
             contentItem: RowLayout {
                 spacing: 10
@@ -101,11 +120,12 @@ Item {
                 }
 
                 ColumnLayout {
+                    visible: !root.compact
                     spacing: 1
                     Layout.fillWidth: true
 
                     Label {
-                        text: "Workspace"
+                        text: root.workspaceLabel
                         color: root.textColor
                         font.pixelSize: 13
                         font.weight: root.currentIndex === 0 ? Font.DemiBold : Font.Medium
@@ -114,7 +134,7 @@ Item {
                     }
 
                     Label {
-                        text: "Convert to Markdown"
+                        text: root.workspaceDetail
                         color: root.mutedTextColor
                         font.pixelSize: 11
                         elide: Text.ElideRight
@@ -133,14 +153,21 @@ Item {
 
                 Behavior on color {
                     ColorAnimation {
-                        duration: 110
+                        duration: root.reduceMotion ? 0 : 110
                     }
                 }
 
                 Behavior on border.color {
                     ColorAnimation {
-                        duration: 110
+                        duration: root.reduceMotion ? 0 : 110
                     }
+                }
+            }
+
+            Behavior on scale {
+                NumberAnimation {
+                    duration: root.reduceMotion ? 0 : 100
+                    easing.type: Easing.OutCubic
                 }
             }
         }
@@ -152,7 +179,8 @@ Item {
         }
 
         Label {
-            text: "Add files, paste a URL, review Markdown, then export."
+            visible: !root.compact
+            text: root.workspaceHelp
             color: root.mutedTextColor
             font.pixelSize: 12
             lineHeight: 1.15
@@ -173,12 +201,18 @@ Item {
                 Layout.fillWidth: true
                 implicitHeight: 40
                 flat: true
-                Accessible.name: "Help"
-                Accessible.description: "Open help and keyboard shortcuts"
+                hoverEnabled: true
+                scale: pressed && !root.reduceMotion ? 0.98 : 1
+                Accessible.name: root.helpLabel
+                Accessible.description: root.helpDescription
                 onClicked: root.pageRequested(2)
                 ToolTip.visible: hovered
                 ToolTip.delay: 550
-                ToolTip.text: "Help"
+                ToolTip.text: root.helpLabel
+
+                HoverHandler {
+                    cursorShape: Qt.PointingHandCursor
+                }
 
                 contentItem: RowLayout {
                     spacing: 10
@@ -199,7 +233,8 @@ Item {
                     }
 
                     Label {
-                        text: "Help"
+                        visible: !root.compact
+                        text: root.helpLabel
                         color: root.textColor
                         font.pixelSize: 13
                         font.weight: root.currentIndex === 2 ? Font.DemiBold : Font.Medium
@@ -218,14 +253,21 @@ Item {
 
                     Behavior on color {
                         ColorAnimation {
-                            duration: 110
+                            duration: root.reduceMotion ? 0 : 110
                         }
                     }
 
                     Behavior on border.color {
                         ColorAnimation {
-                            duration: 110
+                            duration: root.reduceMotion ? 0 : 110
                         }
+                    }
+                }
+
+                Behavior on scale {
+                    NumberAnimation {
+                        duration: root.reduceMotion ? 0 : 100
+                        easing.type: Easing.OutCubic
                     }
                 }
             }
@@ -235,12 +277,18 @@ Item {
                 Layout.fillWidth: true
                 implicitHeight: 40
                 flat: true
-                Accessible.name: "Settings"
-                Accessible.description: "Configure output, appearance, and OCR"
+                hoverEnabled: true
+                scale: pressed && !root.reduceMotion ? 0.98 : 1
+                Accessible.name: root.settingsLabel
+                Accessible.description: root.settingsDescription
                 onClicked: root.pageRequested(1)
                 ToolTip.visible: hovered
                 ToolTip.delay: 550
-                ToolTip.text: "Settings"
+                ToolTip.text: root.settingsLabel
+
+                HoverHandler {
+                    cursorShape: Qt.PointingHandCursor
+                }
 
                 contentItem: RowLayout {
                     spacing: 10
@@ -261,7 +309,8 @@ Item {
                     }
 
                     Label {
-                        text: "Settings"
+                        visible: !root.compact
+                        text: root.settingsLabel
                         color: root.textColor
                         font.pixelSize: 13
                         font.weight: root.currentIndex === 1 ? Font.DemiBold : Font.Medium
@@ -280,14 +329,21 @@ Item {
 
                     Behavior on color {
                         ColorAnimation {
-                            duration: 110
+                            duration: root.reduceMotion ? 0 : 110
                         }
                     }
 
                     Behavior on border.color {
                         ColorAnimation {
-                            duration: 110
+                            duration: root.reduceMotion ? 0 : 110
                         }
+                    }
+                }
+
+                Behavior on scale {
+                    NumberAnimation {
+                        duration: root.reduceMotion ? 0 : 100
+                        easing.type: Easing.OutCubic
                     }
                 }
             }

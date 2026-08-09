@@ -67,6 +67,10 @@ jobs:
         run: uv run pyinstaller MarkItDown.spec --clean --noconfirm
         shell: bash
 
+      - name: Run packaged-app smoke test
+        run: uv run python packaging/smoke_packaged_app.py
+        shell: bash
+
       - name: Package artifact
         run: |
           TAG_NAME="${GITHUB_REF#refs/tags/}"

@@ -23,6 +23,8 @@ def test_build_hiddenimports_includes_charset_normalizer_mypyc_runtime():
     assert "glmocr.api" in hiddenimports
     assert "markitdown_pdf_images.converter" in hiddenimports
     assert "pdf_inspector.pdf_inspector" in hiddenimports
+    assert "anydoc" in hiddenimports
+    assert "anydoc._anydoc" in hiddenimports
     assert calls[:2] == ["markitdown", "charset_normalizer"]
 
 
@@ -100,7 +102,21 @@ def test_spec_defines_macos_app_bundle():
     assert 'if sys.platform == "darwin":' in spec
     assert "BUNDLE(" in spec
     assert 'name="MarkItDown.app"' in spec
+    assert 'icon=os.path.abspath("markitdowngui/resources/markitdown-gui.icns")' in spec
     assert 'bundle_identifier="com.imadreamerboy.markitdown-gui"' in spec
+
+
+def test_native_app_icon_assets_are_present():
+    resources = Path("markitdowngui/resources")
+
+    for filename in (
+        "markitdown-gui.png",
+        "markitdown-gui.ico",
+        "markitdown-gui.icns",
+    ):
+        asset = resources / filename
+        assert asset.is_file(), asset
+        assert asset.stat().st_size > 0
 
 
 def test_release_workflow_packages_signed_macos_app_bundle():
@@ -111,6 +127,17 @@ def test_release_workflow_packages_signed_macos_app_bundle():
     assert 'codesign --force --deep --timestamp --sign "$SIGN_IDENTITY" "$APP_PATH"' in workflow
     assert "ln -s /Applications dmg_root/Applications" in workflow
     assert "hdiutil create -volname \"MarkItDown\" -srcfolder dmg_root" in workflow
+
+
+def test_release_workflow_smokes_packaged_app_before_packaging():
+    workflow = Path(".github/workflows/release.yml").read_text(encoding="utf-8")
+
+    build_index = workflow.index("- name: Build executable")
+    smoke_index = workflow.index("- name: Run packaged-app smoke test")
+    package_index = workflow.index("- name: Package artifact")
+
+    assert build_index < smoke_index < package_index
+    assert "uv run python packaging/smoke_packaged_app.py" in workflow[smoke_index:package_index]
 
 
 def test_release_workflow_builds_windows_setup_and_linux_appimage():

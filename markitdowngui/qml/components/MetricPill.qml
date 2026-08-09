@@ -12,8 +12,9 @@ Rectangle {
     property color textColor: "#18212B"
     property color mutedTextColor: "#647283"
     property real borderOpacity: 1.0
+    property bool compact: false
 
-    implicitWidth: Math.max(92, content.implicitWidth + 18)
+    implicitWidth: compact ? 0 : Math.max(92, content.implicitWidth + 18)
     implicitHeight: 46
     radius: 8
     color: backgroundColor
