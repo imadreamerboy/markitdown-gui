@@ -46,7 +46,9 @@ Download prebuilt binaries from [Releases](https://github.com/imadreamerboy/mark
 
 ### Arch Linux (AUR)
 
-On Arch Linux and Arch-based distributions, install [`markitdown-gui-appimage`](https://aur.archlinux.org/packages/markitdown-gui-appimage) for `x86_64`:
+On Arch Linux and Arch-based distributions, a community-maintained AUR package is available for `x86_64`. It is not maintained by the MarkItDown GUI project:
+
+[`markitdown-gui-appimage`](https://aur.archlinux.org/packages/markitdown-gui-appimage)
 
 ```bash
 yay -S markitdown-gui-appimage
