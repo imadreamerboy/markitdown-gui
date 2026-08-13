@@ -44,6 +44,18 @@ Download prebuilt binaries from [Releases](https://github.com/imadreamerboy/mark
 - Linux: use `MarkItDown-Linux-<version>.AppImage` for a single-file app, or `MarkItDown-Linux-<version>.zip` for a portable folder.
 - macOS: use `MarkItDown-macOS-<version>.dmg` and drag the app into Applications.
 
+### Arch Linux (AUR)
+
+On Arch Linux and Arch-based distributions, a community-maintained AUR package is available for `x86_64`. It is not maintained by the MarkItDown GUI project:
+
+[`markitdown-gui-appimage`](https://aur.archlinux.org/packages/markitdown-gui-appimage)
+
+```bash
+yay -S markitdown-gui-appimage
+# or
+paru -S markitdown-gui-appimage
+```
+
 ### Updating
 
 - Packaged desktop builds are updated from [Releases](https://github.com/imadreamerboy/markitdown-gui/releases). The in-app update check reads the latest GitHub release, shows a short release-note summary, and prefers the asset for the current operating system. Help shows the selected asset, size, checksum availability, action, and restart behaviour before install.
