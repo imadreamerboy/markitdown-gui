@@ -12,3 +12,7 @@ wheels/
 # Generated HTML documentation
 README.html
 README_files/
+
+# Local macOS and planning artefacts
+.DS_Store
+plans/
