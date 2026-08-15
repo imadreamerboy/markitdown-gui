@@ -8,3 +8,7 @@ wheels/
 
 # Virtual environments
 .venv*
+
+# Generated HTML documentation
+README.html
+README_files/
