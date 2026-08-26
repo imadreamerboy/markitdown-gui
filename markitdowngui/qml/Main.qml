@@ -197,6 +197,120 @@ ApplicationWindow {
     }
 
     FileDialog {
+        id: batchUrlFileDialog
+        objectName: "batchUrlFileDialog"
+        title: root.tr("qml_import_url_list")
+        fileMode: FileDialog.OpenFile
+        currentFolder: app.outputFolderUrl
+        nameFilters: [root.tr("qml_text_files_filter")]
+        onAccepted: app.importBatchUrlText(selectedFile)
+    }
+
+    Dialog {
+        id: batchUrlDialog
+        objectName: "multipleUrlsDialog"
+
+        title: root.tr("qml_multiple_urls")
+        modal: true
+        focus: true
+        width: Math.min(620, root.width - 48)
+        height: Math.min(520, root.height - 48)
+        standardButtons: Dialog.NoButton
+        closePolicy: Popup.CloseOnEscape
+        anchors.centerIn: parent
+
+        background: Rectangle {
+            radius: root.panelRadius
+            color: colors.surface
+            border.color: colors.border
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 10
+
+            Label {
+                text: root.tr("qml_batch_urls_instruction")
+                color: colors.muted
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
+            }
+
+            ScrollView {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+
+                TextArea {
+                    id: batchUrlInput
+                    objectName: "multipleUrlsInput"
+                    placeholderText: root.tr("qml_batch_urls_placeholder")
+                    color: colors.text
+                    placeholderTextColor: colors.subtle
+                    selectionColor: colors.accent
+                    selectedTextColor: colors.onAccent
+                    wrapMode: TextEdit.NoWrap
+                    Accessible.name: root.tr("qml_batch_urls_input")
+                    Accessible.description: root.tr("qml_batch_urls_input_description")
+
+                    background: Rectangle {
+                        radius: root.controlRadius
+                        color: colors.input
+                        border.color: batchUrlInput.activeFocus ? colors.accent : colors.border
+                        border.width: batchUrlInput.activeFocus ? 2 : 1
+                    }
+                }
+            }
+        }
+
+        footer: Item {
+            implicitHeight: batchUrlButtons.implicitHeight + 20
+
+            RowLayout {
+                id: batchUrlButtons
+                anchors.fill: parent
+                anchors.margins: 10
+                spacing: 8
+
+                AppButton {
+                    objectName: "importUrlsTxtButton"
+                    text: root.tr("qml_import_txt")
+                    iconName: "folder-plus"
+                    subtle: true
+                    accentColor: colors.action
+                    textColor: colors.text
+                    Accessible.name: root.tr("qml_import_txt")
+                    Accessible.description: root.tr("qml_import_txt_description")
+                    onClicked: batchUrlFileDialog.open()
+                }
+
+                Item {
+                    Layout.fillWidth: true
+                }
+
+                AppButton {
+                    text: root.tr("qml_cancel")
+                    subtle: true
+                    accentColor: colors.action
+                    textColor: colors.text
+                    onClicked: batchUrlDialog.reject()
+                }
+
+                AppButton {
+                    objectName: "addMultipleUrlsButton"
+                    text: root.tr("qml_add_urls")
+                    primary: true
+                    accentColor: colors.action
+                    primaryTextColor: colors.onAction
+                    Accessible.name: root.tr("qml_add_urls")
+                    Accessible.description: root.tr("qml_add_urls_description")
+                    onClicked: app.addBatchUrls(batchUrlInput.text)
+                }
+            }
+        }
+
+        onOpened: batchUrlInput.forceActiveFocus()
+    }
+
+    FileDialog {
         id: saveCombinedDialog
         title: root.tr("save_combined_title")
         fileMode: FileDialog.SaveFile
@@ -1050,6 +1164,16 @@ ApplicationWindow {
                         if (compactUrlInput.text.trim() === url)
                             compactUrlInput.text = ""
                     }
+
+                    function onBatchUrlTextLoaded(text) {
+                        batchUrlInput.text = text
+                        batchUrlDialog.open()
+                    }
+
+                    function onBatchUrlsQueued() {
+                        batchUrlInput.clear()
+                        batchUrlDialog.close()
+                    }
                 }
 
                 AppButton {
@@ -1066,6 +1190,21 @@ ApplicationWindow {
                         if (app.addUrl(compactUrlInput.text))
                             compactUrlInput.text = ""
                     }
+                }
+
+                AppButton {
+                    objectName: "multipleUrlsButton"
+                    text: root.tr("qml_multiple_urls")
+                    enabled: !app.converting
+                    iconName: "plus"
+                    subtle: true
+                    accentColor: colors.action
+                    surfaceColor: colors.surfaceAlt
+                    borderColor: colors.border
+                    textColor: colors.text
+                    Accessible.name: root.tr("qml_multiple_urls")
+                    Accessible.description: root.tr("qml_multiple_urls_description")
+                    onClicked: batchUrlDialog.open()
                 }
             }
         }

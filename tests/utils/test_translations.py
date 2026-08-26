@@ -46,6 +46,40 @@ def test_qml_translation_keys_exist_in_every_configured_language():
     for language in TRANSLATIONS:
         assert keys <= TRANSLATIONS[language].keys()
 
+
+def test_batch_url_translations_have_locale_and_placeholder_parity():
+    required_keys = {
+        "qml_add_urls",
+        "qml_add_urls_description",
+        "qml_add_urls_to_queue_action",
+        "qml_batch_urls_input",
+        "qml_batch_urls_input_description",
+        "qml_batch_urls_instruction",
+        "qml_batch_urls_placeholder",
+        "qml_cancel",
+        "qml_import_txt",
+        "qml_import_txt_description",
+        "qml_import_url_list",
+        "qml_multiple_urls",
+        "qml_multiple_urls_description",
+        "qml_text_files_filter",
+        "qml_url_import_decode_error",
+        "qml_url_import_empty",
+        "qml_url_import_invalid_lines",
+        "qml_url_import_overflow",
+        "qml_url_import_read_error",
+        "qml_url_import_summary",
+        "qml_url_import_txt_only",
+    }
+    placeholder_pattern = re.compile(r"\{[^}]+\}")
+
+    for language, values in TRANSLATIONS.items():
+        assert required_keys <= values.keys(), language
+        for key in required_keys:
+            assert set(placeholder_pattern.findall(values[key])) == set(
+                placeholder_pattern.findall(TRANSLATIONS["en"][key])
+            ), (language, key)
+
 def test_home_translation_keys_exist():
     """Ensure new Home UX translation keys exist in every configured language."""
     required_keys = [

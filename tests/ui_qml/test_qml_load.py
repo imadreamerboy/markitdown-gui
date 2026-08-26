@@ -112,6 +112,72 @@ def test_main_qml_loads_with_controller_context(monkeypatch, tmp_path):
         _close_main_qml(app, controller, engine)
 
 
+def test_multiple_urls_modal_is_accessible_and_fits_desktop_and_compact_windows(
+    monkeypatch,
+    tmp_path,
+):
+    app, controller, engine, root = _load_main_qml(monkeypatch, tmp_path)
+
+    try:
+        trigger = _find_by_property(root, "objectName", "multipleUrlsButton")
+        dialog = _find_by_property(root, "objectName", "multipleUrlsDialog")
+        url_input = _find_by_property(root, "objectName", "multipleUrlsInput")
+        import_button = _find_by_property(root, "objectName", "importUrlsTxtButton")
+        add_button = _find_by_property(root, "objectName", "addMultipleUrlsButton")
+
+        assert _accessible_name(trigger) == "Multiple URLs"
+        trigger_interface = QAccessible.queryAccessibleInterface(trigger)
+        assert trigger_interface.text(QAccessible.Text.Description) == (
+            "Open a multiline input for adding several webpage URLs."
+        )
+
+        for width, height in ((1180, 760), (820, 560)):
+            root.setWidth(width)
+            root.setHeight(height)
+            app.processEvents()
+
+            trigger_point = trigger.mapToScene(trigger.boundingRect().center())
+            assert 0 <= trigger_point.x() <= width
+            assert 0 <= trigger_point.y() <= height
+            QTest.mouseClick(
+                root,
+                Qt.MouseButton.LeftButton,
+                Qt.KeyboardModifier.NoModifier,
+                QPoint(round(trigger_point.x()), round(trigger_point.y())),
+            )
+            app.processEvents()
+
+            assert dialog.property("visible") is True
+            assert dialog.property("width") <= width - 48
+            assert dialog.property("height") <= height - 48
+            assert url_input.isVisible() is True
+            assert url_input.hasActiveFocus() is True
+            assert _accessible_name(url_input) == "URL list"
+            input_interface = QAccessible.queryAccessibleInterface(url_input)
+            assert input_interface.text(QAccessible.Text.Description) == (
+                "One full http or https URL per line."
+            )
+            assert _accessible_name(import_button) == "Import .txt"
+            assert _accessible_name(add_button) == "Add URLs"
+
+            dialog.close()
+            app.processEvents()
+    finally:
+        _close_main_qml(app, controller, engine)
+
+
+def test_batch_url_import_filter_is_txt_only_without_changing_conversion_inputs():
+    main_text = (
+        Path(__file__).resolve().parents[2]
+        / "markitdowngui"
+        / "qml"
+        / "Main.qml"
+    ).read_text(encoding="utf-8")
+
+    assert 'nameFilters: [root.tr("qml_text_files_filter")]' in main_text
+    assert "*.txt *.md *.csv" in main_text
+
+
 def test_main_qml_loads_secondary_pages_on_demand(monkeypatch, tmp_path):
     app, controller, engine, root = _load_main_qml(monkeypatch, tmp_path)
 

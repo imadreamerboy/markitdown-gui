@@ -430,9 +430,10 @@ def test_convert_url_surfaces_rate_limit(monkeypatch, conversion):
 
     monkeypatch.setattr(conversion.requests, "get", lambda *_args, **_kwargs: FakeResponse())
 
-    with pytest.raises(RuntimeError) as exc_info:
+    with pytest.raises(conversion.DefuddleRateLimitError) as exc_info:
         conversion.convert_file("https://example.com/article")
 
+    assert exc_info.value.status_code == 429
     assert "1,000 requests per month per IP" in str(exc_info.value)
 
 
@@ -1828,6 +1829,147 @@ def test_conversion_worker_tracks_processing_backends(monkeypatch, conversion):
         "scan.pdf": conversion.BACKEND_AZURE,
         "notes.txt": conversion.BACKEND_NATIVE,
     }
+
+
+def test_conversion_worker_stops_later_urls_after_defuddle_rate_limit(
+    monkeypatch,
+    conversion,
+):
+    first_url = "https://example.com/first"
+    limited_url = "https://example.com/limited"
+    skipped_url = "https://example.com/skipped"
+    local_file = "notes.txt"
+    later_skipped_url = "https://example.com/later"
+    attempted: list[str] = []
+
+    def fake_convert_with_details(file_path, _options, **_kwargs):
+        attempted.append(file_path)
+        if file_path == limited_url:
+            raise conversion.DefuddleRateLimitError("Defuddle rate limit reached.")
+        return conversion.ConversionOutcome(
+            markdown=f"converted {file_path}",
+            backend=(
+                conversion.BACKEND_DEFUDDLE
+                if file_path.startswith("https://")
+                else conversion.BACKEND_NATIVE
+            ),
+        )
+
+    monkeypatch.setattr(conversion, "convert_file_with_details", fake_convert_with_details)
+
+    worker = conversion.ConversionWorker(
+        [first_url, limited_url, skipped_url, local_file, later_skipped_url],
+        batch_size=99,
+    )
+    started: list[str] = []
+    completed: list[tuple[str, str, bool]] = []
+    finished: list[dict[str, object]] = []
+    progress: list[int] = []
+    worker.itemStarted.connect(started.append)
+    worker.itemFinished.connect(
+        lambda source, outcome, failed: completed.append(
+            (source, outcome.markdown, failed)
+        )
+    )
+    worker.finished.connect(finished.append)
+    worker.progress.connect(lambda value, _source: progress.append(value))
+
+    worker.run()
+
+    assert attempted == [first_url, limited_url, local_file]
+    assert started == [first_url, limited_url, local_file]
+    assert worker.failed_files == {limited_url, skipped_url, later_skipped_url}
+    assert worker.unattempted_files == {skipped_url, later_skipped_url}
+    assert worker.processing_backends == {
+        first_url: conversion.BACKEND_DEFUDDLE,
+        local_file: conversion.BACKEND_NATIVE,
+    }
+    assert [source for source, _markdown, _failed in completed] == [
+        first_url,
+        limited_url,
+        skipped_url,
+        local_file,
+        later_skipped_url,
+    ]
+    assert [failed for _source, _markdown, failed in completed] == [
+        False,
+        True,
+        True,
+        False,
+        True,
+    ]
+    assert "Not attempted because Defuddle rate-limited an earlier URL" in completed[2][1]
+    assert "Retry this URL later" in completed[4][1]
+    assert set(finished[0]) == {
+        first_url,
+        limited_url,
+        skipped_url,
+        local_file,
+        later_skipped_url,
+    }
+    assert progress[-1] == 100
+
+
+def test_conversion_worker_resets_rate_limit_state_for_retry(monkeypatch, conversion):
+    limited_url = "https://example.com/limited"
+    skipped_url = "https://example.com/skipped"
+
+    def rate_limited(file_path, _options, **_kwargs):
+        if file_path == limited_url:
+            raise conversion.DefuddleRateLimitError("Defuddle rate limit reached.")
+        pytest.fail("The later URL must not be attempted after a rate limit")
+
+    monkeypatch.setattr(conversion, "convert_file_with_details", rate_limited)
+    worker = conversion.ConversionWorker([limited_url, skipped_url], batch_size=1)
+    worker.run()
+
+    assert worker.failed_files == {limited_url, skipped_url}
+    assert worker.unattempted_files == {skipped_url}
+
+    monkeypatch.setattr(
+        conversion,
+        "convert_file_with_details",
+        lambda file_path, _options, **_kwargs: conversion.ConversionOutcome(
+            markdown=f"retried {file_path}",
+            backend=conversion.BACKEND_DEFUDDLE,
+        ),
+    )
+    worker.run()
+
+    assert worker.failed_files == set()
+    assert worker.unattempted_files == set()
+    assert worker.processing_backends == {
+        limited_url: conversion.BACKEND_DEFUDDLE,
+        skipped_url: conversion.BACKEND_DEFUDDLE,
+    }
+
+
+def test_conversion_worker_keeps_trying_urls_after_non_rate_limit_failure(
+    monkeypatch,
+    conversion,
+):
+    failed_url = "https://example.com/unavailable"
+    later_url = "https://example.com/later"
+    attempted: list[str] = []
+
+    def fake_convert_with_details(file_path, _options, **_kwargs):
+        attempted.append(file_path)
+        if file_path == failed_url:
+            raise RuntimeError("Defuddle is temporarily unavailable.")
+        return conversion.ConversionOutcome(
+            markdown="converted",
+            backend=conversion.BACKEND_DEFUDDLE,
+        )
+
+    monkeypatch.setattr(conversion, "convert_file_with_details", fake_convert_with_details)
+    worker = conversion.ConversionWorker([failed_url, later_url], batch_size=1)
+
+    worker.run()
+
+    assert attempted == [failed_url, later_url]
+    assert worker.failed_files == {failed_url}
+    assert worker.unattempted_files == set()
+    assert worker.processing_backends == {later_url: conversion.BACKEND_DEFUDDLE}
 
 
 def test_conversion_worker_emits_finished_when_cancelled_while_paused(conversion):
