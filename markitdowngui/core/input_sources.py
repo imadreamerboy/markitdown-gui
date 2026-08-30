@@ -39,9 +39,11 @@ def is_web_url(value: str) -> bool:
 
     try:
         parsed = urlparse(candidate)
+        hostname = parsed.hostname
+        _ = parsed.port
     except ValueError:
         return False
-    return parsed.scheme.lower() in WEB_URL_SCHEMES and bool(parsed.netloc)
+    return parsed.scheme.lower() in WEB_URL_SCHEMES and bool(hostname)
 
 
 def parse_batch_urls(

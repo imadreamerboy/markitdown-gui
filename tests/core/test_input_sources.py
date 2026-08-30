@@ -14,11 +14,25 @@ from markitdowngui.core.input_sources import (
 def test_is_web_url_accepts_http_and_https():
     assert is_web_url("https://example.com/article") is True
     assert is_web_url("http://example.com/article") is True
+    assert is_web_url("https://user@example.com:8443/article") is True
     assert is_web_url("example.com/article") is False
     assert is_web_url(r"C:\docs\article.html") is False
     assert is_web_url("https://example.com/hello world") is False
     assert is_web_url("https://example.com/hello\tworld") is False
     assert is_web_url("https://[") is False
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://example.com:bad",
+        "https://example.com:65536",
+        "https://user@",
+        "https://:443",
+    ],
+)
+def test_is_web_url_rejects_malformed_authorities(url):
+    assert is_web_url(url) is False
 
 
 def test_parse_batch_urls_trims_lines_and_ignores_blanks():
@@ -47,6 +61,20 @@ def test_parse_batch_urls_rejects_all_input_and_reports_invalid_line_numbers():
     assert result.ok is False
     assert result.urls == ()
     assert result.invalid_line_numbers == (2, 4)
+    assert result.added_count == 0
+
+
+def test_parse_batch_urls_atomically_rejects_malformed_authorities():
+    result = parse_batch_urls(
+        "https://example.com/valid\n"
+        "https://example.com:bad\n"
+        "https://user@\n"
+        "https://example.com/also-valid"
+    )
+
+    assert result.ok is False
+    assert result.urls == ()
+    assert result.invalid_line_numbers == (2, 3)
     assert result.added_count == 0
 
 
