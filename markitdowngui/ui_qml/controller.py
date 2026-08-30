@@ -37,7 +37,11 @@ from markitdowngui.core.conversion import (
 )
 from markitdowngui.core.file_utils import FileManager
 from markitdowngui.core.input_sources import (
+    BATCH_URL_LIMIT,
+    BatchUrlParseResult,
+    decode_batch_url_file,
     is_web_url,
+    parse_batch_urls,
     source_output_dir,
     source_output_stem,
 )
@@ -175,6 +179,8 @@ class AppController(QObject):
     discardResultsRequested = Signal(str)
     closeApproved = Signal()
     urlQueued = Signal(str)
+    batchUrlsQueued = Signal()
+    batchUrlTextLoaded = Signal(str)
     toastRequested = Signal(str, str)
 
     def __init__(self) -> None:
@@ -628,6 +634,18 @@ class AppController(QObject):
         if self._queue_change_locked():
             return False
         sources = [path for path in self._paths_from_variant(values) if path]
+        existing_urls = self._queued_urls()
+        new_urls = {
+            source
+            for source in sources
+            if is_web_url(source) and source not in existing_urls
+        }
+        if len(existing_urls) + len(new_urls) > BATCH_URL_LIMIT:
+            self._show_batch_url_overflow(
+                len(existing_urls) + len(new_urls) - BATCH_URL_LIMIT,
+                BATCH_URL_LIMIT,
+            )
+            return False
         if not self._has_new_queue_sources(sources):
             return False
         if self._request_result_discard(
@@ -656,7 +674,84 @@ class AppController(QObject):
         if not is_web_url(url):
             self.toastRequested.emit("error", "Enter a valid http:// or https:// URL.")
             return False
+        parsed = parse_batch_urls(url, self._queued_urls())
+        if parsed.overflow_count:
+            self._show_batch_url_overflow(parsed.overflow_count, parsed.limit)
+            return False
         return self.addFiles([url])
+
+    @Slot(str, result=bool)
+    def addBatchUrls(self, text: str) -> bool:
+        if self._queue_change_locked():
+            return False
+        if not any(line.strip() for line in text.splitlines()):
+            self.toastRequested.emit("error", self.translate("qml_url_import_empty"))
+            return False
+
+        parsed = parse_batch_urls(text, self._queued_urls())
+        if not self._report_batch_url_parse_error(parsed):
+            return False
+
+        action = lambda: self._add_batch_urls_to_queue(parsed)
+        action_description = self.translate("qml_add_urls_to_queue_action")
+        if parsed.urls and self._request_result_discard(action_description, action):
+            return False
+        return self._add_batch_urls_to_queue(parsed)
+
+    def _add_batch_urls_to_queue(self, parsed: BatchUrlParseResult) -> bool:
+        if parsed.urls:
+            self._add_files_to_queue(list(parsed.urls))
+        message = self.translate("qml_url_import_summary")
+        message = message.replace("{added}", str(parsed.added_count))
+        message = message.replace("{skipped}", str(parsed.skipped_count))
+        self.toastRequested.emit("success", message)
+        self.batchUrlsQueued.emit()
+        return True
+
+    @Slot("QVariant", result=bool)
+    def importBatchUrlText(self, file_url: Any) -> bool:
+        path = Path(self._path_from_url(file_url))
+        if path.suffix.lower() != ".txt":
+            self.toastRequested.emit("error", self.translate("qml_url_import_txt_only"))
+            return False
+        try:
+            text = decode_batch_url_file(path.read_bytes())
+        except UnicodeDecodeError:
+            self.toastRequested.emit(
+                "error",
+                self.translate("qml_url_import_decode_error"),
+            )
+            return False
+        except OSError as exc:
+            message = self.translate("qml_url_import_read_error").replace(
+                "{error}", str(exc)
+            )
+            self.toastRequested.emit("error", message)
+            return False
+        self.batchUrlTextLoaded.emit(text)
+        return True
+
+    def _report_batch_url_parse_error(self, parsed: BatchUrlParseResult) -> bool:
+        if parsed.invalid_line_numbers:
+            lines = ", ".join(str(line) for line in parsed.invalid_line_numbers)
+            message = self.translate("qml_url_import_invalid_lines").replace(
+                "{lines}", lines
+            )
+            self.toastRequested.emit("error", message)
+            return False
+        if parsed.overflow_count:
+            self._show_batch_url_overflow(parsed.overflow_count, parsed.limit)
+            return False
+        return True
+
+    def _show_batch_url_overflow(self, overflow_count: int, limit: int) -> None:
+        message = self.translate("qml_url_import_overflow")
+        message = message.replace("{limit}", str(limit))
+        message = message.replace("{overflow}", str(overflow_count))
+        self.toastRequested.emit("error", message)
+
+    def _queued_urls(self) -> list[str]:
+        return [source for source in self.queue_model.sources() if is_web_url(source)]
 
     @Slot(int)
     def removeQueued(self, row: int) -> None:

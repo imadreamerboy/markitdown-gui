@@ -315,6 +315,12 @@ class ConversionOutcome:
     assets: list[ConversionAsset] = field(default_factory=list)
 
 
+class DefuddleRateLimitError(RuntimeError):
+    """Defuddle rejected a website conversion because its rate limit was reached."""
+
+    status_code = 429
+
+
 class MarkItDownSession:
     """Lazily reuse native MarkItDown instances within one serial worker."""
 
@@ -1581,7 +1587,7 @@ def _convert_url_with_defuddle(url: str) -> str:
         ) from exc
 
     if response.status_code == 429:
-        raise RuntimeError(
+        raise DefuddleRateLimitError(
             "Defuddle rate limit reached. The free tier allows up to 1,000 requests per month per IP."
         )
 
@@ -1682,6 +1688,7 @@ class ConversionWorker(QThread):
         self.batch_size = batch_size
         self.options = options or ConversionOptions()
         self.failed_files: set[str] = set()
+        self.unattempted_files: set[str] = set()
         self.processing_backends: dict[str, str] = {}
         self.is_paused = False
         self.is_cancelled = False
@@ -1689,8 +1696,10 @@ class ConversionWorker(QThread):
     def run(self) -> None:
         results: dict[str, ConversionOutcome] = {}
         self.failed_files = set()
+        self.unattempted_files = set()
         self.processing_backends = {}
         markitdown_session = MarkItDownSession()
+        defuddle_rate_limited = False
 
         for index, file_path in enumerate(self.files):
             while self.is_paused:
@@ -1701,6 +1710,24 @@ class ConversionWorker(QThread):
                 break
 
             failed = False
+            if defuddle_rate_limited and is_web_url(file_path):
+                failed = True
+                self.failed_files.add(file_path)
+                self.unattempted_files.add(file_path)
+                outcome = ConversionOutcome(
+                    markdown=format_conversion_error(
+                        file_path,
+                        RuntimeError(
+                            "Not attempted because Defuddle rate-limited an earlier URL. Retry this URL later."
+                        ),
+                    )
+                )
+                results[file_path] = outcome
+                self.itemFinished.emit(file_path, outcome, failed)
+                progress = int((index + 1) / len(self.files) * 100)
+                self.progress.emit(progress, file_path)
+                continue
+
             self.itemStarted.emit(file_path)
             try:
                 outcome = convert_file_with_details(
@@ -1713,6 +1740,8 @@ class ConversionWorker(QThread):
             except Exception as exc:
                 failed = True
                 self.failed_files.add(file_path)
+                if isinstance(exc, DefuddleRateLimitError):
+                    defuddle_rate_limited = True
                 outcome = ConversionOutcome(markdown=format_conversion_error(file_path, exc))
                 results[file_path] = outcome
 

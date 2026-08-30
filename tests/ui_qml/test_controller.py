@@ -198,6 +198,141 @@ def test_controller_add_url_waits_for_discard_confirmation(controller, tmp_path)
     assert queued_urls == [url]
 
 
+def test_controller_add_batch_urls_trims_deduplicates_and_reports_counts(controller):
+    controller.addUrl("https://example.com/existing")
+    messages: list[tuple[str, str]] = []
+    completed: list[bool] = []
+    controller.toastRequested.connect(lambda kind, message: messages.append((kind, message)))
+    controller.batchUrlsQueued.connect(lambda: completed.append(True))
+
+    result = controller.addBatchUrls(
+        "  https://example.com/one  \n"
+        "\n"
+        "https://example.com/existing\n"
+        "https://example.com/one\n"
+        "https://EXAMPLE.com/one\n"
+    )
+
+    assert result is True
+    assert controller.queue_model.sources() == [
+        "https://example.com/existing",
+        "https://example.com/one",
+        "https://EXAMPLE.com/one",
+    ]
+    assert messages[-1] == ("success", "Added 2 URL(s); skipped 2 duplicate(s).")
+    assert completed == [True]
+
+
+def test_controller_add_batch_urls_rejects_invalid_lines_atomically(controller):
+    messages: list[tuple[str, str]] = []
+    controller.toastRequested.connect(lambda kind, message: messages.append((kind, message)))
+
+    result = controller.addBatchUrls(
+        "https://example.com/valid\n"
+        "not a URL\n"
+        "\n"
+        "ftp://example.com/nope\n"
+    )
+
+    assert result is False
+    assert controller.queue_model.sources() == []
+    assert messages == [("error", "Nothing was added. Invalid URL lines: 2, 4.")]
+
+
+def test_controller_batch_and_single_url_enforce_100_url_cap(controller):
+    existing = [f"https://example.com/{index}" for index in range(100)]
+    controller.queue_model.add_sources(existing)
+    messages: list[tuple[str, str]] = []
+    controller.toastRequested.connect(lambda kind, message: messages.append((kind, message)))
+
+    assert controller.addBatchUrls("https://example.com/overflow") is False
+    assert controller.addUrl("https://example.com/also-overflow") is False
+
+    assert controller.queue_model.sources() == existing
+    assert messages == [
+        (
+            "error",
+            "Nothing was added. The queue limit is 100 URLs; remove 1 URL(s) from this import.",
+        ),
+        (
+            "error",
+            "Nothing was added. The queue limit is 100 URLs; remove 1 URL(s) from this import.",
+        ),
+    ]
+
+
+def test_controller_batch_urls_wait_for_unsaved_result_confirmation(controller, tmp_path):
+    source = str(tmp_path / "existing.pdf")
+    controller.addFiles([source])
+    _complete_results(
+        controller,
+        {source: ConversionOutcome("# Existing", backend="native")},
+    )
+    completed: list[bool] = []
+    discard_requests: list[str] = []
+    controller.batchUrlsQueued.connect(lambda: completed.append(True))
+    controller.discardResultsRequested.connect(discard_requests.append)
+
+    assert controller.addBatchUrls("https://example.com/one\nhttps://example.com/two") is False
+    assert controller.queue_model.sources() == [source]
+    assert completed == []
+    assert discard_requests == ["add URLs to the queue"]
+
+    controller.cancelPendingResultDiscard()
+    assert controller.queue_model.sources() == [source]
+
+    assert controller.addBatchUrls("https://example.com/one\nhttps://example.com/two") is False
+    controller.discardPendingResults()
+
+    assert controller.queue_model.sources() == [
+        source,
+        "https://example.com/one",
+        "https://example.com/two",
+    ]
+    assert completed == [True]
+
+
+def test_controller_import_batch_url_text_accepts_utf8_and_bom(controller, tmp_path):
+    plain = tmp_path / "plain.txt"
+    plain.write_text("https://example.com/plain\n", encoding="utf-8")
+    bom = tmp_path / "bom.txt"
+    bom.write_bytes(b"\xef\xbb\xbfhttps://example.com/bom\n")
+    loaded: list[str] = []
+    controller.batchUrlTextLoaded.connect(loaded.append)
+
+    assert controller.importBatchUrlText(str(plain)) is True
+    assert controller.importBatchUrlText(str(bom)) is True
+
+    assert loaded == [
+        "https://example.com/plain\n",
+        "https://example.com/bom\n",
+    ]
+    assert controller.queue_model.sources() == []
+
+
+def test_controller_import_batch_url_text_rejects_wrong_type_and_encoding(
+    controller,
+    tmp_path,
+):
+    csv_file = tmp_path / "urls.csv"
+    csv_file.write_text("https://example.com/csv\n", encoding="utf-8")
+    invalid = tmp_path / "urls.txt"
+    invalid.write_bytes(b"\xff\xfe")
+    messages: list[tuple[str, str]] = []
+    loaded: list[str] = []
+    controller.toastRequested.connect(lambda kind, message: messages.append((kind, message)))
+    controller.batchUrlTextLoaded.connect(loaded.append)
+
+    assert controller.importBatchUrlText(str(csv_file)) is False
+    assert controller.importBatchUrlText(str(invalid)) is False
+
+    assert loaded == []
+    assert messages == [
+        ("error", "Choose a .txt file for URL import."),
+        ("error", "The URL list must be a UTF-8 text file."),
+    ]
+
+
 def test_controller_auto_update_check_respects_disabled_setting(controller, monkeypatch):
     controller.settings.set_update_notifications_enabled(False)
     monkeypatch.setattr(
