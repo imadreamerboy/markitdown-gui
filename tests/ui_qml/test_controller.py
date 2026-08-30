@@ -294,7 +294,7 @@ def test_controller_batch_urls_wait_for_unsaved_result_confirmation(controller, 
 
 def test_controller_import_batch_url_text_accepts_utf8_and_bom(controller, tmp_path):
     plain = tmp_path / "plain.txt"
-    plain.write_text("https://example.com/plain\n", encoding="utf-8")
+    plain.write_bytes(b"https://example.com/plain\n")
     bom = tmp_path / "bom.txt"
     bom.write_bytes(b"\xef\xbb\xbfhttps://example.com/bom\n")
     loaded: list[str] = []
