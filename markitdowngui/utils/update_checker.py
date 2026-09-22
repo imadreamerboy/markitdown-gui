@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import sys
 from dataclasses import dataclass
 
@@ -11,6 +12,7 @@ from markitdowngui import __version__ as app_version
 
 
 GITHUB_API_URL = "https://api.github.com/repos/imadreamerboy/markitdown-gui/releases/latest"
+_GITHUB_SHA256_DIGEST = re.compile(r"sha256:([0-9a-fA-F]{64})")
 
 
 def _safe_int(value: object) -> int:
@@ -51,36 +53,32 @@ def normalize_version(ver):
     return ver.lstrip('v').lstrip('.')
 
 
-def parse_release_manifest(payload: dict) -> dict[str, dict[str, object]]:
-    """Parse optional release metadata keyed by asset name."""
-    entries = payload.get("assets") if isinstance(payload, dict) else None
-    if not isinstance(entries, list):
-        return {}
-
-    manifest_assets: dict[str, dict[str, object]] = {}
-    for item in entries:
-        if not isinstance(item, dict):
-            continue
-        name = str(item.get("name") or "").strip()
-        if not name:
-            continue
-        manifest_assets[name] = {
-            "platform": str(item.get("platform") or "").strip(),
-            "sha256": str(item.get("sha256") or "").strip(),
-            "size": _safe_int(item.get("size")),
-        }
-    return manifest_assets
+def parse_github_sha256_digest(value: object) -> str:
+    """Return the hex checksum from a GitHub release asset digest."""
+    match = _GITHUB_SHA256_DIGEST.fullmatch(str(value or "").strip())
+    return match.group(1).lower() if match else ""
 
 
-def parse_release_info(
-    payload: dict,
-    manifest_assets: dict[str, dict[str, object]] | None = None,
-) -> ReleaseInfo | None:
+def platform_from_asset_name(name: str) -> str:
+    """Return the platform encoded in a canonical packaged asset name."""
+    lowered_name = name.lower()
+    if not lowered_name.startswith("markitdown-"):
+        return ""
+    for marker, platform in (
+        ("-windows-", "Windows"),
+        ("-linux-", "Linux"),
+        ("-macos-", "macOS"),
+    ):
+        if marker in lowered_name:
+            return platform
+    return ""
+
+
+def parse_release_info(payload: dict) -> ReleaseInfo | None:
     tag_name = str(payload.get("tag_name") or "").strip()
     if not tag_name:
         return None
 
-    manifest_assets = manifest_assets or {}
     assets = []
     for item in payload.get("assets") or []:
         if not isinstance(item, dict):
@@ -89,15 +87,13 @@ def parse_release_info(
         url = str(item.get("browser_download_url") or "").strip()
         if not name or not url:
             continue
-        manifest_item = manifest_assets.get(name, {})
-        size = _safe_int(manifest_item.get("size") or item.get("size"))
         assets.append(
             ReleaseAsset(
                 name=name,
                 browser_download_url=url,
-                size=size,
-                platform=str(manifest_item.get("platform") or "").strip(),
-                sha256=str(manifest_item.get("sha256") or "").strip(),
+                size=_safe_int(item.get("size")),
+                platform=platform_from_asset_name(name),
+                sha256=parse_github_sha256_digest(item.get("digest")),
             )
         )
 
@@ -113,29 +109,7 @@ def get_latest_release_info(timeout: int | None = None) -> ReleaseInfo | None:
     kwargs = {"timeout": timeout} if timeout is not None else {}
     response = requests.get(GITHUB_API_URL, **kwargs)
     response.raise_for_status()
-    payload = response.json()
-    release = parse_release_info(payload)
-    if release is None:
-        return None
-
-    manifest_asset = next(
-        (
-            asset
-            for asset in release.assets
-            if asset.name.lower() == "markitdown-release-manifest.json"
-        ),
-        None,
-    )
-    if manifest_asset is None:
-        return release
-
-    try:
-        manifest_response = requests.get(manifest_asset.browser_download_url, **kwargs)
-        manifest_response.raise_for_status()
-        manifest_assets = parse_release_manifest(manifest_response.json())
-    except (requests.exceptions.RequestException, ValueError, TypeError):
-        return release
-    return parse_release_info(payload, manifest_assets) or release
+    return parse_release_info(response.json())
 
 
 def current_platform_label() -> str:

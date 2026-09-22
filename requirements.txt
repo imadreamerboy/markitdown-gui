@@ -89,7 +89,7 @@ markdown-it-py==4.0.0
     # via rich
 markdownify==1.1.0
     # via markitdown
-markitdown==0.1.6
+markitdown==0.1.8
     # via
     #   markitdowngui (pyproject.toml)
     #   markitdown-pdf-images

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from html import escape as html_escape
 from itertools import islice
 import base64
 import logging
@@ -18,8 +19,18 @@ from PySide6.QtCore import QThread, Signal
 
 from markitdowngui.core.input_sources import is_web_url
 
-IMAGE_EXTENSIONS = {".bmp", ".gif", ".jpeg", ".jpg", ".png", ".tiff", ".webp"}
-DOCINTEL_IMAGE_EXTENSIONS = {".bmp", ".jpeg", ".jpg", ".png", ".tiff"}
+IMAGE_EXTENSIONS = {
+    ".bmp",
+    ".gif",
+    ".jpeg",
+    ".jpg",
+    ".png",
+    ".tif",
+    ".tiff",
+    ".webp",
+}
+DOCINTEL_IMAGE_EXTENSIONS = {".bmp", ".jpeg", ".jpg", ".png", ".tif", ".tiff"}
+TIFF_EXTENSIONS = {".tif", ".tiff"}
 DOCX_EXTENSION = ".docx"
 PDF_EXTENSION = ".pdf"
 DOCX_IMAGE_EXTENSIONS_BY_CONTENT_TYPE = {
@@ -711,6 +722,9 @@ def convert_file_with_details(
     if extension == PDF_EXTENSION and effective_options.normalized_preserve_pdf_images:
         return _convert_pdf_with_preserved_images(file_path, effective_options)
 
+    if extension == PDF_EXTENSION and effective_options.ocr_enabled:
+        return _convert_pdf_with_ocr(file_path, effective_options)
+
     if _should_try_anydoc(file_path, effective_options):
         anydoc_outcome = _try_convert_with_anydoc(file_path)
         if anydoc_outcome is not None:
@@ -736,9 +750,6 @@ def convert_file_with_details(
 
     if extension in IMAGE_EXTENSIONS:
         return _convert_image_with_ocr(file_path, effective_options, extension)
-
-    if extension == PDF_EXTENSION:
-        return _convert_pdf_with_ocr(file_path, effective_options)
 
     return ConversionOutcome(
         markdown=_convert_with_markitdown_for_session(
@@ -1088,9 +1099,8 @@ def _convert_docx_with_preserved_images(
         )
 
     try:
-        import mammoth
-        from markdownify import markdownify
-        from markitdown.converter_utils.docx.pre_process import pre_process_docx
+        from markitdown import StreamInfo
+        from markitdown.converters import DocxConverter, HtmlConverter
     except ImportError as exc:
         raise RuntimeError(
             "Preserve DOCX images requires MarkItDown's DOCX dependencies to be installed."
@@ -1104,16 +1114,15 @@ def _convert_docx_with_preserved_images(
     assets: list[ConversionAsset] = []
     image_count = 0
 
-    def convert_image(image) -> dict[str, str]:
+    def image_to_html(image_stream, stream_info) -> str | None:
         nonlocal image_count
         image_count += 1
 
-        with image.open() as image_file:
-            image_bytes = image_file.read()
+        image_bytes = image_stream.read()
         if not image_bytes:
-            return {}
+            return None
 
-        extension = _docx_image_extension(getattr(image, "content_type", ""))
+        extension = _docx_image_extension(stream_info.mimetype or "")
         filename = f"image-{image_count:03d}{extension}"
         image_path = (document_asset_dir / filename).resolve()
         image_path.write_bytes(image_bytes)
@@ -1128,21 +1137,39 @@ def _convert_docx_with_preserved_images(
                 kind="docx-image",
             )
         )
-        return {"src": markdown_path}
+        return f'<img src="{html_escape(markdown_path, quote=True)}">'
+
+    class ImageTableHtmlConverter(HtmlConverter):
+        def convert_string(self, html_content: str, **kwargs):
+            return super().convert_string(
+                _extract_images_from_single_cell_tables(html_content),
+                **kwargs,
+            )
+
+    class AssetDocxConverter(DocxConverter):
+        def __init__(self):
+            super().__init__()
+            self._html_converter = ImageTableHtmlConverter()
+
+        def _image_to_html(self, image_stream, stream_info, **_kwargs):
+            return image_to_html(image_stream, stream_info)
 
     with Path(file_path).open("rb") as file_stream:
-        preprocessed_stream = pre_process_docx(file_stream)
-        result = mammoth.convert_to_html(
-            preprocessed_stream,
-            convert_image=mammoth.images.img_element(convert_image),
-            ignore_empty_paragraphs=False,
+        result = AssetDocxConverter().convert(
+            file_stream,
+            StreamInfo(
+                mimetype=(
+                    "application/vnd.openxmlformats-officedocument."
+                    "wordprocessingml.document"
+                ),
+                extension=DOCX_EXTENSION,
+                filename=Path(file_path).name,
+                local_path=str(Path(file_path).resolve()),
+            ),
         )
 
-    html_content = _extract_images_from_single_cell_tables(result.value)
-    markdown = markdownify(html_content)
-
     return ConversionOutcome(
-        markdown=markdown,
+        markdown=result.markdown,
         backend=BACKEND_DOCX_IMAGES,
         assets=assets,
     )
@@ -1192,22 +1219,94 @@ def _convert_pdf_with_glmocr(
     raise RuntimeError("GLM-OCR did not extract any text from the PDF.")
 
 
+class _PdfOcrProbeEngine:
+    """Count PDF elements that require OCR without calling a provider."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def ocr_image(self, _image) -> str:
+        self.calls += 1
+        return ""
+
+
+class _ConfiguredPdfOcrEngine:
+    """Adapt the app's configured Tesseract runner to the PDF pipeline."""
+
+    def __init__(self, options: ConversionOptions) -> None:
+        self.options = options
+        self.calls = 0
+
+    def ocr_image(self, image) -> str:
+        self.calls += 1
+        return _run_tesseract_ocr(image, self.options)
+
+
+def _convert_pdf_with_image_aware_pipeline(
+    file_path: str,
+    *,
+    ocr_engine,
+) -> str:
+    """Preserve page order while OCRing only detected visual/page content."""
+    try:
+        from markitdown_pdf_images import convert_pdf
+    except ImportError as exc:
+        raise RuntimeError(
+            "Mixed PDF OCR requires the `markitdown-pdf-images` package to be installed."
+        ) from exc
+
+    result = convert_pdf(
+        file_path,
+        preserve_images=False,
+        ocr_enabled=True,
+        ocr_engine=ocr_engine,
+    )
+    return str(getattr(result, "markdown", "") or "")
+
+
+def _count_pdf_ocr_candidates(file_path: str) -> int:
+    probe = _PdfOcrProbeEngine()
+    _convert_pdf_with_image_aware_pipeline(file_path, ocr_engine=probe)
+    return probe.calls
+
+
+def _convert_pdf_with_selective_local_ocr(
+    file_path: str,
+    options: ConversionOptions,
+) -> tuple[str, int]:
+    engine = _ConfiguredPdfOcrEngine(options)
+    markdown = _convert_pdf_with_image_aware_pipeline(
+        file_path,
+        ocr_engine=engine,
+    )
+    return markdown, engine.calls
+
+
 def _convert_pdf_with_azure_tesseract_ocr(
     file_path: str,
     options: ConversionOptions,
 ) -> ConversionOutcome:
     native_error: Exception | None = None
+    native_markdown = ""
     try:
-        markdown = _convert_with_markitdown(file_path, options)
-        if markdown.strip():
-            return ConversionOutcome(markdown=markdown, backend=BACKEND_NATIVE)
+        native_markdown = _convert_with_markitdown(file_path, options)
     except Exception as exc:
         native_error = exc
 
-    docintel_error: Exception | None = None
-    docintel_attempted = False
     if options.normalized_docintel_endpoint:
-        docintel_attempted = True
+        candidate_error: Exception | None = None
+        try:
+            ocr_candidates = _count_pdf_ocr_candidates(file_path)
+        except Exception as exc:
+            candidate_error = exc
+        else:
+            if ocr_candidates == 0 and native_error is None:
+                return ConversionOutcome(
+                    markdown=native_markdown,
+                    backend=BACKEND_NATIVE,
+                )
+
+        docintel_error: Exception | None = None
         try:
             markdown = _convert_with_markitdown(
                 file_path,
@@ -1219,21 +1318,68 @@ def _convert_pdf_with_azure_tesseract_ocr(
         except Exception as exc:
             docintel_error = exc
 
-    local_error: Exception | None = None
-    try:
-        markdown = _convert_pdf_with_local_ocr(file_path, options)
-        if markdown.strip():
-            return ConversionOutcome(markdown=markdown, backend=BACKEND_LOCAL)
-    except Exception as exc:
-        local_error = exc
+        local_error: Exception | None = None
+        if candidate_error is not None:
+            local_error = RuntimeError(
+                "Selective PDF inspection failed: "
+                f"{_summarize_error(candidate_error)}"
+            )
+        else:
+            try:
+                markdown, local_ocr_calls = _convert_pdf_with_selective_local_ocr(
+                    file_path,
+                    options,
+                )
+                if local_ocr_calls > 0:
+                    # Empty OCR is valid for a genuinely blank page. Actual
+                    # engine failures propagate through the pipeline.
+                    return ConversionOutcome(
+                        markdown=markdown,
+                        backend=BACKEND_LOCAL,
+                    )
+                if native_error is None:
+                    return ConversionOutcome(
+                        markdown=native_markdown,
+                        backend=BACKEND_NATIVE,
+                    )
+                if markdown.strip():
+                    return ConversionOutcome(
+                        markdown=markdown,
+                        backend=BACKEND_LOCAL,
+                    )
+            except Exception as exc:
+                local_error = exc
 
-    return _raise_ocr_failure(
-        "PDF",
-        native_error=native_error,
-        docintel_attempted=docintel_attempted,
-        docintel_error=docintel_error,
-        local_error=local_error,
-    )
+        return _raise_ocr_failure(
+            "PDF",
+            native_error=native_error,
+            docintel_attempted=True,
+            docintel_error=docintel_error,
+            local_error=local_error,
+        )
+
+    engine = _ConfiguredPdfOcrEngine(options)
+    try:
+        markdown = _convert_pdf_with_image_aware_pipeline(
+            file_path,
+            ocr_engine=engine,
+        )
+    except Exception as pipeline_error:
+        return _raise_ocr_failure(
+            "PDF",
+            native_error=native_error,
+            local_error=pipeline_error,
+        )
+
+    if engine.calls > 0:
+        # Blank-page OCR may legitimately be empty.
+        return ConversionOutcome(markdown=markdown, backend=BACKEND_LOCAL)
+    if native_error is None:
+        return ConversionOutcome(markdown=native_markdown, backend=BACKEND_NATIVE)
+    if markdown.strip():
+        return ConversionOutcome(markdown=markdown, backend=BACKEND_LOCAL)
+
+    return _raise_ocr_failure("PDF", native_error=native_error)
 
 
 def _convert_with_markitdown(
@@ -1255,7 +1401,7 @@ def _convert_with_markitdown(
             kwargs["docintel_credential"], _auth_method = _build_docintel_credential()
         md = MarkItDown(**kwargs)
     result = md.convert(file_path)
-    return result.text_content or ""
+    return result.markdown or ""
 
 
 def _convert_with_markitdown_for_session(
@@ -1465,14 +1611,25 @@ def _iter_glmocr_ollama_images(file_path: str):
         return
 
     try:
-        from PIL import Image, ImageOps
+        from PIL import Image
     except ImportError as exc:
         raise RuntimeError(
             "GLM-OCR Ollama image conversion requires Pillow to be installed."
         ) from exc
 
     with Image.open(file_path) as image:
-        yield ImageOps.exif_transpose(image).convert("RGB")
+        yield from _iter_document_image_frames(
+            image,
+            extension=extension,
+        )
+
+
+def _iter_document_image_frames(image, *, extension: str):
+    from PIL import ImageOps, ImageSequence
+
+    frames = ImageSequence.Iterator(image) if extension in TIFF_EXTENSIONS else (image,)
+    for frame in frames:
+        yield ImageOps.exif_transpose(frame).convert("RGB")
 
 
 def _call_glmocr_ollama(image, options: ConversionOptions) -> str:
@@ -1605,13 +1762,22 @@ def _build_defuddle_request_url(url: str) -> str:
 
 def _convert_image_with_local_ocr(file_path: str, options: ConversionOptions) -> str:
     try:
-        from PIL import Image, ImageOps
+        from PIL import Image
     except ImportError as exc:
         raise RuntimeError("Local OCR requires Pillow to be installed.") from exc
 
+    page_texts: list[str] = []
+    extension = Path(file_path).suffix.lower()
     with Image.open(file_path) as image:
-        prepared = ImageOps.exif_transpose(image).convert("RGB")
-        return _run_tesseract_ocr(prepared, options)
+        for prepared in _iter_document_image_frames(image, extension=extension):
+            try:
+                page_text = _run_tesseract_ocr(prepared, options)
+                if page_text.strip():
+                    page_texts.append(page_text.strip())
+            finally:
+                prepared.close()
+
+    return "\n\n".join(page_texts).strip()
 
 
 def _convert_pdf_with_local_ocr(file_path: str, options: ConversionOptions) -> str:

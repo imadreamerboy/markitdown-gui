@@ -81,6 +81,13 @@ ApplicationWindow {
             saveSeparateDialog.open()
     }
 
+    function requestCopy() {
+        if (!app.selectedResultFailed && app.selectedResultHasLocalImageAssets)
+            copyMarkdownDialog.open()
+        else
+            app.copySelectedMarkdown()
+    }
+
     function showAzureTesseractSettings() {
         return app.ocrEnabled
             && (app.ocrProvider === "azure_tesseract" || app.ocrFallbackProvider === "azure_tesseract")
@@ -392,6 +399,80 @@ ApplicationWindow {
         }
     }
 
+    Dialog {
+        id: copyMarkdownDialog
+        objectName: "copyMarkdownDialog"
+
+        title: root.tr("qml_copy_markdown_title")
+        modal: true
+        focus: true
+        width: Math.min(500, root.width - 48)
+        standardButtons: Dialog.NoButton
+        closePolicy: Popup.CloseOnEscape
+        anchors.centerIn: parent
+
+        background: Rectangle {
+            radius: root.panelRadius
+            color: colors.surface
+            border.color: colors.border
+        }
+
+        contentItem: Label {
+            text: root.tr("qml_copy_markdown_message")
+            color: colors.text
+            wrapMode: Text.WordWrap
+            padding: 4
+        }
+
+        footer: Item {
+            implicitHeight: copyMarkdownButtons.implicitHeight + 20
+
+            RowLayout {
+                id: copyMarkdownButtons
+                anchors.fill: parent
+                anchors.margins: 10
+                spacing: 8
+
+                AppButton {
+                    objectName: "cancelCopyMarkdownButton"
+                    text: root.tr("qml_cancel")
+                    subtle: true
+                    accentColor: colors.action
+                    textColor: colors.text
+                    onClicked: copyMarkdownDialog.reject()
+                }
+
+                Item {
+                    Layout.fillWidth: true
+                }
+
+                AppButton {
+                    objectName: "copyMarkdownForChatsButton"
+                    text: root.tr("qml_copy_text_for_chats")
+                    subtle: true
+                    accentColor: colors.action
+                    textColor: colors.text
+                    onClicked: {
+                        app.copySelectedMarkdownText()
+                        copyMarkdownDialog.accept()
+                    }
+                }
+
+                AppButton {
+                    objectName: "copyMarkdownWithImagesButton"
+                    text: root.tr("qml_copy_with_images")
+                    primary: true
+                    accentColor: colors.action
+                    primaryTextColor: colors.onAction
+                    onClicked: {
+                        app.copySelectedMarkdown()
+                        copyMarkdownDialog.accept()
+                    }
+                }
+            }
+        }
+    }
+
     FolderDialog {
         id: outputFolderDialog
         title: root.tr("settings_output_folder_dialog")
@@ -592,7 +673,7 @@ ApplicationWindow {
         sequences: [StandardKey.Copy]
         context: Qt.ApplicationShortcut
         enabled: root.pageIndex === 0 && app.hasResults && !root.focusedTextControl()
-        onActivated: app.copySelectedMarkdown()
+        onActivated: root.requestCopy()
     }
 
     Shortcut {
@@ -2056,7 +2137,7 @@ ApplicationWindow {
                             surfaceColor: colors.surfaceAlt
                             borderColor: app.selectedResultFailed ? colors.danger : colors.border
                             textColor: app.selectedResultFailed ? colors.danger : colors.text
-                            onClicked: app.copySelectedMarkdown()
+                            onClicked: root.requestCopy()
                         }
 
                         AppButton {
@@ -2095,7 +2176,7 @@ ApplicationWindow {
                             surfaceColor: colors.surfaceAlt
                             borderColor: app.selectedResultFailed ? colors.danger : colors.border
                             textColor: app.selectedResultFailed ? colors.danger : colors.text
-                            onClicked: app.copySelectedMarkdown()
+                            onClicked: root.requestCopy()
                         }
 
                         AppButton {
@@ -2867,8 +2948,12 @@ ApplicationWindow {
                     }
 
                     AppButton {
-                        text: root.tr("qml_test_connection")
+                        objectName: "testOcrConnectionButton"
+                        text: app.ocrConnectionTestRunning
+                            ? root.tr("qml_testing_connection")
+                            : root.tr("qml_test_connection")
                         iconName: "external-link"
+                        enabled: !app.ocrConnectionTestRunning
                         accentColor: colors.action
                         surfaceColor: colors.surfaceAlt
                         borderColor: colors.border

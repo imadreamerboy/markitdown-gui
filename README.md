@@ -29,6 +29,7 @@ More screenshots:
 - Preview modes: rendered Markdown view and raw Markdown view.
 - Save modes: export as one combined file or separate files.
 - Quick actions: copy Markdown, save output, retry failed conversions, back to queue, start over.
+- When a result contains extracted images, Copy offers self-contained Markdown with images for compatible editors, or compact Markdown with image placeholders for chats. Chat images must be attached separately; support for inline image data varies by editor.
 - Optional OCR for scanned PDFs and image files, with selectable `Azure + Tesseract`, `GLM-OCR`, and generic `HTTP OCR` providers.
 - Opt-in fast local conversion for clear digital PDFs using `pdf-inspector`; scanned, mixed, uncertain, and encoding-problem PDFs continue through the existing conversion and OCR path.
 - Settings for output folder, save mode, source-folder saves, OCR, and theme mode (light/dark/system).
@@ -59,9 +60,9 @@ paru -S markitdown-gui-appimage
 ### Updating
 
 - Packaged desktop builds are updated from [Releases](https://github.com/imadreamerboy/markitdown-gui/releases). The in-app update check reads the latest GitHub release, shows a short release-note summary, and prefers the asset for the current operating system. Help shows the selected asset, size, checksum availability, action, and restart behaviour before install.
-- Windows and Linux packaged builds can start an in-app install when the preferred asset is a `.zip`: the app shows install progress, downloads the archive, verifies SHA256 when release metadata is available, prepares an external helper, closes, replaces the app folder, restarts, and rolls back if replacement fails. The helper records the last update result and rollback backup path in Help -> Diagnostics on the next launch, with a direct action to open the backup folder when it still exists. macOS packaged builds download, verify, and open the `.dmg` for manual drag-to-Applications installation.
+- Windows and Linux packaged builds can start an in-app install when the preferred asset is a `.zip`: the app shows install progress, downloads the archive, verifies GitHub's SHA256 digest, prepares an external helper, closes, replaces the app folder, and restarts. A missing or malformed digest prevents an in-app download or install. The helper restores the previous version if replacement fails or the new process exits during a two-second startup check. It removes the backup only after that check succeeds; crashes after the check are outside this rollback guarantee. Help -> Diagnostics shows the last update result and any remaining backup path on the next launch. macOS packaged builds download, verify, and open the `.dmg` for manual drag-to-Applications installation.
 - The Windows installer and Linux AppImage are additional first-install download options; the in-app self-update path intentionally keeps using the portable `.zip` asset.
-- Release builds publish a `markitdown-release-manifest.json` with platform, size, and SHA256 metadata for each package.
+- Update checks read asset digests directly from GitHub's release response. Release builds continue publishing `markitdown-release-manifest.json` for older installed clients.
 - Source checkouts can update in place from the Help view with `Run source update`, or from a terminal:
 
 ```sh
@@ -80,7 +81,7 @@ The Settings view can export or import a portable JSON profile for OCR, update, 
 
 ### Prerequisites
 
-- Python `3.10+`
+- Python `3.10`–`3.14`
 - `uv` (recommended)
 
 Install dependencies:
@@ -98,12 +99,15 @@ pip install -e .[dev]
 ### OCR Notes
 
 - OCR is optional and disabled by default.
-- **Fast PDF conversion** is optional and disabled by default. Enable it from the conversion controls for text-based PDFs where speed matters. It is bypassed when preserving PDF images, and it falls back to the established PDF pipeline when the document is scanned, mixed, uncertain, or has encoding issues.
+- **Fast PDF conversion** is optional and disabled by default. Enable it from the conversion controls for text-based PDFs where speed matters. PDF OCR and image preservation take precedence over fast PDF and `anydoc` conversion. Otherwise, fast PDF conversion falls back to the established PDF pipeline when the document is scanned, mixed, uncertain, or has encoding issues.
 - `Azure + Tesseract` uses Azure Document Intelligence first when configured, then Tesseract as its local fallback.
+- With `Azure + Tesseract` OCR enabled, digital-only PDFs retain native MarkItDown formatting. Mixed PDFs also process detected image and scan content, including scanned bodies beneath a native page heading. Local OCR uses the existing image-aware PDF pipeline to keep text in page order; OCR errors fail the conversion instead of returning partial text.
 - `GLM-OCR` is available as a separate OCR provider for PDFs and images. It can fall back to another configured provider if selected in Settings.
 - `HTTP OCR` is a generic integration point for local or self-hosted OCR servers. The app sends a multipart `POST` with a `file` part, optional `model` field, and optional `Authorization: Bearer ...` header read from the configured environment variable. JSON responses can use `markdown`, `text`, `result`, `content`, or `output`; plain text responses are used directly.
 - Preserved PDF images keep using the existing image-preservation pipeline. With `Azure + Tesseract`, OCR runs inside that helper. With `GLM-OCR` or `HTTP OCR`, the app preserves images first and appends OCR text from the selected provider.
-- Settings shows one-click OCR presets for common local stacks, plus provider-specific setup actions for opening docs or copying safe setup snippets. **Validate OCR** checks the required fields before a batch starts, and **Test connection** checks live provider connectivity without uploading user documents.
+- Preserved DOCX images use MarkItDown's native DOCX conversion pipeline, retaining supported formatting such as underlining while exporting embedded images alongside the Markdown file.
+- Local Tesseract and GLM-OCR Ollama process every page of multi-page TIFF files in order. A page failure fails the conversion instead of returning incomplete text.
+- Settings shows one-click OCR presets for common local stacks, plus provider-specific setup actions for opening docs or copying safe setup snippets. **Validate OCR** checks the required fields before a batch starts, and **Test connection** checks live provider connectivity in the background without uploading user documents. The app prevents duplicate connection checks and waits for active background work before exiting.
 - GLM-OCR offers three modes in Settings:
   - `Official API`: easiest zero-setup path, reads `ZHIPU_API_KEY` or `GLMOCR_API_KEY` from the environment.
   - `Ollama`: easiest local path. The GUI calls Ollama's native `/api/generate` endpoint directly, with defaults `127.0.0.1:11434` and `glm-ocr:latest`.

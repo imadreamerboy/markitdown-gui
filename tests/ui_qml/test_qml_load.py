@@ -1,13 +1,22 @@
 from pathlib import Path
 
-from PySide6.QtCore import QCoreApplication, QObject, QPoint, QPointF, QSettings, QUrl, Qt
+from PySide6.QtCore import (
+    QCoreApplication,
+    QMetaObject,
+    QObject,
+    QPoint,
+    QPointF,
+    QSettings,
+    QUrl,
+    Qt,
+)
 from PySide6.QtGui import QAccessible, QColor, QGuiApplication
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuick import QQuickItem
 from PySide6.QtTest import QTest
 from PySide6.QtQuickControls2 import QQuickStyle
 
-from markitdowngui.core.conversion import ConversionOutcome
+from markitdowngui.core.conversion import ConversionAsset, ConversionOutcome
 from markitdowngui.core.settings import SettingsManager
 from markitdowngui.ui_qml.controller import AppController
 
@@ -162,6 +171,17 @@ def test_multiple_urls_modal_is_accessible_and_fits_desktop_and_compact_windows(
 
             dialog.close()
             app.processEvents()
+
+        controller.result_model.set_results(
+            {"notes.md": ConversionOutcome("# Text-only result")}
+        )
+        controller._selected_result_index = 0
+        controller.resultsChanged.emit()
+        controller.selectedResultChanged.emit()
+        assert QMetaObject.invokeMethod(root, "requestCopy") is True
+        app.processEvents()
+
+        assert dialog.property("visible") is False
     finally:
         _close_main_qml(app, controller, engine)
 
@@ -200,6 +220,38 @@ def test_main_qml_loads_secondary_pages_on_demand(monkeypatch, tmp_path):
         app.processEvents()
 
         assert loaders["settingsPageLoader"].property("item") is not None
+    finally:
+        _close_main_qml(app, controller, engine)
+
+
+def test_ocr_connection_button_reflects_worker_lifecycle(monkeypatch, tmp_path):
+    app, controller, engine, root = _load_main_qml(monkeypatch, tmp_path)
+
+    try:
+        root.setProperty("pageIndex", 1)
+        app.processEvents()
+        button = _find_by_property(
+            root,
+            "objectName",
+            "testOcrConnectionButton",
+        )
+
+        assert button.property("enabled") is True
+        assert button.property("text") == "Test connection"
+
+        controller._ocr_connection_test_running = True
+        controller.ocrConnectionTestChanged.emit()
+        app.processEvents()
+
+        assert button.property("enabled") is False
+        assert button.property("text") == "Testing connection..."
+
+        controller._ocr_connection_test_running = False
+        controller.ocrConnectionTestChanged.emit()
+        app.processEvents()
+
+        assert button.property("enabled") is True
+        assert button.property("text") == "Test connection"
     finally:
         _close_main_qml(app, controller, engine)
 
@@ -357,6 +409,83 @@ def test_compact_results_keep_preview_actions_inside_the_panel(monkeypatch, tmp_
 
         assert toolbar.width() <= root.width()
         assert right_edge <= toolbar.width() + 0.1
+    finally:
+        _close_main_qml(app, controller, engine)
+
+
+def test_copy_image_dialog_is_accessible_and_fits_desktop_and_compact_windows(
+    monkeypatch,
+    tmp_path,
+):
+    app, controller, engine, root = _load_main_qml(monkeypatch, tmp_path)
+    asset = ConversionAsset(
+        filename="page.png",
+        source_path=str(tmp_path / "page.png"),
+        preview_markdown_path="temp/page.png",
+        page_number=1,
+        kind="image",
+    )
+
+    try:
+        controller.result_model.set_results(
+            {
+                "report.pdf": ConversionOutcome(
+                    "# Report\n\n![Page](temp/page.png)",
+                    assets=[asset],
+                )
+            }
+        )
+        controller._selected_result_index = 0
+        controller.resultsChanged.emit()
+        controller.selectedResultChanged.emit()
+        app.processEvents()
+
+        dialog = _find_by_property(root, "objectName", "copyMarkdownDialog")
+        chats_button = _find_by_property(
+            root,
+            "objectName",
+            "copyMarkdownForChatsButton",
+        )
+        cancel_button = _find_by_property(
+            root,
+            "objectName",
+            "cancelCopyMarkdownButton",
+        )
+        images_button = _find_by_property(
+            root,
+            "objectName",
+            "copyMarkdownWithImagesButton",
+        )
+
+        assert dialog.property("title") == "Copy Markdown"
+        assert _accessible_name(cancel_button) == "Cancel"
+        assert _accessible_name(chats_button) == "Copy text for chats"
+        assert _accessible_name(images_button) == "Copy with images"
+
+        for width, height in ((1180, 760), (820, 560)):
+            root.setWidth(width)
+            root.setHeight(height)
+            assert QMetaObject.invokeMethod(root, "requestCopy") is True
+            app.processEvents()
+
+            assert dialog.property("visible") is True
+            assert dialog.property("width") <= width - 48
+            assert dialog.property("height") <= height - 48
+            assert chats_button.isVisible() is True
+            assert images_button.isVisible() is True
+
+            dialog.close()
+            app.processEvents()
+
+        clipboard = QGuiApplication.clipboard()
+        clipboard.setText("clipboard-before-cancel")
+        assert QMetaObject.invokeMethod(root, "requestCopy") is True
+        app.processEvents()
+        assert QMetaObject.invokeMethod(cancel_button, "click") is True
+        app.processEvents()
+
+        assert dialog.property("visible") is False
+        assert clipboard.text() == "clipboard-before-cancel"
     finally:
         _close_main_qml(app, controller, engine)
 

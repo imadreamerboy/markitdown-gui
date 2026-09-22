@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -31,6 +32,7 @@ ProgressCallback = Callable[[str, int], None]
 PACKAGED_UPDATE_RESULT_FILE = "packaged-update-result.txt"
 MAX_UPDATE_RESULT_CHARS = 4000
 PACKAGED_UPDATE_WAIT_TIMEOUT_SECONDS = 90
+_SHA256_HEX = re.compile(r"[0-9a-fA-F]{64}")
 
 
 def _emit_progress(callback: ProgressCallback | None, status: str, progress: int) -> None:
@@ -70,6 +72,30 @@ def clear_packaged_update_result(path: Path | str | None = None) -> None:
         return
 
 
+def require_sha256(value: object) -> str:
+    """Return a normalised SHA256 checksum or reject an unsafe update."""
+    checksum = str(value or "").strip()
+    if not checksum:
+        raise PackagedUpdateError(
+            "Release asset is missing a SHA256 checksum; refusing to download "
+            "an unverified update."
+        )
+    if _SHA256_HEX.fullmatch(checksum) is None:
+        raise PackagedUpdateError(
+            "Release asset SHA256 checksum is malformed; expected exactly "
+            "64 hexadecimal characters. Refusing to download an unverified update."
+        )
+    return checksum.lower()
+
+
+def _checksum_plan_error(asset: dict[str, object]) -> str:
+    try:
+        require_sha256(asset.get("sha256"))
+    except PackagedUpdateError as exc:
+        return str(exc)
+    return ""
+
+
 def build_packaged_update_plan(
     asset: dict[str, object],
     *,
@@ -92,6 +118,8 @@ def build_packaged_update_plan(
             "Packaged install is available only in packaged builds.",
         )
     if platform_name == "darwin" and suffix == ".dmg":
+        if checksum_error := _checksum_plan_error(asset):
+            return PackagedUpdatePlan(False, "dmg", "Download", checksum_error)
         return PackagedUpdatePlan(
             True,
             "dmg",
@@ -99,8 +127,12 @@ def build_packaged_update_plan(
             "The app will download, verify, and open the DMG for manual installation.",
         )
     if platform_name.startswith(("win32", "cygwin")) and suffix == ".zip":
+        if checksum_error := _checksum_plan_error(asset):
+            return PackagedUpdatePlan(False, "zip", "Download", checksum_error)
         return PackagedUpdatePlan(True, "zip", "Install update")
     if platform_name.startswith("linux") and suffix == ".zip":
+        if checksum_error := _checksum_plan_error(asset):
+            return PackagedUpdatePlan(False, "zip", "Download", checksum_error)
         return PackagedUpdatePlan(True, "zip", "Install update")
     return PackagedUpdatePlan(
         False,
@@ -125,7 +157,7 @@ def install_packaged_update(
 
     name = str(asset.get("name") or "").strip()
     url = str(asset.get("url") or asset.get("browser_download_url") or "").strip()
-    sha256 = str(asset.get("sha256") or "").strip().lower()
+    sha256 = require_sha256(asset.get("sha256"))
     if not name or not url:
         raise PackagedUpdateError("Release asset is missing a name or download URL.")
 
@@ -192,11 +224,11 @@ def download_and_open_dmg(
 ) -> Path:
     name = str(asset.get("name") or "").strip()
     url = str(asset.get("url") or asset.get("browser_download_url") or "").strip()
-    sha256 = str(asset.get("sha256") or "").strip().lower()
     if not name or not url:
         raise PackagedUpdateError("Release asset is missing a name or download URL.")
     if Path(name.lower()).suffix != ".dmg":
         raise PackagedUpdateError("macOS manual install requires a DMG asset.")
+    sha256 = require_sha256(asset.get("sha256"))
 
     target = unique_download_path(
         (downloads_dir or default_downloads_dir()) / Path(name).name
@@ -268,9 +300,8 @@ def download_asset(
         raise PackagedUpdateError(f"Download failed: {exc}") from exc
 
 
-def verify_sha256(path: Path, expected: str) -> None:
-    if not expected:
-        return
+def verify_sha256(path: Path, expected: object) -> None:
+    expected = require_sha256(expected)
     hasher = hashlib.sha256()
     with path.open("rb") as handle:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
@@ -450,19 +481,35 @@ try {{
     Move-Item -LiteralPath $currentDir -Destination $backupDir -Force
     $backupCreated = $true
     Move-Item -LiteralPath $replacementDir -Destination $currentDir -Force
-    Write-UpdateResult "success" "Update installed and app restarted."
-    Start-Process -FilePath (Join-Path $currentDir $executableName)
-    Start-Sleep -Seconds 2
+    $replacementProcess = Start-Process -FilePath (Join-Path $currentDir $executableName) -PassThru
+    if ($replacementProcess.WaitForExit(2000)) {{
+        throw "Replacement app exited during startup with code $($replacementProcess.ExitCode)."
+    }}
+    Write-UpdateResult "success" "Update installed and app passed the startup check."
     Remove-Item -LiteralPath $backupDir -Recurse -Force -ErrorAction SilentlyContinue
     Remove-UpdateRuntime
 }} catch {{
-    if ($backupCreated -and (Test-Path -LiteralPath $currentDir)) {{
-        Remove-Item -LiteralPath $currentDir -Recurse -Force -ErrorAction SilentlyContinue
+    $failureMessage = $_.Exception.Message
+    $rollbackMessage = "Update failed before the previous version was replaced."
+    if ($backupCreated) {{
+        $rollbackMessage = "Update failed and rollback could not be completed; the backup is unavailable."
+        $failedReplacementRemoved = $true
+        if (Test-Path -LiteralPath $currentDir) {{
+            Remove-Item -LiteralPath $currentDir -Recurse -Force -ErrorAction SilentlyContinue
+            $failedReplacementRemoved = -not (Test-Path -LiteralPath $currentDir)
+        }}
+        if (-not $failedReplacementRemoved) {{
+            $rollbackMessage = "Update failed and rollback could not be completed; the failed replacement could not be removed and the backup remains at $backupDir."
+        }} elseif (Test-Path -LiteralPath $backupDir) {{
+            try {{
+                Move-Item -LiteralPath $backupDir -Destination $currentDir -Force
+                $rollbackMessage = "Update failed and the previous version was restored."
+            }} catch {{
+                $rollbackMessage = "Update failed and rollback could not be completed; the backup remains at $backupDir."
+            }}
+        }}
     }}
-    if ($backupCreated -and (Test-Path -LiteralPath $backupDir)) {{
-        Move-Item -LiteralPath $backupDir -Destination $currentDir -Force
-    }}
-    Write-UpdateResult "failed" "Update failed and rollback was attempted: $($_.Exception.Message)"
+    Write-UpdateResult "failed" "$rollbackMessage Cause: $failureMessage"
     Remove-UpdateRuntime
     throw
 }}
@@ -533,16 +580,41 @@ if ! mv "$current_dir" "$backup_dir"; then
     exit 1
 fi
 
-if mv "$replacement_dir" "$current_dir"; then
-    chmod +x "$executable_path" 2>/dev/null || true
-    write_update_result "success" "Update installed and app restarted."
-    nohup "$executable_path" >/dev/null 2>&1 &
-    sleep 2
-    rm -rf "$backup_dir"
-else
-    rm -rf "$current_dir"
-    mv "$backup_dir" "$current_dir"
-    write_update_result "failed" "Update failed and rollback was attempted."
+rollback_update() {{
+    failure_message=$1
+    if ! rm -rf "$current_dir"; then
+        write_update_result "failed" "$failure_message Could not remove the failed replacement; backup remains at $backup_dir."
+        exit 1
+    fi
+    if mv "$backup_dir" "$current_dir"; then
+        write_update_result "failed" "$failure_message Previous version restored."
+    else
+        write_update_result "failed" "$failure_message Rollback could not be completed; backup remains at $backup_dir."
+    fi
     exit 1
+}}
+
+if ! mv "$replacement_dir" "$current_dir"; then
+    rollback_update "Could not move the replacement app into place."
 fi
+
+if ! chmod +x "$executable_path"; then
+    rollback_update "Could not make the replacement executable launchable."
+fi
+
+nohup "$executable_path" >/dev/null 2>&1 &
+replacement_pid=$!
+sleep 2
+if ! kill -0 "$replacement_pid" 2>/dev/null; then
+    replacement_status=unknown
+    if wait "$replacement_pid"; then
+        replacement_status=0
+    else
+        replacement_status=$?
+    fi
+    rollback_update "Replacement app exited during startup with code $replacement_status."
+fi
+
+write_update_result "success" "Update installed and app passed the startup check."
+rm -rf "$backup_dir"
 """

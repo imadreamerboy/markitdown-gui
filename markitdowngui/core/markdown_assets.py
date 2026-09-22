@@ -1,12 +1,17 @@
 from __future__ import annotations
 
+import base64
 from dataclasses import dataclass
+from html import escape as html_escape
+from html import unescape as html_unescape
 import json
+import mimetypes
 from pathlib import Path
+import re
 from secrets import token_hex
 import shutil
 import tempfile
-from typing import Protocol, Sequence
+from typing import Callable, Protocol, Sequence
 from uuid import uuid4
 
 from markitdowngui.core.input_sources import source_output_stem
@@ -126,6 +131,75 @@ def rewrite_markdown_for_preview(markdown: str, assets: Sequence[AssetLike]) -> 
             Path(asset.source_path).resolve().as_uri()
         )
     return _replace_markdown_paths(markdown, replacements)
+
+
+def markdown_has_local_image_assets(
+    markdown: str,
+    assets: Sequence[AssetLike],
+) -> bool:
+    """Return whether Markdown embeds an image declared by the conversion result."""
+    return any(
+        _markdown_embeds_asset_path(markdown, asset.preview_markdown_path)
+        for asset in assets
+        if asset.preview_markdown_path
+    )
+
+
+def prepare_markdown_for_clipboard(
+    markdown: str,
+    assets: Sequence[AssetLike],
+) -> str:
+    """Embed referenced app-extracted images as self-contained data URIs."""
+    rewritten = markdown
+    for asset in assets:
+        asset_path = asset.preview_markdown_path
+        if not asset_path or not _markdown_embeds_asset_path(rewritten, asset_path):
+            continue
+        if not asset.source_path:
+            raise FileNotFoundError(
+                f"Image source is unavailable for {asset.filename or asset_path}."
+            )
+
+        source_path = Path(asset.source_path)
+        if not source_path.is_file():
+            raise FileNotFoundError(f"Missing image file: {source_path}")
+
+        mime_type = _image_mime_type(asset.filename, source_path)
+        encoded = base64.b64encode(source_path.read_bytes()).decode("ascii")
+        rewritten = _replace_asset_image_embeds(
+            rewritten,
+            asset_path,
+            lambda match, _matched_path: _replace_match_group(
+                match,
+                "path",
+                f"data:{mime_type};base64,{encoded}",
+            ),
+        )
+    return rewritten
+
+
+def prepare_markdown_text_for_clipboard(
+    markdown: str,
+    assets: Sequence[AssetLike],
+) -> str:
+    """Replace app-local image embeds with readable placeholders for AI chats."""
+    rewritten = markdown
+    for asset in assets:
+        asset_path = asset.preview_markdown_path
+        if not asset_path:
+            continue
+
+        def placeholder(match: re.Match[str], _matched_path: str) -> str:
+            alt_text = match.groupdict().get("alt") or ""
+            label = html_unescape(alt_text).strip() or asset.filename or "image"
+            return f"[Image: {label}]"
+
+        rewritten = _replace_asset_image_embeds(
+            rewritten,
+            asset_path,
+            placeholder,
+        )
+    return rewritten
 
 
 def prepare_markdown_for_separate_save(
@@ -437,3 +511,67 @@ def _replace_markdown_paths(markdown: str, replacements: dict[str, str]) -> str:
     ):
         rewritten = rewritten.replace(old_path, new_path)
     return rewritten
+
+
+def _image_mime_type(filename: str, source_path: Path) -> str:
+    mime_type = mimetypes.guess_type(filename)[0]
+    if not mime_type:
+        mime_type = mimetypes.guess_type(source_path.name)[0]
+    if not mime_type or not mime_type.startswith("image/"):
+        raise ValueError(
+            "Cannot embed image with an unsupported file type: "
+            f"{filename or source_path.name}"
+        )
+    return mime_type
+
+
+def _markdown_embeds_asset_path(markdown: str, asset_path: str) -> bool:
+    found = False
+
+    def mark_found(match: re.Match[str], _matched_path: str) -> str:
+        nonlocal found
+        found = True
+        return match.group(0)
+
+    _replace_asset_image_embeds(markdown, asset_path, mark_found)
+    return found
+
+
+def _replace_asset_image_embeds(
+    markdown: str,
+    asset_path: str,
+    replacement: Callable[[re.Match[str], str], str],
+) -> str:
+    """Replace inline Markdown and HTML image embeds for one exact asset path."""
+    path_pattern = re.escape(asset_path)
+    markdown_image = re.compile(
+        rf"!\[(?P<alt>[^\]]*)\]\(\s*<?(?P<path>{path_pattern})>?"
+        r"(?:\s+(?:\"[^\"]*\"|'[^']*'|\([^)]*\)))?\s*\)"
+    )
+    rewritten = markdown_image.sub(
+        lambda match: replacement(match, match.group("path")),
+        markdown,
+    )
+
+    escaped_path = html_escape(asset_path, quote=True)
+    html_image = re.compile(
+        r"<img\b(?=[^>]*\bsrc\s*=\s*(?P<quote>[\"'])"
+        rf"(?P<path>{re.escape(escaped_path)})(?P=quote))"
+        r"(?=[^>]*)(?:[^>]*?\balt\s*=\s*[\"'](?P<alt>[^\"']*)[\"'])?[^>]*>",
+        re.IGNORECASE,
+    )
+    return html_image.sub(
+        lambda match: replacement(match, match.group("path")),
+        rewritten,
+    )
+
+
+def _replace_match_group(
+    match: re.Match[str],
+    group_name: str,
+    replacement: str,
+) -> str:
+    matched_text = match.group(0)
+    start = match.start(group_name) - match.start()
+    end = match.end(group_name) - match.start()
+    return matched_text[:start] + replacement + matched_text[end:]

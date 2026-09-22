@@ -1,9 +1,16 @@
+import os
+import re
+import time
+from threading import Event
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from PySide6.QtCore import QSettings, QUrl
+from PySide6.QtCore import QSettings, QTimer, QUrl
+from PySide6.QtGui import QGuiApplication, QImage, QTextDocument
+from PySide6.QtTest import QTest
 
+from markitdowngui.core import conversion as conversion_module
 from markitdowngui.core.conversion import ConversionAsset, ConversionOutcome
 from markitdowngui.core.markdown_assets import (
     prepare_markdown_for_separate_save,
@@ -37,6 +44,7 @@ class _FakeUpdateChecker:
         self,
         action: tuple[str, str | None],
         release: ReleaseInfo | None = None,
+        wait_result: bool = True,
     ):
         self.action = action
         self.latest_release = release
@@ -46,6 +54,7 @@ class _FakeUpdateChecker:
         self.finished = _FakeSignal()
         self.started = False
         self.waited = False
+        self.wait_result = wait_result
 
     def start(self):
         self.started = True
@@ -62,12 +71,13 @@ class _FakeUpdateChecker:
         return self.started and not self.waited
 
     def wait(self, _timeout):
-        self.waited = True
-        return True
+        if self.wait_result:
+            self.waited = True
+        return self.wait_result
 
 
 class _FakeUpdateInstaller:
-    def __init__(self, action: str = "success"):
+    def __init__(self, action: str = "success", wait_result: bool = True):
         self.action = action
         self.progressChanged = _FakeSignal()
         self.installReady = _FakeSignal()
@@ -76,6 +86,7 @@ class _FakeUpdateInstaller:
         self.finished = _FakeSignal()
         self.started = False
         self.waited = False
+        self.wait_result = wait_result
 
     def start(self):
         self.started = True
@@ -94,12 +105,13 @@ class _FakeUpdateInstaller:
         return self.started and not self.waited
 
     def wait(self, _timeout):
-        self.waited = True
-        return True
+        if self.wait_result:
+            self.waited = True
+        return self.wait_result
 
 
 class _FakeSourceUpdateRunner:
-    def __init__(self, action: str = "success"):
+    def __init__(self, action: str = "success", wait_result: bool = True):
         self.action = action
         self.progressChanged = _FakeSignal()
         self.updateFinished = _FakeSignal()
@@ -107,6 +119,7 @@ class _FakeSourceUpdateRunner:
         self.finished = _FakeSignal()
         self.started = False
         self.waited = False
+        self.wait_result = wait_result
 
     def start(self):
         self.started = True
@@ -122,8 +135,30 @@ class _FakeSourceUpdateRunner:
         return self.started and not self.waited
 
     def wait(self, _timeout):
-        self.waited = True
-        return True
+        if self.wait_result:
+            self.waited = True
+        return self.wait_result
+
+
+_TEST_APP: QGuiApplication | None = None
+
+
+def _ensure_gui_app() -> QGuiApplication:
+    global _TEST_APP
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    _TEST_APP = QGuiApplication.instance() or QGuiApplication([])
+    return _TEST_APP
+
+
+def _wait_until(predicate, timeout_ms: int = 2000) -> bool:
+    deadline = time.monotonic() + (timeout_ms / 1000)
+    while time.monotonic() < deadline:
+        QGuiApplication.processEvents()
+        if predicate():
+            return True
+        QTest.qWait(5)
+    QGuiApplication.processEvents()
+    return bool(predicate())
 
 
 @pytest.fixture
@@ -382,7 +417,7 @@ def test_controller_exposes_release_assets_for_packaged_updates(controller, monk
                 browser_download_url="https://example.com/windows.zip",
                 size=42,
                 platform="Windows",
-                sha256="abc123",
+                sha256="a" * 64,
             ),
         ),
     )
@@ -419,7 +454,7 @@ def test_controller_exposes_release_assets_for_packaged_updates(controller, monk
             "url": "https://example.com/windows.zip",
             "size": 42,
             "platform": "Windows",
-            "sha256": "abc123",
+            "sha256": "a" * 64,
             "installSupported": False,
             "installMode": "source",
             "installLabel": "Download",
@@ -446,7 +481,7 @@ def test_controller_exposes_preflight_for_supported_packaged_update(controller):
         "url": "https://example.com/windows.zip",
         "size": 42 * 1024 * 1024,
         "platform": "Windows",
-        "sha256": "abc123",
+        "sha256": "a" * 64,
         "installSupported": True,
         "installMode": "zip",
         "installLabel": "Install update",
@@ -498,7 +533,7 @@ def test_controller_exposes_preflight_for_supported_dmg_update(controller):
         "url": "https://example.com/macos.dmg",
         "size": 12 * 1024 * 1024,
         "platform": "macOS",
-        "sha256": "abc123",
+        "sha256": "a" * 64,
         "installSupported": True,
         "installMode": "dmg",
         "installLabel": "Download DMG",
@@ -1189,39 +1224,82 @@ def test_controller_preflights_only_failed_inputs_before_retry(controller, monke
     assert starts == [{"preserve_results": True, "preflight_validated": True}]
 
 
-def test_controller_tests_ocr_connection(controller, monkeypatch):
+@pytest.mark.parametrize(
+    ("response", "expected_message"),
+    [
+        (
+            SimpleNamespace(status_code=204),
+            ("success", "HTTP OCR endpoint is reachable."),
+        ),
+        (
+            conversion_module.requests.Timeout("controlled timeout"),
+            ("error", "HTTP OCR endpoint test timed out."),
+        ),
+    ],
+)
+def test_controller_tests_ocr_connection_without_blocking_ui(
+    controller,
+    monkeypatch,
+    response,
+    expected_message,
+):
+    _ensure_gui_app()
     messages: list[tuple[str, str]] = []
+    running_at_toast: list[bool] = []
+    running_changes: list[bool] = []
     controller.toastRequested.connect(
-        lambda kind, message: messages.append((kind, message))
+        lambda kind, message: (
+            messages.append((kind, message)),
+            running_at_toast.append(controller.ocrConnectionTestRunning),
+        )
+    )
+    controller.ocrConnectionTestChanged.connect(
+        lambda: running_changes.append(controller.ocrConnectionTestRunning)
     )
     controller.setOcrEnabled(True)
-    monkeypatch.setattr(
-        "markitdowngui.ui_qml.controller.test_ocr_provider_connection",
-        lambda _options: "HTTP OCR endpoint is reachable.",
-    )
+    controller.setOcrProvider("http")
+    controller.setHttpOcrEndpoint("http://127.0.0.1:8000/ocr")
+    entered = Event()
+    release = Event()
+    calls: list[tuple[str, int]] = []
 
-    controller.testOcrConnection()
+    def delayed_options(endpoint, *, timeout):
+        calls.append((endpoint, timeout))
+        entered.set()
+        assert release.wait(2)
+        if isinstance(response, Exception):
+            raise response
+        return response
 
-    assert messages == [("success", "HTTP OCR endpoint is reachable.")]
+    monkeypatch.setattr(conversion_module.requests, "options", delayed_options)
+    timer_ticks: list[None] = []
+    timer = QTimer()
+    timer.setInterval(5)
+    timer.timeout.connect(lambda: timer_ticks.append(None))
+    timer.start()
 
+    try:
+        controller.testOcrConnection()
+        controller.testOcrConnection()
 
-def test_controller_reports_ocr_connection_error(controller, monkeypatch):
-    messages: list[tuple[str, str]] = []
-    controller.toastRequested.connect(
-        lambda kind, message: messages.append((kind, message))
-    )
+        assert controller.ocrConnectionTestRunning is True
+        assert _wait_until(entered.is_set)
+        QTimer.singleShot(50, release.set)
+        assert _wait_until(lambda: not controller.ocrConnectionTestRunning)
+    finally:
+        timer.stop()
+        release.set()
+        controller.shutdownForQuit()
+        QGuiApplication.processEvents()
 
-    def fake_test(_options):
-        raise RuntimeError("HTTP OCR endpoint responded with 404.")
-
-    monkeypatch.setattr(
-        "markitdowngui.ui_qml.controller.test_ocr_provider_connection",
-        fake_test,
-    )
-
-    controller.testOcrConnection()
-
-    assert messages == [("error", "HTTP OCR endpoint responded with 404.")]
+    assert calls == [("http://127.0.0.1:8000/ocr", 10)]
+    assert len(timer_ticks) >= 2
+    assert messages == [
+        ("success", "OCR connection test already running."),
+        expected_message,
+    ]
+    assert running_at_toast == [True, True]
+    assert running_changes == [True, False]
 
 
 def test_controller_exposes_diagnostic_readiness_items(controller, monkeypatch):
@@ -2151,11 +2229,18 @@ def test_controller_stops_active_conversion_before_discarding_for_close(
     controller._unsaved_result_sources.add(source)
     controller._temp_asset_root = "C:/tmp/markitdown-assets"
     events: list[str] = []
+    running = {"value": True}
+
+    def finish_worker(_timeout):
+        events.append("wait")
+        running["value"] = False
+        return True
+
     controller.worker = SimpleNamespace(
         is_cancelled=False,
         is_paused=False,
-        isRunning=lambda: True,
-        wait=lambda _timeout: events.append("wait") or True,
+        isRunning=lambda: running["value"],
+        wait=finish_worker,
     )
     monkeypatch.setattr(
         "markitdowngui.ui_qml.controller.cleanup_temp_asset_root",
@@ -2177,6 +2262,192 @@ def test_controller_notifies_before_save_dialog_when_no_output(controller):
     controller.notifyNoOutputToSave()
 
     assert messages == [("error", "No output to save.")]
+
+
+def test_controller_copies_image_markdown_that_survives_result_cleanup(
+    controller,
+    monkeypatch,
+    tmp_path,
+):
+    _ensure_gui_app()
+    asset_root = tmp_path / "preview-assets"
+    asset_root.mkdir()
+    image_path = asset_root / "page.png"
+    image = QImage(3, 2, QImage.Format.Format_ARGB32)
+    image.fill(0xFF336699)
+    assert image.save(str(image_path), "PNG")
+    markdown_path = "temp/page.png"
+    asset = ConversionAsset(
+        filename="page.png",
+        source_path=str(image_path),
+        preview_markdown_path=markdown_path,
+        page_number=1,
+        kind="image",
+    )
+    controller.result_model.set_results(
+        {
+            "report.pdf": ConversionOutcome(
+                f"# Report\n\n![Page one]({markdown_path})",
+                assets=[asset],
+            )
+        }
+    )
+    controller._selected_result_index = 0
+    controller._temp_asset_root = str(asset_root)
+    controller._temp_asset_roots.add(str(asset_root))
+    copied: list[str] = []
+    messages: list[tuple[str, str]] = []
+    controller.toastRequested.connect(
+        lambda kind, message: messages.append((kind, message))
+    )
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.QGuiApplication.clipboard",
+        lambda: SimpleNamespace(setText=lambda value: copied.append(value)),
+    )
+
+    assert controller.selectedResultHasLocalImageAssets is True
+    controller.copySelectedMarkdown()
+    controller._clear_results()
+
+    assert image_path.exists() is False
+    assert len(copied) == 1
+    assert "data:image/png;base64," in copied[0]
+    data_uri = re.search(r"data:image/png;base64,[A-Za-z0-9+/=]+", copied[0])
+    assert data_uri is not None
+    document = QTextDocument()
+    document.setMarkdown(copied[0])
+    rendered_image = document.resource(
+        QTextDocument.ResourceType.ImageResource,
+        QUrl(data_uri.group(0)),
+    )
+    assert rendered_image is not None
+    assert rendered_image.isNull() is False
+    assert messages == [("success", "Copied Markdown with embedded images.")]
+
+
+def test_controller_copy_for_chats_removes_only_local_image_embeds(
+    controller,
+    monkeypatch,
+):
+    asset = ConversionAsset(
+        filename="diagram.png",
+        source_path="/already/deleted/diagram.png",
+        preview_markdown_path="temp/diagram.png",
+        page_number=None,
+        kind="image",
+    )
+    controller.result_model.set_results(
+        {
+            "report.md": ConversionOutcome(
+                "# Report\n\n![Architecture](temp/diagram.png)\n\n"
+                "![Remote](https://example.com/remote.png)\n\n"
+                "**Still Markdown**",
+                assets=[asset],
+            )
+        }
+    )
+    controller._selected_result_index = 0
+    copied: list[str] = []
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.QGuiApplication.clipboard",
+        lambda: SimpleNamespace(setText=lambda value: copied.append(value)),
+    )
+
+    controller.copySelectedMarkdownText()
+
+    assert copied == [
+        "# Report\n\n[Image: Architecture]\n\n"
+        "![Remote](https://example.com/remote.png)\n\n"
+        "**Still Markdown**"
+    ]
+    assert "data:image/" not in copied[0]
+    assert "temp/diagram.png" not in copied[0]
+    assert "/already/deleted" not in copied[0]
+
+
+def test_controller_copy_image_error_leaves_clipboard_unchanged(
+    controller,
+    monkeypatch,
+    tmp_path,
+):
+    missing_path = tmp_path / "missing.png"
+    asset = ConversionAsset(
+        filename="missing.png",
+        source_path=str(missing_path),
+        preview_markdown_path="temp/missing.png",
+        page_number=None,
+        kind="image",
+    )
+    controller.result_model.set_results(
+        {
+            "report.md": ConversionOutcome(
+                "![Missing](temp/missing.png)",
+                assets=[asset],
+            )
+        }
+    )
+    controller._selected_result_index = 0
+    copied: list[str] = []
+    messages: list[tuple[str, str]] = []
+    controller.toastRequested.connect(
+        lambda kind, message: messages.append((kind, message))
+    )
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.QGuiApplication.clipboard",
+        lambda: SimpleNamespace(setText=lambda value: copied.append(value)),
+    )
+
+    controller.copySelectedMarkdown()
+
+    assert copied == []
+    assert messages == [
+        ("error", f"Could not copy Markdown: Missing image file: {missing_path}")
+    ]
+
+
+def test_controller_copy_without_assets_preserves_existing_behaviour(
+    controller,
+    monkeypatch,
+):
+    controller.result_model.set_results(
+        {"report.md": ConversionOutcome("  # Report\n\nBody  ")}
+    )
+    controller._selected_result_index = 0
+    copied: list[str] = []
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.QGuiApplication.clipboard",
+        lambda: SimpleNamespace(setText=lambda value: copied.append(value)),
+    )
+
+    assert controller.selectedResultHasLocalImageAssets is False
+    controller.copySelectedMarkdown()
+
+    assert copied == ["# Report\n\nBody"]
+
+
+def test_controller_copies_failed_result_details_directly(controller, monkeypatch):
+    asset = ConversionAsset(
+        filename="missing.png",
+        source_path="/missing/image.png",
+        preview_markdown_path="temp/missing.png",
+        page_number=None,
+        kind="image",
+    )
+    details = "Conversion failed while reading ![input](temp/missing.png)"
+    controller.result_model.set_results(
+        {"report.pdf": ConversionOutcome(details, assets=[asset])},
+        {"report.pdf"},
+    )
+    controller._selected_result_index = 0
+    copied: list[str] = []
+    monkeypatch.setattr(
+        "markitdowngui.ui_qml.controller.QGuiApplication.clipboard",
+        lambda: SimpleNamespace(setText=lambda value: copied.append(value)),
+    )
+
+    controller.copySelectedMarkdown()
+
+    assert copied == [details]
 
 
 def test_controller_separate_save_prefers_source_folder_for_local_files(
@@ -2724,7 +2995,7 @@ def test_controller_shutdown_rejects_close_until_worker_stops(controller):
 
 
 def test_controller_shutdown_rejects_close_during_update_install(controller):
-    installer = _FakeUpdateInstaller()
+    installer = _FakeUpdateInstaller(wait_result=False)
     installer.started = True
     controller._update_installer = installer
     controller._update_install_running = True
@@ -2742,7 +3013,7 @@ def test_controller_shutdown_rejects_close_during_update_install(controller):
 
 
 def test_controller_shutdown_rejects_close_during_source_update(controller):
-    runner = _FakeSourceUpdateRunner()
+    runner = _FakeSourceUpdateRunner(wait_result=False)
     runner.started = True
     controller._source_update_runner = runner
     controller._source_update_running = True
@@ -2759,12 +3030,81 @@ def test_controller_shutdown_rejects_close_during_source_update(controller):
     ]
 
 
+def test_controller_shutdown_rejects_close_while_update_check_is_running(controller):
+    checker = _FakeUpdateChecker(("none", None), wait_result=False)
+    checker.started = True
+    controller._update_checker = checker
+    messages: list[tuple[str, str]] = []
+    controller.toastRequested.connect(
+        lambda kind, message: messages.append((kind, message))
+    )
+
+    accepted = controller.shutdown()
+
+    assert accepted is False
+    assert messages == [
+        ("error", "Update check is still running. Close again after it finishes.")
+    ]
+
+
+def test_controller_shutdown_retains_assets_until_background_threads_finish(
+    controller,
+    tmp_path,
+):
+    asset_root = tmp_path / "preview-assets"
+    asset_root.mkdir()
+    asset_file = asset_root / "page.png"
+    asset_file.write_bytes(b"preview image")
+    controller._temp_asset_root = str(asset_root)
+    controller._temp_asset_roots.add(str(asset_root))
+    checker = _FakeUpdateChecker(("none", None), wait_result=False)
+    checker.started = True
+    controller._update_checker = checker
+
+    assert controller.shutdown() is False
+    assert asset_file.read_bytes() == b"preview image"
+    assert controller._temp_asset_root == str(asset_root)
+
+    checker.wait_result = True
+
+    assert controller.shutdown() is True
+    assert asset_root.exists() is False
+    assert controller._temp_asset_root is None
+
+
+def test_controller_shutdown_rejects_close_while_ocr_test_is_running(controller):
+    tester = _FakeUpdateChecker(("none", None), wait_result=False)
+    tester.started = True
+    controller._ocr_connection_tester = tester
+    controller._ocr_connection_test_running = True
+    messages: list[tuple[str, str]] = []
+    controller.toastRequested.connect(
+        lambda kind, message: messages.append((kind, message))
+    )
+
+    accepted = controller.shutdown()
+
+    assert accepted is False
+    assert messages == [
+        (
+            "error",
+            "OCR connection test is still running. Close again after it finishes.",
+        )
+    ]
+
+
 def test_controller_shutdown_cleans_up_after_worker_stops(controller, monkeypatch):
+    running = {"value": True}
+
+    def finish_worker(_timeout):
+        running["value"] = False
+        return True
+
     worker = SimpleNamespace(
         is_cancelled=False,
         is_paused=False,
-        isRunning=lambda: True,
-        wait=lambda timeout: True,
+        isRunning=lambda: running["value"],
+        wait=finish_worker,
     )
     controller.worker = worker
     controller._temp_asset_root = "C:/tmp/markitdown-assets"

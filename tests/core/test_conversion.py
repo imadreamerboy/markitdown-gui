@@ -1,10 +1,189 @@
+import base64
 import importlib
 import io
 import logging
 import sys
 import types
+import zipfile
+import zlib
 
 import pytest
+
+
+@pytest.fixture
+def docx_with_image_and_underline(tmp_path):
+    docx_path = tmp_path / "illustrated.docx"
+    png_bytes = base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/"
+        "x8AAusB9Wl2nNwAAAAASUVORK5CYII="
+    )
+    with zipfile.ZipFile(docx_path, "w") as archive:
+        archive.writestr(
+            "[Content_Types].xml",
+            '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+            '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+            '<Default Extension="xml" ContentType="application/xml"/>'
+            '<Default Extension="png" ContentType="image/png"/>'
+            '<Override PartName="/word/document.xml" '
+            'ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>'
+            "</Types>",
+        )
+        archive.writestr(
+            "_rels/.rels",
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            '<Relationship Id="rId1" '
+            'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" '
+            'Target="word/document.xml"/>'
+            "</Relationships>",
+        )
+        archive.writestr(
+            "word/_rels/document.xml.rels",
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            '<Relationship Id="rId1" '
+            'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" '
+            'Target="media/image1.png"/>'
+            "</Relationships>",
+        )
+        archive.writestr(
+            "word/document.xml",
+            '''<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+                xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+                xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
+                xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+                xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
+              <w:body>
+                <w:p><w:r><w:rPr><w:u w:val="single"/></w:rPr><w:t>DOCX_SENTINEL</w:t></w:r></w:p>
+                <w:tbl><w:tr><w:tc><w:p><w:r><w:drawing><wp:inline>
+                  <wp:docPr id="1" name="Image"/><a:graphic>
+                    <a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">
+                      <pic:pic><pic:blipFill><a:blip r:embed="rId1"/></pic:blipFill><pic:spPr/></pic:pic>
+                    </a:graphicData>
+                  </a:graphic>
+                </wp:inline></w:drawing></w:r></w:p></w:tc></w:tr></w:tbl>
+              </w:body>
+            </w:document>''',
+        )
+        archive.writestr("word/media/image1.png", png_bytes)
+    return docx_path
+
+
+@pytest.fixture
+def multipage_tiff(tmp_path):
+    from PIL import Image
+
+    tiff_path = tmp_path / "multipage.tiff"
+    pages = [
+        Image.new("RGB", (8, 8), "red"),
+        Image.new("RGB", (8, 8), "green"),
+        Image.new("RGB", (8, 8), "blue"),
+    ]
+    try:
+        pages[0].save(tiff_path, save_all=True, append_images=pages[1:])
+    finally:
+        for page in pages:
+            page.close()
+    return tiff_path
+
+
+@pytest.fixture
+def pdf_factory(tmp_path):
+    """Build small real PDFs without adding a test-only PDF dependency."""
+
+    def build(name, pages):
+        objects: dict[int, bytes] = {}
+        objects[1] = b"<< /Type /Catalog /Pages 2 0 R >>"
+        objects[3] = (
+            b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"
+        )
+        next_object_id = 4
+        page_ids: list[int] = []
+
+        for page in pages:
+            page_id = next_object_id
+            content_id = page_id + 1
+            next_object_id += 2
+            page_ids.append(page_id)
+
+            content_parts: list[bytes] = []
+            text_lines = page.get("text_lines")
+            if text_lines is None:
+                text = page.get("text")
+                text_lines = [text] if text else []
+            for line_index, text in enumerate(text_lines):
+                escaped = (
+                    str(text)
+                    .replace("\\", "\\\\")
+                    .replace("(", "\\(")
+                    .replace(")", "\\)")
+                )
+                content_parts.append(
+                    (
+                        f"BT /F1 11 Tf 72 {720 - line_index * 22} Td "
+                        f"({escaped}) Tj ET"
+                    ).encode("ascii")
+                )
+
+            resources = b"<< /Font << /F1 3 0 R >>"
+            if page.get("image"):
+                image_id = next_object_id
+                next_object_id += 1
+                pixels = zlib.compress(bytes([255, 0, 255, 0] * 4))
+                objects[image_id] = (
+                    b"<< /Type /XObject /Subtype /Image /Width 4 /Height 4 "
+                    b"/ColorSpace /DeviceGray /BitsPerComponent 8 /Filter /FlateDecode "
+                    + f"/Length {len(pixels)} >>\nstream\n".encode("ascii")
+                    + pixels
+                    + b"\nendstream"
+                )
+                resources += f" /XObject << /Im1 {image_id} 0 R >>".encode("ascii")
+                content_parts.append(b"q 320 0 0 160 72 430 cm /Im1 Do Q")
+            resources += b" >>"
+
+            content = b"\n".join(content_parts)
+            objects[content_id] = (
+                f"<< /Length {len(content)} >>\nstream\n".encode("ascii")
+                + content
+                + b"\nendstream"
+            )
+            objects[page_id] = (
+                b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+                + b"/Resources "
+                + resources
+                + f" /Contents {content_id} 0 R >>".encode("ascii")
+            )
+
+        kids = " ".join(f"{page_id} 0 R" for page_id in page_ids)
+        objects[2] = (
+            f"<< /Type /Pages /Kids [{kids}] /Count {len(page_ids)} >>".encode(
+                "ascii"
+            )
+        )
+
+        output = bytearray(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
+        offsets = [0]
+        for object_id in range(1, max(objects) + 1):
+            offsets.append(len(output))
+            output.extend(f"{object_id} 0 obj\n".encode("ascii"))
+            output.extend(objects[object_id])
+            output.extend(b"\nendobj\n")
+
+        xref_offset = len(output)
+        output.extend(f"xref\n0 {len(offsets)}\n".encode("ascii"))
+        output.extend(b"0000000000 65535 f \n")
+        for offset in offsets[1:]:
+            output.extend(f"{offset:010d} 00000 n \n".encode("ascii"))
+        output.extend(
+            (
+                f"trailer\n<< /Size {len(offsets)} /Root 1 0 R >>\n"
+                f"startxref\n{xref_offset}\n%%EOF\n"
+            ).encode("ascii")
+        )
+
+        path = tmp_path / name
+        path.write_bytes(output)
+        return path
+
+    return build
 
 
 class _FakeSignal:
@@ -65,47 +244,6 @@ def _install_fake_anydoc(monkeypatch, to_markdown):
     monkeypatch.setitem(sys.modules, "anydoc", package)
 
 
-def _install_fake_docx_dependencies(
-    monkeypatch,
-    *,
-    convert_to_html,
-    markdownify=lambda html: html,
-    pre_process_docx=lambda stream: stream,
-):
-    mammoth_module = types.ModuleType("mammoth")
-    mammoth_images_module = types.SimpleNamespace(
-        img_element=lambda convert_image: convert_image
-    )
-    mammoth_module.images = mammoth_images_module
-    mammoth_module.convert_to_html = convert_to_html
-
-    markdownify_module = types.ModuleType("markdownify")
-    markdownify_module.markdownify = markdownify
-
-    markitdown_package = types.ModuleType("markitdown")
-    converter_utils_module = types.ModuleType("markitdown.converter_utils")
-    docx_module = types.ModuleType("markitdown.converter_utils.docx")
-    pre_process_module = types.ModuleType("markitdown.converter_utils.docx.pre_process")
-    pre_process_module.pre_process_docx = pre_process_docx
-    markitdown_package.__path__ = []
-    converter_utils_module.__path__ = []
-    docx_module.__path__ = []
-    markitdown_package.converter_utils = converter_utils_module
-    converter_utils_module.docx = docx_module
-    docx_module.pre_process = pre_process_module
-
-    monkeypatch.setitem(sys.modules, "mammoth", mammoth_module)
-    monkeypatch.setitem(sys.modules, "markdownify", markdownify_module)
-    monkeypatch.setitem(sys.modules, "markitdown", markitdown_package)
-    monkeypatch.setitem(sys.modules, "markitdown.converter_utils", converter_utils_module)
-    monkeypatch.setitem(sys.modules, "markitdown.converter_utils.docx", docx_module)
-    monkeypatch.setitem(
-        sys.modules,
-        "markitdown.converter_utils.docx.pre_process",
-        pre_process_module,
-    )
-
-
 def test_convert_file_uses_markitdown_when_ocr_disabled(monkeypatch, conversion):
     calls = []
 
@@ -140,6 +278,264 @@ def test_convert_pdf_without_preserve_images_keeps_native_path(monkeypatch, conv
 
     assert result == "native pdf text"
     assert calls == [("scan.pdf", False)]
+
+
+@pytest.mark.parametrize("suffix", [".tif", ".tiff"])
+def test_convert_tiff_uses_azure_for_both_supported_extensions(
+    monkeypatch,
+    conversion,
+    tmp_path,
+    suffix,
+):
+    source_path = tmp_path / f"scan{suffix}"
+    source_path.write_bytes(b"TIFF fixture bytes are not read by the Azure stub")
+    calls = []
+
+    def fake_convert(file_path, _options, use_docintel=False):
+        calls.append((file_path, use_docintel))
+        return "azure tiff text"
+
+    monkeypatch.setattr(conversion, "_convert_with_markitdown", fake_convert)
+    monkeypatch.setattr(
+        conversion,
+        "_convert_image_with_local_ocr",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("local OCR must not run after successful Azure TIFF OCR")
+        ),
+    )
+
+    outcome = conversion.convert_file_with_details(
+        str(source_path),
+        conversion.ConversionOptions(
+            ocr_enabled=True,
+            docintel_endpoint="https://example.cognitiveservices.azure.com/",
+        ),
+    )
+
+    assert outcome.backend == conversion.BACKEND_AZURE
+    assert outcome.markdown == "azure tiff text"
+    assert calls == [(str(source_path), True)]
+    assert source_path.suffix == suffix
+
+
+@pytest.mark.parametrize(
+    "accelerator_options",
+    [
+        {"anydoc_conversion": True},
+        {"fast_pdf_conversion": True},
+        {"anydoc_conversion": True, "fast_pdf_conversion": True},
+    ],
+    ids=("anydoc", "pdf-inspector", "both"),
+)
+def test_pdf_ocr_precedes_native_only_accelerators_for_rich_mixed_pdf(
+    monkeypatch,
+    conversion,
+    pdf_factory,
+    accelerator_options,
+):
+    source_pdf = pdf_factory(
+        "rich-mixed.pdf",
+        [
+            {
+                "text_lines": [
+                    f"NATIVE_LINE_{index:02d} sufficient extractable digital text"
+                    for index in range(18)
+                ],
+                "image": True,
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        conversion,
+        "_try_convert_with_anydoc",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("AnyDoc must not run for an OCR-enabled PDF")
+        ),
+    )
+    monkeypatch.setattr(
+        conversion,
+        "_try_convert_pdf_with_pdf_inspector",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("pdf-inspector must not run for an OCR-enabled PDF")
+        ),
+    )
+    monkeypatch.setattr(
+        conversion,
+        "_run_tesseract_ocr",
+        lambda *_args, **_kwargs: "SCANNED_BODY_SENTINEL",
+    )
+
+    outcome = conversion.convert_file_with_details(
+        str(source_pdf),
+        conversion.ConversionOptions(
+            ocr_enabled=True,
+            **accelerator_options,
+        ),
+    )
+
+    assert outcome.backend == conversion.BACKEND_LOCAL
+    assert "NATIVE\\_LINE\\_00" in outcome.markdown
+    assert "SCANNED\\_BODY\\_SENTINEL" in outcome.markdown
+
+
+def test_convert_digital_pdf_with_ocr_keeps_native_markitdown_output(
+    monkeypatch,
+    conversion,
+    pdf_factory,
+):
+    source_pdf = pdf_factory(
+        "digital.pdf",
+        [{"text": "DIGITAL_SENTINEL"}],
+    )
+    native_markdown = "| native table |\n| --- |\n| preserved |"
+
+    monkeypatch.setattr(
+        conversion,
+        "_convert_with_markitdown",
+        lambda *_args, **_kwargs: native_markdown,
+    )
+    monkeypatch.setattr(
+        conversion,
+        "_run_tesseract_ocr",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("digital-only PDF should not invoke OCR")
+        ),
+    )
+
+    outcome = conversion.convert_file_with_details(
+        str(source_pdf),
+        conversion.ConversionOptions(ocr_enabled=True),
+    )
+
+    assert outcome.backend == conversion.BACKEND_NATIVE
+    assert outcome.markdown == native_markdown
+
+
+def test_convert_mixed_pdf_ocrs_image_even_with_native_page_stamp(
+    monkeypatch,
+    conversion,
+    pdf_factory,
+):
+    source_pdf = pdf_factory(
+        "mixed.pdf",
+        [{"text": "PAGE_NUMBER_STAMP", "image": True}],
+    )
+    monkeypatch.setattr(
+        conversion,
+        "_convert_with_markitdown",
+        lambda *_args, **_kwargs: "PAGE_NUMBER_STAMP",
+    )
+    monkeypatch.setattr(
+        conversion,
+        "_run_tesseract_ocr",
+        lambda *_args, **_kwargs: "SCANNED_BODY_SENTINEL",
+    )
+
+    outcome = conversion.convert_file_with_details(
+        str(source_pdf),
+        conversion.ConversionOptions(ocr_enabled=True),
+    )
+
+    assert outcome.backend == conversion.BACKEND_LOCAL
+    native_position = outcome.markdown.index("PAGE\\_NUMBER\\_STAMP")
+    scan_position = outcome.markdown.index("SCANNED\\_BODY\\_SENTINEL")
+    assert native_position < scan_position
+
+
+def test_convert_mixed_pdf_propagates_page_ocr_failure(
+    monkeypatch,
+    conversion,
+    pdf_factory,
+):
+    source_pdf = pdf_factory(
+        "mixed-failure.pdf",
+        [{"text": "PAGE_NUMBER_STAMP", "image": True}],
+    )
+    monkeypatch.setattr(
+        conversion,
+        "_convert_with_markitdown",
+        lambda *_args, **_kwargs: "PAGE_NUMBER_STAMP",
+    )
+
+    def fail_ocr(_image, _options):
+        raise RuntimeError("forced page OCR failure")
+
+    monkeypatch.setattr(conversion, "_run_tesseract_ocr", fail_ocr)
+
+    with pytest.raises(RuntimeError, match="forced page OCR failure"):
+        conversion.convert_file_with_details(
+            str(source_pdf),
+            conversion.ConversionOptions(ocr_enabled=True),
+        )
+
+
+def test_convert_pdf_accepts_empty_ocr_for_legitimate_blank_page(
+    monkeypatch,
+    conversion,
+    pdf_factory,
+):
+    source_pdf = pdf_factory(
+        "blank-and-digital.pdf",
+        [{}, {"text": "DIGITAL_SENTINEL"}],
+    )
+    monkeypatch.setattr(
+        conversion,
+        "_convert_with_markitdown",
+        lambda *_args, **_kwargs: "DIGITAL_SENTINEL",
+    )
+    calls = 0
+
+    def empty_ocr(_image, _options):
+        nonlocal calls
+        calls += 1
+        return ""
+
+    monkeypatch.setattr(conversion, "_run_tesseract_ocr", empty_ocr)
+
+    outcome = conversion.convert_file_with_details(
+        str(source_pdf),
+        conversion.ConversionOptions(ocr_enabled=True),
+    )
+
+    assert outcome.backend == conversion.BACKEND_LOCAL
+    assert "DIGITAL\\_SENTINEL" in outcome.markdown
+    assert calls == 1
+
+
+def test_convert_pdf_surfaces_selective_parser_failure_without_whole_page_retry(
+    monkeypatch,
+    conversion,
+    pdf_factory,
+):
+    source_pdf = pdf_factory(
+        "selective-parser-failure.pdf",
+        [{"text": "DIGITAL_SENTINEL"}],
+    )
+    monkeypatch.setattr(
+        conversion,
+        "_convert_with_markitdown",
+        lambda *_args, **_kwargs: "DIGITAL_SENTINEL",
+    )
+    monkeypatch.setattr(
+        conversion,
+        "_convert_pdf_with_image_aware_pipeline",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            RuntimeError("selective parser failed")
+        ),
+    )
+    monkeypatch.setattr(
+        conversion,
+        "_convert_pdf_with_local_ocr",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("whole-page OCR must not retry a parser failure")
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="selective parser failed"):
+        conversion.convert_file_with_details(
+            str(source_pdf),
+            conversion.ConversionOptions(ocr_enabled=True),
+        )
 
 
 def test_anydoc_conversion_is_opt_in(monkeypatch, conversion):
@@ -539,8 +935,13 @@ def test_convert_image_uses_glmocr_when_selected(monkeypatch, conversion):
     assert captured["model"] == "glm-ocr"
 
 
-def test_convert_pdf_keeps_native_text_when_available(monkeypatch, conversion):
+def test_convert_pdf_keeps_native_text_when_available(
+    monkeypatch,
+    conversion,
+    pdf_factory,
+):
     calls = []
+    source_pdf = pdf_factory("native.pdf", [{"text": "native pdf text"}])
 
     def fake_convert(_file_path, _options, use_docintel=False):
         calls.append(use_docintel)
@@ -554,7 +955,7 @@ def test_convert_pdf_keeps_native_text_when_available(monkeypatch, conversion):
     )
 
     result = conversion.convert_file(
-        "scan.pdf",
+        str(source_pdf),
         conversion.ConversionOptions(ocr_enabled=True),
     )
 
@@ -784,50 +1185,13 @@ def test_convert_docx_without_preserve_images_keeps_native_path(monkeypatch, con
     assert calls == [("report.docx", False)]
 
 
-def test_convert_docx_with_preserved_images_uses_existing_dependencies(
-    monkeypatch,
+def test_convert_docx_with_preserved_images_uses_upstream_converter_and_assets(
     conversion,
     tmp_path,
+    docx_with_image_and_underline,
 ):
-    captured = {}
-    source_docx = tmp_path / "report.docx"
-    source_docx.write_bytes(b"docx")
-
-    class FakeImage:
-        content_type = "image/png"
-
-        def open(self):
-            return io.BytesIO(b"png")
-
-    def fake_convert_to_html(stream, **kwargs):
-        captured["stream"] = stream
-        captured["kwargs"] = kwargs
-        image_attrs = kwargs["convert_image"](FakeImage())
-        captured["image_src"] = image_attrs["src"]
-        return types.SimpleNamespace(
-            value=f'<p><img src="{image_attrs["src"]}" /></p><p>Text</p>'
-        )
-
-    def fake_markdownify(_html):
-        return f'![image]({captured["image_src"]})\n\nText'
-
-    preprocessed_stream = io.BytesIO(b"preprocessed")
-    _install_fake_docx_dependencies(
-        monkeypatch,
-        convert_to_html=fake_convert_to_html,
-        markdownify=fake_markdownify,
-        pre_process_docx=lambda _stream: preprocessed_stream,
-    )
-    monkeypatch.setattr(
-        conversion,
-        "_convert_with_markitdown",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(
-            AssertionError("native MarkItDown should not run")
-        ),
-    )
-
     outcome = conversion.convert_file_with_details(
-        str(source_docx),
+        str(docx_with_image_and_underline),
         conversion.ConversionOptions(
             preserve_docx_images=True,
             docx_artifacts_dir=str(tmp_path / "artifacts"),
@@ -835,23 +1199,59 @@ def test_convert_docx_with_preserved_images_uses_existing_dependencies(
     )
 
     assert outcome.backend == conversion.BACKEND_DOCX_IMAGES
-    assert outcome.markdown == f'![image]({captured["image_src"]})\n\nText'
-    assert captured["stream"] is preprocessed_stream
-    assert captured["kwargs"]["ignore_empty_paragraphs"] is False
+    assert "<u>DOCX_SENTINEL</u>" in outcome.markdown.replace("\\_", "_")
+    assert "| --- |" not in outcome.markdown
+    assert len(outcome.assets) == 1
+    asset = outcome.assets[0]
     assert outcome.assets == [
         conversion.ConversionAsset(
             filename="image-001.png",
-            source_path=outcome.assets[0].source_path,
-            preview_markdown_path=captured["image_src"],
+            source_path=asset.source_path,
+            preview_markdown_path=asset.preview_markdown_path,
             page_number=None,
             kind="docx-image",
         )
     ]
-    assert outcome.assets[0].source_path is not None
-    assert captured["image_src"] == outcome.assets[0].preview_markdown_path
-    assert captured["image_src"].endswith("/image-001.png")
-    assert (tmp_path / "artifacts").is_dir()
-    assert io.open(outcome.assets[0].source_path, "rb").read() == b"png"
+    assert asset.source_path is not None
+    assert asset.preview_markdown_path in outcome.markdown
+    assert asset.preview_markdown_path.startswith("/")
+    assert asset.preview_markdown_path.endswith("/image-001.png")
+    assert io.open(asset.source_path, "rb").read().startswith(b"\x89PNG")
+
+    from markitdowngui.core.markdown_assets import prepare_markdown_for_separate_save
+
+    output_path = tmp_path / "saved" / "report.md"
+    output_path.parent.mkdir()
+    rewritten = prepare_markdown_for_separate_save(
+        outcome.markdown,
+        outcome.assets,
+        output_path,
+    )
+
+    assert "report_assets/image-001.png" in rewritten
+    assert asset.preview_markdown_path not in rewritten
+    assert (tmp_path / "saved" / "report_assets" / "image-001.png").is_file()
+
+
+def test_convert_docx_image_hook_failure_is_surfaced(
+    monkeypatch,
+    conversion,
+    tmp_path,
+    docx_with_image_and_underline,
+):
+    def fail_write(_path, _data):
+        raise OSError("asset write failed")
+
+    monkeypatch.setattr(conversion.Path, "write_bytes", fail_write)
+
+    with pytest.raises(OSError, match="asset write failed"):
+        conversion.convert_file_with_details(
+            str(docx_with_image_and_underline),
+            conversion.ConversionOptions(
+                preserve_docx_images=True,
+                docx_artifacts_dir=str(tmp_path / "artifacts"),
+            ),
+        )
 
 
 def test_convert_docx_with_preserved_images_requires_artifact_dir(conversion):
@@ -1054,8 +1454,13 @@ def test_convert_pdf_surfaces_glmocr_failure_without_fallback(monkeypatch, conve
 def test_convert_pdf_falls_back_to_local_ocr_after_native_markitdown_failure(
     monkeypatch,
     conversion,
+    pdf_factory,
 ):
     calls = []
+    source_pdf = pdf_factory(
+        "native-failure.pdf",
+        [{"text": "DIGITAL_SENTINEL", "image": True}],
+    )
 
     def fake_convert(_file_path, _options, use_docintel=False):
         calls.append(use_docintel)
@@ -1066,21 +1471,30 @@ def test_convert_pdf_falls_back_to_local_ocr_after_native_markitdown_failure(
     monkeypatch.setattr(conversion, "_convert_with_markitdown", fake_convert)
     monkeypatch.setattr(
         conversion,
-        "_convert_pdf_with_local_ocr",
+        "_run_tesseract_ocr",
         lambda *_args, **_kwargs: "local pdf text",
     )
 
     result = conversion.convert_file(
-        "scan.pdf",
+        str(source_pdf),
         conversion.ConversionOptions(ocr_enabled=True),
     )
 
-    assert result == "local pdf text"
+    assert "DIGITAL\\_SENTINEL" in result
+    assert "local pdf text" in result
     assert calls == [False]
 
 
-def test_convert_pdf_falls_back_to_local_ocr_after_docintel_failure(monkeypatch, conversion):
+def test_convert_pdf_falls_back_to_local_ocr_after_docintel_failure(
+    monkeypatch,
+    conversion,
+    pdf_factory,
+):
     calls = []
+    source_pdf = pdf_factory(
+        "docintel-failure.pdf",
+        [{"text": "DIGITAL_SENTINEL", "image": True}],
+    )
 
     def fake_convert(_file_path, _options, use_docintel=False):
         calls.append(use_docintel)
@@ -1091,19 +1505,20 @@ def test_convert_pdf_falls_back_to_local_ocr_after_docintel_failure(monkeypatch,
     monkeypatch.setattr(conversion, "_convert_with_markitdown", fake_convert)
     monkeypatch.setattr(
         conversion,
-        "_convert_pdf_with_local_ocr",
+        "_run_tesseract_ocr",
         lambda *_args, **_kwargs: "local pdf text",
     )
 
     result = conversion.convert_file(
-        "scan.pdf",
+        str(source_pdf),
         conversion.ConversionOptions(
             ocr_enabled=True,
             docintel_endpoint="https://example.cognitiveservices.azure.com/",
         ),
     )
 
-    assert result == "local pdf text"
+    assert "DIGITAL\\_SENTINEL" in result
+    assert "local pdf text" in result
     assert calls == [False, True]
 
 
@@ -1282,6 +1697,84 @@ def test_convert_with_glmocr_ollama_joins_page_results(monkeypatch, conversion):
     assert responses == []
 
 
+def test_convert_multipage_tiff_with_local_ocr_preserves_frame_order(
+    monkeypatch,
+    conversion,
+    multipage_tiff,
+):
+    frame_colours = {
+        (255, 0, 0): "red frame",
+        (0, 128, 0): "green frame",
+        (0, 0, 255): "blue frame",
+    }
+
+    monkeypatch.setattr(
+        conversion,
+        "_run_tesseract_ocr",
+        lambda image, _options: frame_colours[image.getpixel((0, 0))],
+    )
+
+    markdown = conversion._convert_image_with_local_ocr(
+        str(multipage_tiff),
+        conversion.ConversionOptions(ocr_enabled=True),
+    )
+
+    assert markdown == "red frame\n\ngreen frame\n\nblue frame"
+
+
+def test_convert_multipage_tiff_with_ollama_preserves_frame_order(
+    monkeypatch,
+    conversion,
+    multipage_tiff,
+):
+    frame_colours = {
+        (255, 0, 0): "red frame",
+        (0, 128, 0): "green frame",
+        (0, 0, 255): "blue frame",
+    }
+    monkeypatch.setattr(
+        conversion,
+        "_call_glmocr_ollama",
+        lambda image, _options: frame_colours[image.getpixel((0, 0))],
+    )
+
+    markdown = conversion._convert_with_glmocr(
+        str(multipage_tiff),
+        conversion.ConversionOptions(
+            ocr_enabled=True,
+            ocr_provider=conversion.OCR_PROVIDER_GLMOCR,
+            glmocr_mode=conversion.GLMOCR_MODE_OLLAMA,
+        ),
+    )
+
+    assert markdown == "red frame\n\ngreen frame\n\nblue frame"
+
+
+def test_convert_multipage_tiff_surfaces_later_frame_failure(
+    monkeypatch,
+    conversion,
+    multipage_tiff,
+):
+    calls = 0
+
+    def fail_on_second_frame(_image, _options):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise RuntimeError("second TIFF frame failed")
+        return "frame text"
+
+    monkeypatch.setattr(conversion, "_run_tesseract_ocr", fail_on_second_frame)
+
+    with pytest.raises(RuntimeError, match="second TIFF frame failed"):
+        conversion._convert_image_with_local_ocr(
+            str(multipage_tiff),
+            conversion.ConversionOptions(ocr_enabled=True),
+        )
+
+    assert calls == 2
+
+
 def test_convert_image_uses_http_ocr_provider(monkeypatch, conversion, tmp_path):
     captured = {}
     image_path = tmp_path / "scan.png"
@@ -1401,7 +1894,13 @@ def test_convert_pdf_falls_back_from_http_to_azure_tesseract(
 def test_convert_pdf_surfaces_azure_failure_when_local_ocr_is_unavailable(
     monkeypatch,
     conversion,
+    pdf_factory,
 ):
+    source_pdf = pdf_factory(
+        "azure-and-local-failure.pdf",
+        [{"text": "DIGITAL_SENTINEL", "image": True}],
+    )
+
     def fake_convert(_file_path, _options, use_docintel=False):
         if use_docintel:
             raise RuntimeError("azure auth failed")
@@ -1410,7 +1909,7 @@ def test_convert_pdf_surfaces_azure_failure_when_local_ocr_is_unavailable(
     monkeypatch.setattr(conversion, "_convert_with_markitdown", fake_convert)
     monkeypatch.setattr(
         conversion,
-        "_convert_pdf_with_local_ocr",
+        "_run_tesseract_ocr",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(
             RuntimeError("Local OCR failed. Install Tesseract or set its path in Settings.")
         ),
@@ -1418,7 +1917,7 @@ def test_convert_pdf_surfaces_azure_failure_when_local_ocr_is_unavailable(
 
     with pytest.raises(RuntimeError) as exc_info:
         conversion.convert_file(
-            "scan.pdf",
+            str(source_pdf),
             conversion.ConversionOptions(
                 ocr_enabled=True,
                 docintel_endpoint="https://example.cognitiveservices.azure.com/",
@@ -1436,7 +1935,7 @@ def test_convert_with_markitdown_passes_docintel_api_key(monkeypatch, conversion
     captured = {}
 
     class FakeResult:
-        text_content = "azure text"
+        markdown = "azure text"
 
     class FakeMarkItDown:
         def __init__(self, **kwargs):
@@ -1487,7 +1986,7 @@ def test_convert_with_markitdown_uses_default_azure_credential_without_api_key(
     captured = {}
 
     class FakeResult:
-        text_content = "azure text"
+        markdown = "azure text"
 
     class FakeMarkItDown:
         def __init__(self, **kwargs):
@@ -1997,7 +2496,7 @@ def test_conversion_worker_reuses_markitdown_instance_for_native_files(
 
         def convert(self, file_path):
             converted.append(file_path)
-            return types.SimpleNamespace(text_content=f"# {file_path}")
+            return types.SimpleNamespace(markdown=f"# {file_path}")
 
     monkeypatch.setitem(
         sys.modules,
