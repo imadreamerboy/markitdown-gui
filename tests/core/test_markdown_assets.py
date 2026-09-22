@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import base64
 import os
 import stat
 
@@ -8,8 +9,11 @@ from markitdowngui.core.markdown_assets import (
     MarkdownSaveInput,
     cleanup_temp_asset_root,
     create_temp_asset_root,
+    markdown_has_local_image_assets,
     prepare_combined_markdown_for_save,
+    prepare_markdown_for_clipboard,
     prepare_markdown_for_separate_save,
+    prepare_markdown_text_for_clipboard,
     rewrite_markdown_for_preview,
 )
 
@@ -38,6 +42,96 @@ def test_rewrite_markdown_for_preview_uses_file_urls(tmp_path):
     )
 
     assert asset_path.resolve().as_uri() in markdown
+
+
+def test_prepare_markdown_for_clipboard_embeds_only_referenced_app_images(tmp_path):
+    image_path = tmp_path / "page.png"
+    image_bytes = b"\x89PNG\r\n\x1a\nclipboard-image"
+    image_path.write_bytes(image_bytes)
+    unused_path = tmp_path / "unused.png"
+    asset = _FakeAsset("page.png", str(image_path), "assets/page.png")
+    unused_asset = _FakeAsset("unused.png", str(unused_path), "assets/unused.png")
+    source = (
+        "![assets/page.png](assets/page.png)\n\n"
+        "![remote](https://example.com/remote.png)\n\n"
+        "[ordinary link](assets/page.png)"
+    )
+
+    copied = prepare_markdown_for_clipboard(source, [asset, unused_asset])
+
+    encoded = base64.b64encode(image_bytes).decode("ascii")
+    assert f"![assets/page.png](data:image/png;base64,{encoded})" in copied
+    assert "![remote](https://example.com/remote.png)" in copied
+    assert "[ordinary link](assets/page.png)" in copied
+    assert "unused.png" not in copied
+
+
+def test_prepare_markdown_for_clipboard_embeds_declared_html_images(tmp_path):
+    image_path = tmp_path / "figure.jpg"
+    image_path.write_bytes(b"jpeg bytes")
+
+    copied = prepare_markdown_for_clipboard(
+        '<p><img src="temp/figure.jpg" alt="A figure"></p>',
+        [_FakeAsset("figure.jpg", str(image_path), "temp/figure.jpg")],
+    )
+
+    assert '<img src="data:image/jpeg;base64,' in copied
+    assert 'alt="A figure"' in copied
+
+
+def test_prepare_markdown_for_clipboard_fails_for_missing_referenced_image(tmp_path):
+    missing_path = tmp_path / "missing.png"
+
+    with pytest.raises(FileNotFoundError, match="Missing image file"):
+        prepare_markdown_for_clipboard(
+            "![missing](assets/missing.png)",
+            [_FakeAsset("missing.png", str(missing_path), "assets/missing.png")],
+        )
+
+
+def test_prepare_markdown_for_clipboard_fails_for_unsupported_image_type(tmp_path):
+    image_path = tmp_path / "figure.unknown"
+    image_path.write_bytes(b"image bytes")
+
+    with pytest.raises(ValueError, match="unsupported file type"):
+        prepare_markdown_for_clipboard(
+            "![figure](assets/figure.unknown)",
+            [_FakeAsset("figure.unknown", str(image_path), "assets/figure.unknown")],
+        )
+
+
+def test_prepare_markdown_text_for_clipboard_replaces_only_app_image_embeds():
+    source = (
+        "# Result\n\n"
+        "![Diagram](temp/diagram.png)\n\n"
+        '<img src="temp/photo.jpg" alt="Team photo">\n\n'
+        "![remote](https://example.com/remote.png)\n\n"
+        "[download](temp/diagram.png)"
+    )
+
+    copied = prepare_markdown_text_for_clipboard(
+        source,
+        [
+            _FakeAsset("diagram.png", "/deleted/diagram.png", "temp/diagram.png"),
+            _FakeAsset("photo.jpg", "/deleted/photo.jpg", "temp/photo.jpg"),
+        ],
+    )
+
+    assert "[Image: Diagram]" in copied
+    assert "[Image: Team photo]" in copied
+    assert "![remote](https://example.com/remote.png)" in copied
+    assert "[download](temp/diagram.png)" in copied
+    assert "data:image/" not in copied
+    assert "/deleted/" not in copied
+    assert markdown_has_local_image_assets(source, []) is False
+
+
+def test_clipboard_helpers_leave_markdown_without_declared_assets_unchanged():
+    markdown = "# Result\n\n![remote](https://example.com/image.png)"
+
+    assert prepare_markdown_for_clipboard(markdown, []) == markdown
+    assert prepare_markdown_text_for_clipboard(markdown, []) == markdown
+    assert markdown_has_local_image_assets(markdown, []) is False
 
 
 def test_prepare_markdown_for_separate_save_copies_assets_and_rewrites_paths(tmp_path):

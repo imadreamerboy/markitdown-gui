@@ -62,7 +62,7 @@ python -m markitdowngui.utils.source_updater
 
 ### 前置要求
 
-- Python `3.10+`
+- Python `3.10`–`3.14`
 - 推荐使用 `uv`
 
 安装依赖：

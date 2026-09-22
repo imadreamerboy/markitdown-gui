@@ -1,5 +1,6 @@
 import hashlib
 import os
+import shutil
 import subprocess
 import sys
 import zipfile
@@ -10,9 +11,16 @@ import pytest
 from markitdowngui.utils import packaged_updater
 
 
+VALID_SHA256 = "a" * 64
+
+
 def test_build_packaged_update_plan_supports_packaged_windows_zip():
     plan = packaged_updater.build_packaged_update_plan(
-        {"name": "MarkItDown-Windows-2.0.0.zip", "url": "https://example.com/app.zip"},
+        {
+            "name": "MarkItDown-Windows-2.0.0.zip",
+            "url": "https://example.com/app.zip",
+            "sha256": VALID_SHA256,
+        },
         packaged=True,
         platform="win32",
     )
@@ -36,7 +44,11 @@ def test_build_packaged_update_plan_keeps_source_builds_manual():
 
 def test_build_packaged_update_plan_opens_macos_dmg_manually():
     plan = packaged_updater.build_packaged_update_plan(
-        {"name": "MarkItDown-macOS-2.0.0.dmg", "url": "https://example.com/app.dmg"},
+        {
+            "name": "MarkItDown-macOS-2.0.0.dmg",
+            "url": "https://example.com/app.dmg",
+            "sha256": VALID_SHA256,
+        },
         packaged=True,
         platform="darwin",
     )
@@ -44,6 +56,37 @@ def test_build_packaged_update_plan_opens_macos_dmg_manually():
     assert plan.supported is True
     assert plan.mode == "dmg"
     assert plan.label == "Download DMG"
+
+
+@pytest.mark.parametrize(
+    ("asset_name", "platform", "mode"),
+    [
+        ("MarkItDown-Windows-2.0.0.zip", "win32", "zip"),
+        ("MarkItDown-Linux-2.0.0.zip", "linux", "zip"),
+        ("MarkItDown-macOS-2.0.0.dmg", "darwin", "dmg"),
+    ],
+)
+@pytest.mark.parametrize("sha256", [None, "", "abc123", "g" * 64, "a" * 65])
+def test_build_packaged_update_plan_rejects_unverified_automatic_updates(
+    asset_name,
+    platform,
+    mode,
+    sha256,
+):
+    plan = packaged_updater.build_packaged_update_plan(
+        {
+            "name": asset_name,
+            "url": f"https://example.com/{asset_name}",
+            "sha256": sha256,
+        },
+        packaged=True,
+        platform=platform,
+    )
+
+    assert plan.supported is False
+    assert plan.mode == mode
+    assert plan.label == "Download"
+    assert "SHA256 checksum" in plan.reason
 
 
 def test_build_packaged_update_plan_keeps_macos_source_builds_manual():
@@ -86,6 +129,28 @@ def test_verify_sha256_rejects_mismatched_download(tmp_path):
 
     with pytest.raises(packaged_updater.PackagedUpdateError, match="checksum"):
         packaged_updater.verify_sha256(archive, "0" * 64)
+
+
+@pytest.mark.parametrize(
+    ("checksum", "message"),
+    [
+        (None, "missing a SHA256 checksum"),
+        ("", "missing a SHA256 checksum"),
+        ("abc123", "malformed"),
+        ("g" * 64, "malformed"),
+        ("a" * 65, "malformed"),
+    ],
+)
+def test_verify_sha256_rejects_missing_or_malformed_checksum(
+    tmp_path,
+    checksum,
+    message,
+):
+    archive = tmp_path / "app.zip"
+    archive.write_bytes(b"archive")
+
+    with pytest.raises(packaged_updater.PackagedUpdateError, match=message):
+        packaged_updater.verify_sha256(archive, checksum)
 
 
 def test_extract_zip_to_staging_returns_single_app_root(tmp_path):
@@ -185,7 +250,54 @@ def test_install_packaged_update_prepares_helper_without_replacing_app(
     assert "$backupCreated = $true" in script
     assert "$waitTimeoutSeconds = 90" in script
     assert "Remove-UpdateRuntime" in script
-    assert "if ($backupCreated -and (Test-Path -LiteralPath $currentDir))" in script
+    assert "if ($backupCreated)" in script
+    assert "if (Test-Path -LiteralPath $currentDir)" in script
+    assert "$replacementProcess = Start-Process" in script
+    assert "-PassThru" in script
+    assert ".WaitForExit(2000)" in script
+    assert "Write-UpdateResult \"success\"" in script
+    assert script.index(".WaitForExit(2000)") < script.index(
+        'Write-UpdateResult "success"'
+    )
+    assert "$failedReplacementRemoved = -not" in script
+    assert "if (-not $failedReplacementRemoved)" in script
+    assert "} elseif (Test-Path -LiteralPath $backupDir)" in script
+    assert script.index("$failedReplacementRemoved = -not") < script.index(
+        "Move-Item -LiteralPath $backupDir -Destination $currentDir"
+    )
+
+
+@pytest.mark.parametrize(
+    ("checksum", "message"),
+    [
+        (None, "missing a SHA256 checksum"),
+        ("abc123", "malformed"),
+    ],
+)
+def test_install_packaged_update_rejects_unverified_asset_before_download(
+    monkeypatch,
+    checksum,
+    message,
+):
+    downloaded = []
+    monkeypatch.setattr(packaged_updater.sys, "platform", "win32")
+    monkeypatch.setattr(packaged_updater.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(
+        packaged_updater,
+        "download_asset",
+        lambda *_args, **_kwargs: downloaded.append(True),
+    )
+
+    with pytest.raises(packaged_updater.PackagedUpdateError, match=message):
+        packaged_updater.install_packaged_update(
+            {
+                "name": "MarkItDown-Windows-2.0.0.zip",
+                "url": "https://example.com/app.zip",
+                "sha256": checksum,
+            }
+        )
+
+    assert downloaded == []
 
 
 def test_build_posix_replace_helper_writes_update_result(monkeypatch, tmp_path):
@@ -204,7 +316,9 @@ def test_build_posix_replace_helper_writes_update_result(monkeypatch, tmp_path):
     assert str(tmp_path / "update-result.txt") in script
     assert "wait_timeout_seconds=90" in script
     assert "trap cleanup_update_runtime EXIT" in script
-    assert "Update failed and rollback was attempted." in script
+    assert "replacement_status=$?" in script
+    assert "Replacement app exited during startup with code" in script
+    assert script.index("kill -0") < script.index('write_update_result "success"')
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX helper execution test")
@@ -268,7 +382,7 @@ def test_posix_replace_helper_times_out_before_replacing_and_cleans_runtime(
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX helper execution test")
-def test_posix_replace_helper_replaces_app_and_cleans_runtime(
+def test_posix_replace_helper_rolls_back_when_replacement_exits_nonzero(
     monkeypatch,
     tmp_path,
 ):
@@ -282,7 +396,7 @@ def test_posix_replace_helper_replaces_app_and_cleans_runtime(
     replacement_dir = runtime_dir / "replacement"
     replacement_dir.mkdir()
     replacement_executable = replacement_dir / "MarkItDown"
-    replacement_executable.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    replacement_executable.write_text("#!/bin/sh\nexit 42\n", encoding="utf-8")
     replacement_executable.chmod(0o755)
     result_path = tmp_path / "update-result.txt"
     helper_path = runtime_dir / "apply-update.sh"
@@ -311,10 +425,231 @@ def test_posix_replace_helper_replaces_app_and_cleans_runtime(
         timeout=5,
     )
 
-    assert completed.returncode == 0
-    assert (current_dir / "MarkItDown").read_text(encoding="utf-8") == "#!/bin/sh\nexit 0\n"
-    assert "Status: success" in result_path.read_text(encoding="utf-8")
+    assert completed.returncode == 1
+    assert (current_dir / "MarkItDown").read_text(encoding="utf-8") == "old"
+    result = result_path.read_text(encoding="utf-8")
+    assert "Status: failed" in result
+    assert "exited during startup with code 42" in result
+    assert "Previous version restored" in result
     assert not runtime_dir.exists()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX helper execution test")
+def test_posix_replace_helper_rolls_back_when_replacement_cannot_launch(
+    monkeypatch,
+    tmp_path,
+):
+    monkeypatch.setattr(packaged_updater.sys, "platform", "linux")
+
+    current_dir = tmp_path / "current" / "MarkItDown"
+    current_dir.mkdir(parents=True)
+    (current_dir / "MarkItDown").write_text("old", encoding="utf-8")
+    replacement_dir = tmp_path / "replacement"
+    replacement_dir.mkdir()
+    (replacement_dir / "MarkItDown").mkdir()
+    result_path = tmp_path / "update-result.txt"
+    helper_path = tmp_path / "apply-update.sh"
+
+    exited_process = subprocess.Popen([sys.executable, "-c", "pass"])
+    exited_process.wait(timeout=5)
+    helper_path.write_text(
+        packaged_updater.build_replace_helper_script(
+            current_dir=current_dir,
+            replacement_dir=replacement_dir,
+            executable_name="MarkItDown",
+            process_id=exited_process.pid,
+            result_path=result_path,
+            wait_timeout_seconds=1,
+        ),
+        encoding="utf-8",
+    )
+    helper_path.chmod(0o755)
+
+    completed = subprocess.run(
+        [str(helper_path)],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=5,
+    )
+
+    assert completed.returncode == 1
+    assert (current_dir / "MarkItDown").read_text(encoding="utf-8") == "old"
+    result = result_path.read_text(encoding="utf-8")
+    assert "Status: failed" in result
+    assert "exited during startup" in result
+    assert "Previous version restored" in result
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX helper execution test")
+def test_posix_replace_helper_keeps_healthy_replacement_and_removes_backup(
+    monkeypatch,
+    tmp_path,
+):
+    monkeypatch.setattr(packaged_updater.sys, "platform", "linux")
+
+    current_dir = tmp_path / "current" / "MarkItDown"
+    current_dir.mkdir(parents=True)
+    (current_dir / "MarkItDown").write_text("old", encoding="utf-8")
+    replacement_dir = tmp_path / "replacement"
+    replacement_dir.mkdir()
+    replacement_executable = replacement_dir / "MarkItDown"
+    pid_path = tmp_path / "replacement.pid"
+    replacement_contents = (
+        f"#!{sys.executable}\n"
+        "import os\n"
+        "import signal\n"
+        "from pathlib import Path\n"
+        f"Path({str(pid_path)!r}).write_text(str(os.getpid()), encoding='utf-8')\n"
+        "signal.pause()\n"
+    )
+    replacement_executable.write_text(replacement_contents, encoding="utf-8")
+    replacement_executable.chmod(0o755)
+    result_path = tmp_path / "update-result.txt"
+    helper_path = tmp_path / "apply-update.sh"
+
+    exited_process = subprocess.Popen([sys.executable, "-c", "pass"])
+    exited_process.wait(timeout=5)
+    helper_path.write_text(
+        packaged_updater.build_replace_helper_script(
+            current_dir=current_dir,
+            replacement_dir=replacement_dir,
+            executable_name="MarkItDown",
+            process_id=exited_process.pid,
+            result_path=result_path,
+            wait_timeout_seconds=1,
+        ),
+        encoding="utf-8",
+    )
+    helper_path.chmod(0o755)
+
+    completed = subprocess.run(
+        [str(helper_path)],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=5,
+    )
+
+    assert completed.returncode == 0
+    assert pid_path.is_file()
+    replacement_pid = int(pid_path.read_text(encoding="utf-8"))
+    try:
+        assert "Status: success" in result_path.read_text(encoding="utf-8")
+        assert "startup check" in result_path.read_text(encoding="utf-8")
+        assert (current_dir / "MarkItDown").read_text(encoding="utf-8") == replacement_contents
+        assert not list(current_dir.parent.glob("MarkItDown.backup-*"))
+    finally:
+        os.kill(replacement_pid, 15)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX helper execution test")
+def test_posix_replace_helper_restores_old_app_when_replacement_move_fails(
+    monkeypatch,
+    tmp_path,
+):
+    monkeypatch.setattr(packaged_updater.sys, "platform", "linux")
+
+    current_dir = tmp_path / "current" / "MarkItDown"
+    current_dir.mkdir(parents=True)
+    (current_dir / "MarkItDown").write_text("old", encoding="utf-8")
+    missing_replacement = tmp_path / "missing-replacement"
+    result_path = tmp_path / "update-result.txt"
+    helper_path = tmp_path / "apply-update.sh"
+
+    exited_process = subprocess.Popen([sys.executable, "-c", "pass"])
+    exited_process.wait(timeout=5)
+    helper_path.write_text(
+        packaged_updater.build_replace_helper_script(
+            current_dir=current_dir,
+            replacement_dir=missing_replacement,
+            executable_name="MarkItDown",
+            process_id=exited_process.pid,
+            result_path=result_path,
+            wait_timeout_seconds=1,
+        ),
+        encoding="utf-8",
+    )
+    helper_path.chmod(0o755)
+
+    completed = subprocess.run(
+        [str(helper_path)],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=5,
+    )
+
+    assert completed.returncode == 1
+    assert (current_dir / "MarkItDown").read_text(encoding="utf-8") == "old"
+    result = result_path.read_text(encoding="utf-8")
+    assert "Status: failed" in result
+    assert "Could not move the replacement app into place" in result
+    assert "Previous version restored" in result
+
+
+_POWERSHELL = shutil.which("pwsh") or shutil.which("powershell")
+
+
+@pytest.mark.skipif(_POWERSHELL is None, reason="PowerShell is not installed")
+def test_windows_replace_helper_rolls_back_after_immediate_startup_exit(
+    monkeypatch,
+    tmp_path,
+):
+    monkeypatch.setattr(packaged_updater.sys, "platform", "win32")
+
+    current_dir = tmp_path / "current" / "MarkItDown"
+    current_dir.mkdir(parents=True)
+    replacement_dir = tmp_path / "replacement"
+    replacement_dir.mkdir()
+    if os.name == "nt":
+        executable_name = "MarkItDown.cmd"
+        replacement_contents = "@echo off\r\nexit /b 42\r\n"
+    else:
+        executable_name = "MarkItDown.exe"
+        replacement_contents = "#!/bin/sh\nexit 42\n"
+    (current_dir / executable_name).write_text("old", encoding="utf-8")
+    replacement_executable = replacement_dir / executable_name
+    replacement_executable.write_text(replacement_contents, encoding="utf-8")
+    replacement_executable.chmod(0o755)
+    result_path = tmp_path / "update-result.txt"
+    helper_path = tmp_path / "apply-update.ps1"
+
+    exited_process = subprocess.Popen([sys.executable, "-c", "pass"])
+    exited_process.wait(timeout=5)
+    helper_path.write_text(
+        packaged_updater.build_replace_helper_script(
+            current_dir=current_dir,
+            replacement_dir=replacement_dir,
+            executable_name=executable_name,
+            process_id=exited_process.pid,
+            result_path=result_path,
+            wait_timeout_seconds=1,
+        ),
+        encoding="utf-8",
+    )
+
+    completed = subprocess.run(
+        [
+            str(_POWERSHELL),
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(helper_path),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+
+    assert completed.returncode != 0
+    assert (current_dir / executable_name).read_text(encoding="utf-8") == "old"
+    result = result_path.read_text(encoding="utf-8")
+    assert "Status: failed" in result
+    assert "exited during startup with code 42" in result
+    assert "previous version was restored" in result
 
 
 def test_install_packaged_update_reports_progress(monkeypatch, tmp_path):
@@ -325,6 +660,7 @@ def test_install_packaged_update_reports_progress(monkeypatch, tmp_path):
     archive = tmp_path / "MarkItDown-Windows-2.0.0.zip"
     with zipfile.ZipFile(archive, "w") as zf:
         zf.writestr("MarkItDown/MarkItDown.exe", "new")
+    digest = hashlib.sha256(archive.read_bytes()).hexdigest()
 
     progress: list[tuple[str, int]] = []
     monkeypatch.setattr(packaged_updater.sys, "platform", "win32")
@@ -340,6 +676,7 @@ def test_install_packaged_update_reports_progress(monkeypatch, tmp_path):
         {
             "name": archive.name,
             "url": "https://example.com/app.zip",
+            "sha256": digest,
         },
         app_dir=app_dir,
         executable=str(executable),
@@ -365,6 +702,7 @@ def test_install_packaged_update_can_prepare_without_starting_helper(
     archive = tmp_path / "MarkItDown-Windows-2.0.0.zip"
     with zipfile.ZipFile(archive, "w") as zf:
         zf.writestr("MarkItDown/MarkItDown.exe", "new")
+    digest = hashlib.sha256(archive.read_bytes()).hexdigest()
 
     progress: list[tuple[str, int]] = []
     launched: list[Path] = []
@@ -385,6 +723,7 @@ def test_install_packaged_update_can_prepare_without_starting_helper(
         {
             "name": archive.name,
             "url": "https://example.com/app.zip",
+            "sha256": digest,
         },
         app_dir=app_dir,
         executable=str(executable),
@@ -459,7 +798,11 @@ def test_download_and_open_dmg_uses_unique_filename(monkeypatch, tmp_path):
     monkeypatch.setattr(packaged_updater, "open_file", lambda path: opened.append(path))
 
     path = packaged_updater.download_and_open_dmg(
-        {"name": existing.name, "url": "https://example.com/app.dmg"},
+        {
+            "name": existing.name,
+            "url": "https://example.com/app.dmg",
+            "sha256": hashlib.sha256(b"new").hexdigest(),
+        },
         downloads_dir=tmp_path,
     )
 
@@ -467,6 +810,39 @@ def test_download_and_open_dmg_uses_unique_filename(monkeypatch, tmp_path):
     assert existing.read_bytes() == b"old"
     assert path.read_bytes() == b"new"
     assert opened == [path]
+
+
+@pytest.mark.parametrize(
+    ("checksum", "message"),
+    [
+        (None, "missing a SHA256 checksum"),
+        ("abc123", "malformed"),
+    ],
+)
+def test_download_and_open_dmg_rejects_unverified_asset_before_download(
+    monkeypatch,
+    tmp_path,
+    checksum,
+    message,
+):
+    downloaded = []
+    monkeypatch.setattr(
+        packaged_updater,
+        "download_asset",
+        lambda *_args, **_kwargs: downloaded.append(True),
+    )
+
+    with pytest.raises(packaged_updater.PackagedUpdateError, match=message):
+        packaged_updater.download_and_open_dmg(
+            {
+                "name": "MarkItDown-macOS-2.0.0.dmg",
+                "url": "https://example.com/app.dmg",
+                "sha256": checksum,
+            },
+            downloads_dir=tmp_path,
+        )
+
+    assert downloaded == []
 
 
 def test_download_asset_reports_content_length_progress(monkeypatch, tmp_path):
@@ -566,6 +942,7 @@ def test_install_packaged_update_cleans_temp_dir_on_prepare_failure(
             {
                 "name": "MarkItDown-Windows-2.0.0.zip",
                 "url": "https://example.com/app.zip",
+                "sha256": hashlib.sha256(b"not a zip").hexdigest(),
             },
             app_dir=app_dir,
             executable=str(executable),

@@ -47,7 +47,7 @@ def main() -> int:
 
 
 def _shutdown_without_result(controller: AppController) -> None:
-    controller.shutdown()
+    controller.shutdownForQuit()
 
 
 def _configure_style() -> None:

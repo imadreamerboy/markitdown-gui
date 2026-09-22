@@ -50,8 +50,11 @@ from markitdowngui.core.markdown_assets import (
     PreparedMarkdownAssets,
     cleanup_temp_asset_root,
     create_temp_asset_root,
+    markdown_has_local_image_assets,
     prepare_combined_markdown_for_save_transaction,
+    prepare_markdown_for_clipboard,
     prepare_markdown_for_separate_save_transaction,
+    prepare_markdown_text_for_clipboard,
     rewrite_markdown_for_preview,
 )
 from markitdowngui.core.settings import SettingsManager
@@ -159,6 +162,27 @@ class SourceUpdateInstaller(QThread):
         self.updateError.emit(f"Source update failed with exit code {result}.")
 
 
+class OcrConnectionTester(QThread):
+    connectionSucceeded = Signal(str)
+    connectionFailed = Signal(str)
+
+    def __init__(
+        self,
+        options: ConversionOptions,
+        parent: QObject | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self.options = options
+
+    def run(self) -> None:
+        try:
+            message = test_ocr_provider_connection(self.options)
+        except Exception as exc:
+            self.connectionFailed.emit(str(exc))
+            return
+        self.connectionSucceeded.emit(message)
+
+
 class AppController(QObject):
     statusChanged = Signal()
     progressChanged = Signal()
@@ -175,6 +199,7 @@ class AppController(QObject):
     updateNotificationChanged = Signal()
     updateInstallChanged = Signal()
     sourceUpdateChanged = Signal()
+    ocrConnectionTestChanged = Signal()
     diagnosticsChanged = Signal()
     discardResultsRequested = Signal(str)
     closeApproved = Signal()
@@ -224,6 +249,8 @@ class AppController(QObject):
         self._source_update_running = False
         self._source_update_progress = 0
         self._source_update_status = ""
+        self._ocr_connection_tester: OcrConnectionTester | None = None
+        self._ocr_connection_test_running = False
 
     @Property(QObject, constant=True)
     def queueModel(self) -> QueueModel:
@@ -300,6 +327,17 @@ class AppController(QObject):
     def selectedMarkdown(self) -> str:
         item = self.result_model.item_at(self._selected_result_index)
         return item.outcome.markdown if item else ""
+
+    @Property(bool, notify=selectedResultChanged)
+    def selectedResultHasLocalImageAssets(self) -> bool:
+        item = self.result_model.item_at(self._selected_result_index)
+        return bool(
+            item
+            and markdown_has_local_image_assets(
+                item.outcome.markdown,
+                item.outcome.assets,
+            )
+        )
 
     @Property(bool, notify=selectedResultChanged)
     def selectedResultFailed(self) -> bool:
@@ -482,6 +520,10 @@ class AppController(QObject):
     @Property(int, notify=settingsChanged)
     def httpOcrTimeoutSeconds(self) -> int:
         return self.settings.get_http_ocr_timeout_seconds()
+
+    @Property(bool, notify=ocrConnectionTestChanged)
+    def ocrConnectionTestRunning(self) -> bool:
+        return self._ocr_connection_test_running
 
     @Property("QVariant", constant=True)
     def ocrProviderOptions(self) -> list[dict[str, object]]:
@@ -963,12 +1005,46 @@ class AppController(QObject):
 
     @Slot()
     def copySelectedMarkdown(self) -> None:
-        text = self.selectedMarkdown.strip()
+        self._copy_selected_markdown(include_images=True)
+
+    @Slot()
+    def copySelectedMarkdownText(self) -> None:
+        self._copy_selected_markdown(include_images=False)
+
+    def _copy_selected_markdown(self, *, include_images: bool) -> None:
+        item = self.result_model.item_at(self._selected_result_index)
+        text = item.outcome.markdown.strip() if item else ""
         if not text:
             self.toastRequested.emit("error", "No Markdown selected.")
             return
-        QGuiApplication.clipboard().setText(text)
-        self.toastRequested.emit("success", "Copied Markdown to clipboard.")
+        if item.failed:
+            QGuiApplication.clipboard().setText(text)
+            self.toastRequested.emit("success", "Copied Markdown to clipboard.")
+            return
+        has_local_images = markdown_has_local_image_assets(
+            text,
+            item.outcome.assets,
+        )
+        try:
+            if include_images:
+                copied_text = prepare_markdown_for_clipboard(text, item.outcome.assets)
+                message = (
+                    "Copied Markdown with embedded images."
+                    if has_local_images
+                    else "Copied Markdown to clipboard."
+                )
+            else:
+                copied_text = prepare_markdown_text_for_clipboard(
+                    text,
+                    item.outcome.assets,
+                )
+                message = "Copied Markdown text for chats."
+        except (OSError, ValueError) as exc:
+            self.toastRequested.emit("error", f"Could not copy Markdown: {exc}")
+            return
+
+        QGuiApplication.clipboard().setText(copied_text)
+        self.toastRequested.emit("success", message)
 
     @Slot()
     def notifyNoOutputToSave(self) -> None:
@@ -1301,12 +1377,23 @@ class AppController(QObject):
 
     @Slot()
     def testOcrConnection(self) -> None:
-        try:
-            message = test_ocr_provider_connection(self._build_ocr_validation_options())
-        except Exception as exc:
-            self.toastRequested.emit("error", str(exc))
+        if self._ocr_connection_test_running:
+            self.toastRequested.emit("success", "OCR connection test already running.")
             return
-        self.toastRequested.emit("success", message)
+
+        tester = self._create_ocr_connection_tester(
+            self._build_ocr_validation_options()
+        )
+        self._ocr_connection_tester = tester
+        self._ocr_connection_test_running = True
+        self.ocrConnectionTestChanged.emit()
+        tester.connectionSucceeded.connect(self._on_ocr_connection_succeeded)
+        tester.connectionFailed.connect(self._on_ocr_connection_failed)
+        tester.finished.connect(
+            lambda tester=tester: self._clear_ocr_connection_tester(tester)
+        )
+        tester.finished.connect(tester.deleteLater)
+        tester.start()
 
     @Slot(str, str, str)
     def runOcrSetupAction(self, action: str, value: str, label: str) -> None:
@@ -1612,6 +1699,13 @@ class AppController(QObject):
 
     @Slot(result=bool)
     def shutdown(self) -> bool:
+        return self._shutdown(wait_forever=False)
+
+    def shutdownForQuit(self) -> None:
+        """Join live threads when Qt is already committed to quitting."""
+        self._shutdown(wait_forever=True)
+
+    def _shutdown(self, *, wait_forever: bool) -> bool:
         if self.worker and self.worker.isRunning():
             self._cancel_requested = True
             self.worker.is_cancelled = True
@@ -1620,32 +1714,58 @@ class AppController(QObject):
                 self._paused = False
                 self.pausedChanged.emit()
             self._set_status("Cancelling")
-            if not self.worker.wait(1500):
+            if not self._wait_for_thread(self.worker, 1500, wait_forever):
                 self.toastRequested.emit(
                     "error",
                     "Conversion is still stopping. Close again after it finishes.",
                 )
                 return False
-        self._cleanup_temp_assets()
+        if self._ocr_connection_tester and self._ocr_connection_tester.isRunning():
+            if not self._wait_for_thread(
+                self._ocr_connection_tester,
+                2000,
+                wait_forever,
+            ):
+                self.toastRequested.emit(
+                    "error",
+                    "OCR connection test is still running. Close again after it finishes.",
+                )
+                return False
         if self._update_checker and self._update_checker.isRunning():
-            self._update_checker.wait(2000)
+            if not self._wait_for_thread(self._update_checker, 2000, wait_forever):
+                self.toastRequested.emit(
+                    "error",
+                    "Update check is still running. Close again after it finishes.",
+                )
+                return False
         if self._update_installer and self._update_installer.isRunning():
-            if self._update_install_running:
+            if not self._wait_for_thread(self._update_installer, 2000, wait_forever):
                 self.toastRequested.emit(
                     "error",
                     "Update install is still preparing. Close after it finishes.",
                 )
                 return False
-            self._update_installer.wait(2000)
         if self._source_update_runner and self._source_update_runner.isRunning():
-            if self._source_update_running:
+            if not self._wait_for_thread(
+                self._source_update_runner,
+                2000,
+                wait_forever,
+            ):
                 self.toastRequested.emit(
                     "error",
                     "Source update is still running. Close after it finishes.",
                 )
                 return False
-            self._source_update_runner.wait(2000)
+        self._cleanup_temp_assets()
         return True
+
+    @staticmethod
+    def _wait_for_thread(thread: QThread, timeout: int, wait_forever: bool) -> bool:
+        if wait_forever:
+            thread.wait()
+        elif not thread.wait(timeout):
+            return False
+        return not thread.isRunning()
 
     def _start_update_check(self, manual: bool) -> None:
         if self._update_checker and self._update_checker.isRunning():
@@ -1672,6 +1792,25 @@ class AppController(QObject):
 
     def _create_source_update_runner(self) -> SourceUpdateInstaller:
         return SourceUpdateInstaller(self)
+
+    def _create_ocr_connection_tester(
+        self,
+        options: ConversionOptions,
+    ) -> OcrConnectionTester:
+        return OcrConnectionTester(options, self)
+
+    def _on_ocr_connection_succeeded(self, message: str) -> None:
+        self.toastRequested.emit("success", message)
+
+    def _on_ocr_connection_failed(self, message: str) -> None:
+        self.toastRequested.emit("error", message)
+
+    def _clear_ocr_connection_tester(self, tester: OcrConnectionTester) -> None:
+        if self._ocr_connection_tester is not tester:
+            return
+        self._ocr_connection_tester = None
+        self._ocr_connection_test_running = False
+        self.ocrConnectionTestChanged.emit()
 
     def _start_restart_process(self) -> bool:
         return QProcess.startDetached(sys.executable, list(sys.argv))
