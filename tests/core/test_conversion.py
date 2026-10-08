@@ -601,6 +601,55 @@ def test_anydoc_does_not_override_docx_image_preservation(monkeypatch, conversio
     assert outcome is expected
 
 
+@pytest.mark.parametrize(
+    "extension",
+    [".odt", ".odp", ".ods", ".rtf", ".doc", ".ppt", ".pptm", ".xlsm"],
+)
+def test_anydoc_covers_widened_office_formats(monkeypatch, conversion, extension):
+    _install_fake_anydoc(monkeypatch, lambda _file_path: "# anydoc output")
+    monkeypatch.setattr(
+        conversion,
+        "_convert_with_markitdown",
+        lambda *_args, **_kwargs: pytest.fail("native converter must not run"),
+    )
+
+    outcome = conversion.convert_file_with_details(
+        f"report{extension}",
+        conversion.ConversionOptions(anydoc_conversion=True),
+    )
+
+    assert outcome.markdown == "# anydoc output"
+    assert outcome.backend == conversion.BACKEND_ANYDOC
+
+
+@pytest.mark.parametrize(
+    "source",
+    ["notes.txt", "notes.md", "report.xml", "data.json", "page.html", "sheet.csv"],
+)
+def test_text_inputs_keep_the_native_pipeline_when_anydoc_is_enabled(
+    monkeypatch,
+    conversion,
+    source,
+):
+    _install_fake_anydoc(
+        monkeypatch,
+        lambda _file_path: pytest.fail(f"anydoc must not convert {source}"),
+    )
+    monkeypatch.setattr(
+        conversion,
+        "_convert_with_markitdown",
+        lambda *_args, **_kwargs: "native text",
+    )
+
+    outcome = conversion.convert_file_with_details(
+        source,
+        conversion.ConversionOptions(anydoc_conversion=True),
+    )
+
+    assert outcome.markdown == "native text"
+    assert outcome.backend == conversion.BACKEND_NATIVE
+
+
 def test_fast_pdf_conversion_uses_pdf_inspector_for_trusted_text_pdf(monkeypatch, conversion):
     native_calls = []
 

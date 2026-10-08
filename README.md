@@ -23,6 +23,7 @@ More screenshots:
 ## Features
 
 - Queue-based file workflow with drag and drop.
+- Add whole folders: picking a folder queues every supported document inside it, including nested subfolders, like `folder/*`. Hidden entries and project directories such as `.git` and `node_modules` are skipped.
 - Paste website URLs and convert article content to Markdown with the hosted Defuddle API.
 - Serial conversion with start, pause/resume, cancel, and progress feedback.
 - Results view with per-file selection and Markdown preview.
@@ -191,9 +192,34 @@ The official GLM-OCR docs show the full Ollama, `vLLM`, and `SGLang` setup comma
 uv run python -m markitdowngui.main
 ```
 
+## Supported Inputs
+
+- Word: `.docx`, `.doc`, `.docm`, `.odt`, `.rtf`
+- PowerPoint: `.pptx`, `.ppt`, `.pptm`, `.ppsx`, `.ppsm`, `.pps`, `.pot`
+- Excel: `.xlsx`, `.xls`, `.xlsm`, `.xlsb`, `.ods`, `.csv`
+- Other documents: `.pdf`, `.epub`, `.html`, `.htm`, `.msg`, `.ipynb`
+- Text: `.txt`, `.text`, `.md`, `.markdown`, `.json`, `.jsonl`, `.xml`
+- Images: `.png`, `.jpg`, `.jpeg`, `.bmp`, `.gif`, `.tiff`, `.tif`, `.webp`
+- Audio: `.mp3`, `.wav`, `.m4a`, `.mp4`
+- Archives: `.zip`
+- Website URLs
+
+MarkItDown's native converters cover `.docx`, `.pptx`, `.xlsx`, `.xls`, `.pdf`, `.epub`, `.html`, `.csv`, `.json`, `.xml`, `.txt`, `.md`, `.ipynb`, `.msg`, `.png`, `.jpg`, `.jpeg`, `.zip`, `.mp3`, `.wav`, `.m4a`, and `.mp4`. The remaining word-processing, presentation, spreadsheet, and OpenDocument formats use the bundled `anydoc` engine, so keep **Use anydoc for this conversion** enabled (or enable **Use anydoc by default**) to convert them. Any file that neither engine supports fails with a clear conversion error instead of being skipped.
+
+## Folder Inputs
+
+Use **Add Folder** (`Ctrl+Shift+O`) to queue a whole directory. The picker behaves like `folder/*`:
+
+- Every supported document below the picked folder is queued, including nested subfolders.
+- Hidden entries and project directories such as `.git`, `.svn`, `node_modules`, and `__pycache__` are skipped.
+- Files with unsupported extensions are skipped, and the app explains when a folder contains nothing convertible.
+- Output names stay unique when nested folders contain the same filename: `a/report.pdf` saves as `report.md`, while `a/b/report.pdf` saves as `report-b.md`.
+- Dragging a folder onto the window follows the same rules.
+
 ## Keyboard Shortcuts
 
 - `Ctrl+O`: Open files
+- `Ctrl+Shift+O`: Open folder
 - `Ctrl+S`: Save output
 - `Ctrl+C`: Copy output
 - `Ctrl+R`: Retry failed conversions

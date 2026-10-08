@@ -204,6 +204,140 @@ def test_controller_add_url_queues_valid_url(controller):
     assert controller.queueCount == 1
 
 
+def _build_folder_inputs(tmp_path):
+    root = tmp_path / "bundle"
+    nested = root / "b"
+    nested.mkdir(parents=True)
+    (root / "top.pdf").write_text("top", encoding="utf-8")
+    (root / "notes.txt").write_text("notes", encoding="utf-8")
+    (nested / "report.pdf").write_text("nested", encoding="utf-8")
+    (root / "archive.tar").write_text("unsupported", encoding="utf-8")
+    return root
+
+
+def test_controller_add_folders_queues_anydoc_only_formats(controller, tmp_path):
+    root = tmp_path / "documents"
+    root.mkdir()
+    (root / "letter.odt").write_text("odt", encoding="utf-8")
+    (root / "slides.odp").write_text("odp", encoding="utf-8")
+    (root / "sheet.ods").write_text("ods", encoding="utf-8")
+    (root / "memo.rtf").write_text("rtf", encoding="utf-8")
+    (root / "legacy.doc").write_text("doc", encoding="utf-8")
+
+    assert controller.addFolders([str(root)]) is True
+
+    assert sorted(Path(source).name for source in controller.queue_model.sources()) == [
+        "legacy.doc",
+        "letter.odt",
+        "memo.rtf",
+        "sheet.ods",
+        "slides.odp",
+    ]
+
+
+def test_controller_add_folders_queues_every_nested_supported_file(controller, tmp_path):
+    root = _build_folder_inputs(tmp_path)
+    messages: list[tuple[str, str]] = []
+    controller.toastRequested.connect(lambda kind, message: messages.append((kind, message)))
+
+    assert controller.addFolders([str(root)]) is True
+
+    queued = controller.queue_model.sources()
+    assert queued == [
+        str(root / "notes.txt"),
+        str(root / "top.pdf"),
+        str(root / "b" / "report.pdf"),
+    ]
+    assert messages == []
+    assert controller.queue_model.data(
+        controller.queue_model.index(2, 0),
+        controller.queue_model.NameRole,
+    ) == "bundle/b/report.pdf"
+
+
+def test_controller_add_folders_reports_when_nothing_is_supported(controller, tmp_path):
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    (empty / "archive.tar").write_text("unsupported", encoding="utf-8")
+    messages: list[tuple[str, str]] = []
+    controller.toastRequested.connect(lambda kind, message: messages.append((kind, message)))
+
+    assert controller.addFolders([str(empty)]) is False
+
+    assert controller.queue_model.rowCount() == 0
+    assert messages == [
+        (
+            "error",
+            "Nothing was added. No supported documents were found in the selected folder.",
+        )
+    ]
+
+
+def test_controller_add_folders_ignores_non_folder_paths(controller, tmp_path):
+    source = tmp_path / "single.pdf"
+    source.write_text("pdf", encoding="utf-8")
+    messages: list[tuple[str, str]] = []
+    controller.toastRequested.connect(lambda kind, message: messages.append((kind, message)))
+
+    assert controller.addFolders([str(source)]) is False
+    assert messages == [
+        (
+            "error",
+            "Nothing was added. No supported documents were found in the selected folder.",
+        )
+    ]
+
+
+def test_controller_folder_outputs_do_not_collide(controller, tmp_path):
+    root = _build_folder_inputs(tmp_path)
+    controller.addFolders([str(root)])
+    nested = root / "b" / "report.pdf"
+
+    top_output = controller._unique_output_path(str(tmp_path / "out"), str(root / "top.pdf"))
+    nested_output = controller._unique_output_path(str(tmp_path / "out"), str(nested))
+
+    assert Path(top_output).name == "top.md"
+    assert Path(nested_output).name == "report-b.md"
+
+
+def test_controller_clearing_queue_forgets_folder_inputs(controller, tmp_path):
+    root = _build_folder_inputs(tmp_path)
+    controller.addFolders([str(root)])
+    nested = str(root / "b" / "report.pdf")
+    assert controller._folder_inputs
+
+    controller.clearQueue()
+
+    assert controller._folder_inputs == {}
+    assert controller._unique_output_path(str(tmp_path / "out"), nested).endswith(
+        "report.md"
+    )
+
+
+def test_controller_folder_inputs_wait_for_unsaved_result_confirmation(controller, tmp_path):
+    existing = str(tmp_path / "existing.pdf")
+    controller.addFiles([existing])
+    _complete_results(
+        controller,
+        {existing: ConversionOutcome("# Existing", backend="native")},
+    )
+    root = _build_folder_inputs(tmp_path)
+    requests: list[str] = []
+    controller.discardResultsRequested.connect(requests.append)
+
+    assert controller.addFolders([str(root)]) is False
+
+    assert requests == ["add inputs to the queue"]
+    assert controller.queue_model.sources() == [existing]
+    assert controller._folder_inputs == {}
+
+    controller.discardPendingResults()
+
+    assert requests == ["add inputs to the queue"]
+    assert str(root / "b" / "report.pdf") in controller.queue_model.sources()
+    assert controller._folder_inputs[str(root / "b" / "report.pdf")] == str(root)
+
+
 def test_controller_add_url_waits_for_discard_confirmation(controller, tmp_path):
     source = str(tmp_path / "existing.pdf")
     url = "https://example.com/article"

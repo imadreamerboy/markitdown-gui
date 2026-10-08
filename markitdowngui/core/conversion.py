@@ -87,6 +87,45 @@ ANYDOC_EXTENSIONS = frozenset(
     }
 )
 PDF_INSPECTOR_MIN_CONFIDENCE = 0.9
+TEXT_EXTENSIONS = frozenset(
+    {
+        ".csv",
+        ".htm",
+        ".html",
+        ".json",
+        ".jsonl",
+        ".markdown",
+        ".md",
+        ".text",
+        ".txt",
+        ".xml",
+    }
+)
+MARKITDOWN_TEXT_EXTENSIONS = frozenset(
+    {".csv", ".htm", ".html", ".json", ".jsonl", ".markdown", ".md", ".text", ".txt"}
+)
+IMAGE_CONVERTER_EXTENSIONS = frozenset({".jpeg", ".jpg", ".png"})
+NATIVE_CONVERTER_EXTENSIONS = (
+    MARKITDOWN_TEXT_EXTENSIONS
+    | IMAGE_CONVERTER_EXTENSIONS
+    | frozenset(
+        {
+            ".docx",
+            ".epub",
+            ".ipynb",
+            ".m4a",
+            ".mp3",
+            ".mp4",
+            ".msg",
+            ".pdf",
+            ".pptx",
+            ".wav",
+            ".xls",
+            ".xlsx",
+            ".zip",
+        }
+    )
+)
 process_pdf = None
 OCR_PROVIDER_AZURE_TESSERACT = "azure_tesseract"
 OCR_PROVIDER_GLMOCR = "glmocr"
@@ -719,21 +758,22 @@ def convert_file_with_details(
 
     extension = Path(file_path).suffix.lower()
 
-    if extension == PDF_EXTENSION and effective_options.normalized_preserve_pdf_images:
-        return _convert_pdf_with_preserved_images(file_path, effective_options)
+    if not is_text_like_input(file_path):
+        if extension == PDF_EXTENSION and effective_options.normalized_preserve_pdf_images:
+            return _convert_pdf_with_preserved_images(file_path, effective_options)
 
-    if extension == PDF_EXTENSION and effective_options.ocr_enabled:
-        return _convert_pdf_with_ocr(file_path, effective_options)
+        if extension == PDF_EXTENSION and effective_options.ocr_enabled:
+            return _convert_pdf_with_ocr(file_path, effective_options)
 
-    if _should_try_anydoc(file_path, effective_options):
-        anydoc_outcome = _try_convert_with_anydoc(file_path)
-        if anydoc_outcome is not None:
-            return anydoc_outcome
+        if _should_try_anydoc(file_path, effective_options):
+            anydoc_outcome = _try_convert_with_anydoc(file_path)
+            if anydoc_outcome is not None:
+                return anydoc_outcome
 
-    if extension == PDF_EXTENSION and effective_options.normalized_fast_pdf_conversion:
-        fast_outcome = _try_convert_pdf_with_pdf_inspector(file_path)
-        if fast_outcome is not None:
-            return fast_outcome
+        if extension == PDF_EXTENSION and effective_options.normalized_fast_pdf_conversion:
+            fast_outcome = _try_convert_pdf_with_pdf_inspector(file_path)
+            if fast_outcome is not None:
+                return fast_outcome
 
     if extension == DOCX_EXTENSION and effective_options.normalized_preserve_docx_images:
         return _convert_docx_with_preserved_images(file_path, effective_options)
@@ -837,6 +877,18 @@ def _should_try_anydoc(file_path: str, options: ConversionOptions) -> bool:
     if extension == DOCX_EXTENSION and options.normalized_preserve_docx_images:
         return False
     return True
+
+
+def is_text_like_input(file_path: str) -> bool:
+    """Return whether MarkItDown has a dedicated converter for this text input.
+
+    Plain text and structured text files such as XML stay on the native pipeline
+    when an optional accelerator is enabled, so their stored markup is preserved.
+    """
+
+    if is_web_url(file_path):
+        return False
+    return Path(file_path).suffix.lower() in TEXT_EXTENSIONS
 
 
 def _try_convert_with_anydoc(file_path: str) -> ConversionOutcome | None:

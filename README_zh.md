@@ -16,6 +16,7 @@
 ## 功能
 
 - 基于队列的文件流程，支持拖放。
+- 添加整个文件夹：选择文件夹后会像 `folder/*` 一样加入其中所有受支持的文档，包括子文件夹。隐藏条目以及 `.git`、`node_modules` 等项目目录会被跳过。
 - 粘贴网站 URL，并通过托管的 Defuddle API 转换文章内容。
 - 批量转换，支持开始、暂停/恢复、取消和进度反馈。
 - 结果页支持按文件选择和 Markdown 预览。
@@ -169,9 +170,34 @@ pipeline:
 uv run python -m markitdowngui.main
 ```
 
+## 支持的输入
+
+- Word: `.docx`、`.doc`、`.docm`、`.odt`、`.rtf`
+- PowerPoint: `.pptx`、`.ppt`、`.pptm`、`.ppsx`、`.ppsm`、`.pps`、`.pot`
+- Excel: `.xlsx`、`.xls`、`.xlsm`、`.xlsb`、`.ods`、`.csv`
+- 其他文档: `.pdf`、`.epub`、`.html`、`.htm`、`.msg`、`.ipynb`
+- 文本: `.txt`、`.text`、`.md`、`.markdown`、`.json`、`.jsonl`、`.xml`
+- 图片: `.png`、`.jpg`、`.jpeg`、`.bmp`、`.gif`、`.tiff`、`.tif`、`.webp`
+- 音频: `.mp3`、`.wav`、`.m4a`、`.mp4`
+- 压缩包: `.zip`
+- 网站 URL
+
+MarkItDown 原生转换器支持 `.docx`、`.pptx`、`.xlsx`、`.xls`、`.pdf`、`.epub`、`.html`、`.csv`、`.json`、`.xml`、`.txt`、`.md`、`.ipynb`、`.msg`、`.png`、`.jpg`、`.jpeg`、`.zip`、`.mp3`、`.wav`、`.m4a` 和 `.mp4`。其余文字处理、演示文稿、电子表格和 OpenDocument 格式由内置的 `anydoc` 引擎处理，请保持开启 **Use anydoc for this conversion**（或在设置中开启 **Use anydoc by default**）。两种引擎都不支持的文件会返回明确的转换错误，而不是被静默跳过。
+
+## 文件夹输入
+
+使用 **Add Folder**（`Ctrl+Shift+O`）可以加入整个目录，行为类似于 `folder/*`：
+
+- 所选文件夹下的所有受支持文档都会被加入队列，包括子文件夹。
+- 隐藏条目以及 `.git`、`.svn`、`node_modules`、`__pycache__` 等项目目录会被跳过。
+- 扩展名不受支持的文件会被跳过；如果文件夹中没有可转换的内容，应用会给出提示。
+- 当子文件夹中存在同名文件时，输出名称仍保持唯一：`a/report.pdf` 保存为 `report.md`，而 `a/b/report.pdf` 保存为 `report-b.md`。
+- 将文件夹拖入窗口时遵循相同规则。
+
 ## 键盘快捷键
 
 - `Ctrl+O`: 打开文件
+- `Ctrl+Shift+O`: 打开文件夹
 - `Ctrl+S`: 保存输出
 - `Ctrl+C`: 复制输出
 - `Ctrl+R`: 重试失败转换

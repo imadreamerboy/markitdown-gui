@@ -11,6 +11,7 @@ from PySide6.QtCore import QObject, Property, QProcess, QThread, QUrl, Signal, S
 from PySide6.QtGui import QDesktopServices, QGuiApplication, QPalette, QTextDocument
 
 from markitdowngui.core.conversion import (
+    ANYDOC_EXTENSIONS,
     AZURE_OCR_API_KEY_ENV_VAR,
     DEFAULT_HTTP_OCR_API_KEY_ENV,
     DEFAULT_HTTP_OCR_TIMEOUT_SECONDS,
@@ -22,6 +23,7 @@ from markitdowngui.core.conversion import (
     GLMOCR_MODE_OLLAMA,
     GLMOCR_MODE_SDK_SERVER,
     IMAGE_EXTENSIONS,
+    NATIVE_CONVERTER_EXTENSIONS,
     OCR_PROVIDER_AZURE_TESSERACT,
     OCR_PROVIDER_GLMOCR,
     OCR_PROVIDER_HTTP,
@@ -39,11 +41,14 @@ from markitdowngui.core.file_utils import FileManager
 from markitdowngui.core.input_sources import (
     BATCH_URL_LIMIT,
     BatchUrlParseResult,
+    collect_folder_files,
     decode_batch_url_file,
     is_web_url,
     parse_batch_urls,
+    relocated_output_stem,
     source_output_dir,
     source_output_stem,
+    source_relative_label,
 )
 from markitdowngui.core.markdown_assets import (
     MarkdownSaveInput,
@@ -106,6 +111,9 @@ _MARKDOWN_LINK_RE = re.compile(r"\[([^\]]+)\]\([^)]+\)")
 _MARKDOWN_DECORATION_RE = re.compile(r"[*_`>#]")
 _SOURCE_UPDATE_COMPLETE_MESSAGE = "Source update complete. Restart the app."
 _DEFAULT_HTTP_OCR_ENDPOINT = "http://127.0.0.1:8000/ocr"
+# Folder picking queues anything either conversion engine can read, so locally
+# supported OpenDocument and legacy Office files are not silently dropped.
+CONVERTIBLE_EXTENSIONS = NATIVE_CONVERTER_EXTENSIONS | ANYDOC_EXTENSIONS
 
 class PackagedUpdateInstaller(QThread):
     progressChanged = Signal(str, int)
@@ -225,6 +233,9 @@ class AppController(QObject):
         self._selected_result_index = -1
         self._preview_mode = "rendered"
         self._anydoc_override: bool | None = None
+        # Folder inputs remember their picked root so queue labels and output
+        # names can stay unique when nested files share a filename.
+        self._folder_inputs: dict[str, str] = {}
         self._temp_asset_root: str | None = None
         # Failed-only retries retain successful outputs, so their asset roots must
         # outlive the next conversion worker until the result set is cleared.
@@ -697,9 +708,61 @@ class AppController(QObject):
             return False
         return self._add_files_to_queue(sources)
 
-    def _add_files_to_queue(self, sources: list[str]) -> bool:
+    @Slot("QVariant", result=bool)
+    def addFolders(self, values: Any) -> bool:
+        """Queue every supported input below the selected folders.
+
+        A folder behaves like ``folder/*``: nested subfolders are included and
+        hidden or well-known project directories are ignored.
+        """
+        if self._queue_change_locked():
+            return False
+        sources: list[str] = []
+        skipped = 0
+        folder_roots: dict[str, str] = {}
+        for folder in self._paths_from_variant(values):
+            if not folder:
+                continue
+            if is_web_url(folder) or not Path(folder).is_dir():
+                skipped += 1
+                continue
+            folder_files, folder_skipped = collect_folder_files(
+                folder,
+                supported_extensions=CONVERTIBLE_EXTENSIONS,
+            )
+            sources.extend(folder_files)
+            skipped += folder_skipped
+            for source in folder_files:
+                folder_roots.setdefault(source, folder)
+        unique_sources = list(dict.fromkeys(sources))
+        if not unique_sources:
+            self.toastRequested.emit(
+                "error",
+                self.translate("qml_folder_input_empty").replace("{count}", str(skipped)),
+            )
+            return False
+        if not self._has_new_queue_sources(unique_sources):
+            return False
+
+        def action() -> bool:
+            return self._add_files_to_queue(unique_sources, folder_roots=folder_roots)
+
+        if self._request_result_discard("add inputs to the queue", action):
+            return False
+        return self._add_files_to_queue(unique_sources, folder_roots=folder_roots)
+
+    def _add_files_to_queue(
+        self,
+        sources: list[str],
+        *,
+        folder_roots: dict[str, str] | None = None,
+    ) -> bool:
+        folder_labels: dict[str, str] = {}
+        for source, folder_root in (folder_roots or {}).items():
+            self._folder_inputs[source] = folder_root
+            folder_labels[source] = self._source_display_label(source)
         existing_sources = set(self.queue_model.sources())
-        added = self.queue_model.add_sources(sources)
+        added = self.queue_model.add_sources(sources, display_names=folder_labels)
         if not added:
             return False
         self._clear_results_after_queue_change()
@@ -709,6 +772,10 @@ class AppController(QObject):
             if source not in existing_sources and is_web_url(source):
                 self.urlQueued.emit(source)
         return True
+
+    def _source_display_label(self, source: str) -> str:
+        """Label a queued input, showing the picked folder for folder inputs."""
+        return source_relative_label(source, self._folder_inputs.get(source, ""))
 
     @Slot(str, result=bool)
     def addUrl(self, value: str) -> bool:
@@ -811,6 +878,8 @@ class AppController(QObject):
     def _remove_queued(self, row: int) -> None:
         sources_before = self.queue_model.sources()
         self.queue_model.remove(row)
+        for source in set(sources_before) - set(self.queue_model.sources()):
+            self._folder_inputs.pop(source, None)
         if self.queue_model.sources() != sources_before:
             self._clear_results_after_queue_change()
         self.queueChanged.emit()
@@ -825,6 +894,7 @@ class AppController(QObject):
 
     def _clear_queue(self) -> None:
         self.queue_model.clear()
+        self._folder_inputs.clear()
         self._reset_anydoc_conversion_override()
         self._clear_results_after_queue_change()
         self.queueChanged.emit()
@@ -2351,7 +2421,12 @@ class AppController(QObject):
         outcome: ConversionOutcome,
         failed: bool,
     ) -> None:
-        self.result_model.add_result(source, outcome, failed=failed)
+        self.result_model.add_result(
+            source,
+            outcome,
+            failed=failed,
+            display_name=self._source_display_label(source),
+        )
         self._completed_count += 1
         if self._total_count:
             self._completed_count = min(self._total_count, self._completed_count)
@@ -2372,7 +2447,12 @@ class AppController(QObject):
         completed_sources = {item.source for item in self.result_model.items()}
         for source, outcome in results.items():
             item_failed = source in failed
-            self.result_model.add_result(source, outcome, failed=item_failed)
+            self.result_model.add_result(
+                source,
+                outcome,
+                failed=item_failed,
+                display_name=self._source_display_label(source),
+            )
             if not item_failed and source not in completed_sources:
                 self._unsaved_result_sources.add(source)
         if self._selected_result_index < 0:
@@ -2565,10 +2645,11 @@ class AppController(QObject):
 
     def _unique_output_path(self, output_dir: str, source: str) -> str:
         output_ext = self.settings.get_default_output_format()
-        path = Path(output_dir) / f"{source_output_stem(source)}{output_ext}"
+        stem = relocated_output_stem(source, self._folder_inputs.get(source, ""))
+        path = Path(output_dir) / f"{stem}{output_ext}"
         counter = 1
         while path.exists():
-            path = Path(output_dir) / f"{source_output_stem(source)}_{counter}{output_ext}"
+            path = Path(output_dir) / f"{stem}_{counter}{output_ext}"
             counter += 1
         return str(path)
 

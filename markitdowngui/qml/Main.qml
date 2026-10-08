@@ -197,10 +197,19 @@ ApplicationWindow {
         fileMode: FileDialog.OpenFiles
         currentFolder: app.outputFolderUrl
         nameFilters: [
-            "Supported files (*.docx *.pptx *.xlsx *.xls *.pdf *.epub *.html *.htm *.txt *.md *.csv *.json *.xml *.png *.jpg *.jpeg *.bmp *.gif *.tiff *.webp *.zip)",
+            "Supported files (*.docx *.doc *.docm *.odt *.odp *.ods *.rtf *.pptx *.ppt *.pptm *.ppsx *.ppsm *.pps *.pot *.xlsx *.xls *.xlsm *.xlsb *.pdf *.epub *.html *.htm *.txt *.md *.csv *.json *.xml *.text *.markdown *.jsonl *.ipynb *.msg *.png *.jpg *.jpeg *.bmp *.gif *.tiff *.tif *.webp *.mp3 *.wav *.m4a *.mp4 *.zip)",
             "All files (*)"
         ]
         onAccepted: app.addFiles(selectedFiles)
+    }
+
+    FolderDialog {
+        id: openFolderDialog
+        objectName: "openFolderDialog"
+        title: root.tr("qml_add_folder")
+        currentFolder: app.outputFolderUrl
+        acceptLabel: root.tr("qml_add_folder_accept")
+        onAccepted: app.addFolders(selectedFolder)
     }
 
     FileDialog {
@@ -642,6 +651,13 @@ ApplicationWindow {
         context: Qt.ApplicationShortcut
         enabled: !app.converting
         onActivated: openFileDialog.open()
+    }
+
+    Shortcut {
+        sequence: "Ctrl+Shift+O"
+        context: Qt.ApplicationShortcut
+        enabled: !app.converting
+        onActivated: openFolderDialog.open()
     }
 
     Shortcut {
@@ -1358,6 +1374,18 @@ ApplicationWindow {
                         Layout.alignment: Qt.AlignHCenter
                         onClicked: openFileDialog.open()
                     }
+
+                    AppButton {
+                        text: root.tr("qml_add_folder")
+                        iconName: "folder-plus"
+                        accentColor: colors.action
+                        surfaceColor: colors.surfaceAlt
+                        borderColor: colors.border
+                        textColor: colors.text
+                        Layout.alignment: Qt.AlignHCenter
+                        Accessible.name: root.tr("qml_add_folder")
+                        onClicked: openFolderDialog.open()
+                    }
                 }
             }
         }
@@ -1400,6 +1428,18 @@ ApplicationWindow {
                             borderColor: colors.border
                             textColor: colors.text
                             onClicked: openFileDialog.open()
+                        }
+
+                        AppButton {
+                            objectName: "addFolderButton"
+                            text: root.tr("qml_add_folder")
+                            enabled: !app.converting
+                            subtle: true
+                            iconName: "folder-plus"
+                            accentColor: colors.action
+                            textColor: colors.muted
+                            Accessible.name: root.tr("qml_add_folder")
+                            onClicked: openFolderDialog.open()
                         }
 
                         AppButton {
