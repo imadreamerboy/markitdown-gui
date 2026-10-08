@@ -29,6 +29,7 @@ More screenshots:
 - Results view with per-file selection and Markdown preview.
 - Preview modes: rendered Markdown view and raw Markdown view.
 - Save modes: export as one combined file or separate files.
+- **Save all to folder**: write every converted file into one folder you pick, named after each input, and resolve repeated filenames (`report.md`, `report_1.md`, …).
 - Quick actions: copy Markdown, save output, retry failed conversions, back to queue, start over.
 - When a result contains extracted images, Copy offers self-contained Markdown with images for compatible editors, or compact Markdown with image placeholders for chats. Chat images must be attached separately; support for inline image data varies by editor.
 - Optional OCR for scanned PDFs and image files, with selectable `Azure + Tesseract`, `GLM-OCR`, and generic `HTTP OCR` providers.
@@ -205,6 +206,13 @@ uv run python -m markitdowngui.main
 - Website URLs
 
 MarkItDown's native converters cover `.docx`, `.pptx`, `.xlsx`, `.xls`, `.pdf`, `.epub`, `.html`, `.csv`, `.json`, `.xml`, `.txt`, `.md`, `.ipynb`, `.msg`, `.png`, `.jpg`, `.jpeg`, `.zip`, `.mp3`, `.wav`, `.m4a`, and `.mp4`. The remaining word-processing, presentation, spreadsheet, and OpenDocument formats use the bundled `anydoc` engine, so keep **Use anydoc for this conversion** enabled (or enable **Use anydoc by default**) to convert them. Any file that neither engine supports fails with a clear conversion error instead of being skipped.
+
+## Saving results
+
+- **Save all to folder** in the results view writes every converted file into one folder you choose, so a whole folder conversion no longer has to be saved one file at a time.
+- Each output is named after its input file. Repeated filenames are resolved as you go: `report.md`, then `report_1.md`, `report_2.md`, and so on.
+- Files converted from a folder keep `folder` disambiguation, so `a/report.pdf` writes `report.md` while `a/b/report.pdf` writes `report-b.md`.
+- The regular save action still follows the save mode in Settings: one combined document, or one file per input using the configured output folder.
 
 ## Folder Inputs
 

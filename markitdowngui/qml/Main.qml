@@ -344,6 +344,14 @@ ApplicationWindow {
         onAccepted: app.saveSeparateOutputs(selectedFolder)
     }
 
+    FolderDialog {
+        id: saveAllResultsDialog
+        objectName: "saveAllResultsDialog"
+        title: root.tr("qml_save_all_title")
+        currentFolder: app.suggestedSeparateOutputFolderUrl
+        onAccepted: app.saveAllResultsToFolder(selectedFolder)
+    }
+
     Dialog {
         id: discardResultsDialog
         property string actionDescription: ""
@@ -1964,6 +1972,21 @@ ApplicationWindow {
                         Item {
                             Layout.fillWidth: true
                         }
+                    }
+
+                    AppButton {
+                        objectName: "saveAllResultsButton"
+                        visible: app.hasSuccessfulResults
+                        enabled: !app.converting
+                        text: root.tr("qml_save_all_button")
+                        subtle: true
+                        iconName: "save"
+                        accentColor: colors.action
+                        textColor: colors.text
+                        Layout.fillWidth: true
+                        Accessible.name: root.tr("qml_save_all_button")
+                        Accessible.description: root.tr("qml_save_all_description")
+                        onClicked: saveAllResultsDialog.open()
                     }
 
                     AppButton {

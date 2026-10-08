@@ -2725,6 +2725,156 @@ def test_controller_save_separate_reports_partial_save_failures(controller, tmp_
     assert controller.hasUnsavedSuccessfulResults is True
 
 
+def test_controller_save_all_writes_every_result_as_named_file(controller, tmp_path):
+    output_dir = tmp_path / "exports"
+    _complete_results(
+        controller,
+        {
+            "C:/tmp/report.pdf": ConversionOutcome("# Report", backend="native"),
+            "https://example.com/docs/page": ConversionOutcome(
+                "# Web",
+                backend="defuddle",
+            ),
+        },
+    )
+
+    controller.saveAllResultsToFolder(str(output_dir))
+
+    saved_files = sorted(path.name for path in output_dir.glob("*.md"))
+    assert saved_files == ["example.com-page.md", "report.md"]
+    assert (output_dir / "report.md").read_text(encoding="utf-8") == "# Report"
+    assert (output_dir / "example.com-page.md").read_text(encoding="utf-8") == "# Web"
+    assert controller.hasUnsavedSuccessfulResults is False
+
+
+def test_controller_save_all_keeps_a_whole_folder_conversion_together(controller, tmp_path):
+    source_dir = tmp_path / "bundle"
+    (source_dir / "sub").mkdir(parents=True)
+    (source_dir / "report.pdf").write_text("top", encoding="utf-8")
+    (source_dir / "sub" / "report.pdf").write_text("nested", encoding="utf-8")
+    output_dir = tmp_path / "exports"
+
+    controller.addFolders([str(source_dir)])
+    controller.settings.set_save_to_source_folder(True)
+    _complete_results(
+        controller,
+        {
+            str(source_dir / "report.pdf"): ConversionOutcome("# Top", backend="native"),
+            str(source_dir / "sub" / "report.pdf"): ConversionOutcome(
+                "# Nested",
+                backend="native",
+            ),
+        },
+    )
+
+    controller.saveAllResultsToFolder(str(output_dir))
+
+    saved_files = sorted(path.name for path in output_dir.glob("*.md"))
+    assert saved_files == ["report-sub.md", "report.md"]
+    assert not (source_dir / "report.md").exists()
+    assert not (source_dir / "sub" / "report.md").exists()
+
+
+def test_controller_save_all_reserves_names_against_existing_files(controller, tmp_path):
+    output_dir = tmp_path / "exports"
+    output_dir.mkdir()
+    (output_dir / "report.md").write_text("older run", encoding="utf-8")
+    _complete_results(
+        controller,
+        {
+            "C:/tmp/report.pdf": ConversionOutcome("# Fresh", backend="native"),
+            "C:/other/report.pdf": ConversionOutcome("# Second", backend="native"),
+        },
+    )
+
+    controller.saveAllResultsToFolder(str(output_dir))
+
+    saved_files = sorted(path.name for path in output_dir.glob("*.md"))
+    assert saved_files == ["report.md", "report_1.md", "report_2.md"]
+    assert (output_dir / "report.md").read_text(encoding="utf-8") == "older run"
+    assert (output_dir / "report_1.md").read_text(encoding="utf-8") == "# Fresh"
+    assert (output_dir / "report_2.md").read_text(encoding="utf-8") == "# Second"
+
+
+def test_controller_save_all_requires_a_chosen_folder(controller, tmp_path):
+    _complete_results(
+        controller,
+        {str(tmp_path / "report.pdf"): ConversionOutcome("# Report", backend="native")},
+    )
+    messages: list[tuple[str, str]] = []
+    controller.toastRequested.connect(lambda kind, message: messages.append((kind, message)))
+
+    controller.saveAllResultsToFolder("")
+
+    assert messages == [("error", "Choose a folder for the saved files.")]
+
+
+def test_controller_save_all_skips_failed_results(controller, tmp_path):
+    output_dir = tmp_path / "exports"
+    _complete_results(
+        controller,
+        {
+            "C:/tmp/ok.pdf": ConversionOutcome("# Converted\n\nBody", backend="native"),
+            "C:/tmp/broken.pdf": ConversionOutcome(
+                "Error converting broken.pdf",
+                backend="native",
+            ),
+        },
+        {"C:/tmp/broken.pdf"},
+    )
+
+    controller.saveAllResultsToFolder(str(output_dir))
+
+    saved_files = sorted(path.name for path in output_dir.glob("*.md"))
+    assert saved_files == ["ok.md"]
+    assert controller.hasUnsavedSuccessfulResults is False
+
+
+def test_controller_save_all_reports_partial_save_failures(controller, tmp_path, monkeypatch):
+    output_dir = tmp_path / "exports"
+    _complete_results(
+        controller,
+        {
+            "C:/tmp/ok.pdf": ConversionOutcome("# Converted", backend="native"),
+            "C:/tmp/fail.pdf": ConversionOutcome("# Also converted", backend="native"),
+        },
+    )
+    original_save = controller._save_prepared_markdown
+
+    def fail_one_output(output_path, prepared_output):
+        if output_path.endswith("fail.md"):
+            raise OSError("disk full")
+        original_save(output_path, prepared_output)
+
+    monkeypatch.setattr(controller, "_save_prepared_markdown", fail_one_output)
+    messages: list[tuple[str, str]] = []
+    controller.toastRequested.connect(lambda kind, message: messages.append((kind, message)))
+
+    controller.saveAllResultsToFolder(str(output_dir))
+
+    assert messages == [("error", "Saved 1 file; 1 file failed to save.")]
+    assert controller.hasUnsavedSuccessfulResults is True
+
+
+def test_controller_save_all_reports_missing_and_unsuccessful_results(controller, tmp_path):
+    messages: list[tuple[str, str]] = []
+    controller.toastRequested.connect(lambda kind, message: messages.append((kind, message)))
+
+    controller.saveAllResultsToFolder(str(tmp_path))
+
+    assert messages == [("error", "No output to save.")]
+
+    _complete_results(
+        controller,
+        {"C:/tmp/broken.pdf": ConversionOutcome("boom", backend="native")},
+        {"C:/tmp/broken.pdf"},
+    )
+    messages.clear()
+    controller.saveAllResultsToFolder(str(tmp_path))
+
+    assert messages == [("error", "No successful output to save.")]
+
+
 def test_controller_restores_asset_root_when_markdown_replace_fails(
     controller,
     monkeypatch,

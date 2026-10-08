@@ -254,6 +254,47 @@ def test_folder_picker_button_stays_inside_compact_and_desktop_windows(monkeypat
         _close_main_qml(app, controller, engine)
 
 
+def test_results_view_exposes_save_all_to_folder(monkeypatch, tmp_path):
+    app, controller, engine, root = _load_main_qml(monkeypatch, tmp_path)
+
+    try:
+        dialog = _find_by_property(root, "objectName", "saveAllResultsDialog")
+        assert dialog.property("title") == "Save all converted files to a folder"
+
+        controller.result_model.set_results(
+            {str(tmp_path / "digital.pdf"): ConversionOutcome("# Converted")}
+        )
+        controller._selected_result_index = 0
+        controller.resultsChanged.emit()
+        controller.selectedResultChanged.emit()
+        app.processEvents()
+
+        button = _find_by_property(root, "objectName", "saveAllResultsButton")
+        assert button.isVisible() is True
+        assert _accessible_name(button) == "Save all to folder"
+        interface = QAccessible.queryAccessibleInterface(button)
+        assert interface.text(QAccessible.Text.Description) == (
+            "Write every converted file into one folder, named after each input file."
+        )
+
+        root.setWidth(820)
+        root.setHeight(560)
+        app.processEvents()
+
+        toolbar = next(
+            item
+            for item in root.findChildren(QQuickItem)
+            if item.property("compactActions") is True
+        )
+        right_edge = button.mapToItem(
+            toolbar,
+            QPointF(button.width(), 0),
+        ).x()
+        assert right_edge <= toolbar.width() + 0.1
+    finally:
+        _close_main_qml(app, controller, engine)
+
+
 def test_folder_filter_keeps_conversion_inputs_and_adds_folder_formats():
     main_text = (
         Path(__file__).resolve().parents[2]

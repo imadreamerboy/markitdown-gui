@@ -1184,19 +1184,61 @@ class AppController(QObject):
             self.toastRequested.emit("error", "Choose an output folder before saving.")
             return
 
-        if fallback_dir:
-            Path(fallback_dir).mkdir(parents=True, exist_ok=True)
+        self._write_separate_results(items, fallback_dir, use_source_folder=True)
 
+    @Slot("QVariant")
+    def saveAllResultsToFolder(self, folder_url: Any) -> None:
+        """Save every successful result as its own file inside one chosen folder.
+
+        Unlike the source-folder save mode, this keeps a whole folder conversion
+        together in a single destination, names each file after its source, and
+        resolves repeated filenames within the batch.
+        """
+        output_dir = self._path_from_url(folder_url)
+        all_items = self.result_model.items()
+        if not all_items:
+            self.toastRequested.emit("error", "No output to save.")
+            return
+        items = self._successful_result_items(all_items)
+        if not items:
+            self.notifyNoSuccessfulOutputToSave()
+            return
+        if not output_dir:
+            self.toastRequested.emit("error", "Choose a folder for the saved files.")
+            return
+
+        self._write_separate_results(items, output_dir, use_source_folder=False)
+
+    def _write_separate_results(
+        self,
+        items: list[Any],
+        fallback_dir: str,
+        *,
+        use_source_folder: bool,
+    ) -> None:
         saved_paths: list[str] = []
         failed_paths: list[str] = []
         saved_sources: set[str] = set()
+        # Names are reserved per batch so two inputs that resolve to the same
+        # filename both land on disk instead of overwriting each other.
+        reserved_names: set[str] = set()
+
         for item in items:
-            output_dir = self._separate_output_dir(fallback_dir, item.source)
+            output_dir = (
+                self._separate_output_dir(fallback_dir, item.source)
+                if use_source_folder
+                else fallback_dir
+            )
             if not output_dir:
                 AppLogger.error(f"No output folder available for {item.source}")
                 continue
             Path(output_dir).mkdir(parents=True, exist_ok=True)
-            output_path = self._unique_output_path(output_dir, item.source)
+            output_path = self._unique_output_path(
+                output_dir,
+                item.source,
+                reserved_names=reserved_names,
+            )
+            reserved_names.add(Path(output_path).name.lower())
             try:
                 prepared_output = prepare_markdown_for_separate_save_transaction(
                     item.outcome.markdown,
@@ -2643,12 +2685,18 @@ class AppController(QObject):
             return QUrl(text).toLocalFile()
         return text
 
-    def _unique_output_path(self, output_dir: str, source: str) -> str:
+    def _unique_output_path(
+        self,
+        output_dir: str,
+        source: str,
+        reserved_names: set[str] | None = None,
+    ) -> str:
         output_ext = self.settings.get_default_output_format()
         stem = relocated_output_stem(source, self._folder_inputs.get(source, ""))
+        reserved = reserved_names or set()
         path = Path(output_dir) / f"{stem}{output_ext}"
         counter = 1
-        while path.exists():
+        while path.exists() or path.name.lower() in reserved:
             path = Path(output_dir) / f"{stem}_{counter}{output_ext}"
             counter += 1
         return str(path)

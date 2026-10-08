@@ -22,6 +22,7 @@
 - 结果页支持按文件选择和 Markdown 预览。
 - 预览模式支持渲染 Markdown 和原始 Markdown。
 - 保存模式支持合并为一个文件或分别保存。
+- **Save all to folder**：将每个转换结果写入同一个文件夹，并以各自的输入文件名命名；重名会依次解决（`report.md`、`report_1.md`…）。
 - 常用操作：复制 Markdown、保存输出、重试失败转换、返回队列、重新开始。
 - 可选 OCR，支持扫描版 PDF 和图片文件，可选择 `Azure + Tesseract`、`GLM-OCR` 和通用 `HTTP OCR` 提供方。
 - 可选的快速本地转换，适用于清晰的数字 PDF；扫描、混合、置信度不足或存在编码问题的 PDF 会继续使用现有转换和 OCR 流程。
