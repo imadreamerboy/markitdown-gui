@@ -1,13 +1,18 @@
 import pytest
 
+from pathlib import Path
+
 from markitdowngui.core.input_sources import (
     BATCH_URL_LIMIT,
+    collect_folder_files,
     decode_batch_url_file,
     is_web_url,
     parse_batch_urls,
+    relocated_output_stem,
     source_display_name,
     source_output_dir,
     source_output_stem,
+    source_relative_label,
 )
 
 
@@ -190,3 +195,86 @@ def test_source_output_dir_returns_file_parent():
 
 def test_source_output_dir_is_empty_for_urls():
     assert source_output_dir("https://example.com/posts/hello-world") == ""
+
+
+def _build_folder_tree(tmp_path):
+    nested = tmp_path / "b"
+    nested.mkdir()
+    deeper = nested / "deep"
+    deeper.mkdir()
+    skipped = tmp_path / "node_modules"
+    skipped.mkdir()
+    hidden = tmp_path / ".git"
+    hidden.mkdir()
+
+    (tmp_path / "top.pdf").write_text("top", encoding="utf-8")
+    (nested / "report.pdf").write_text("nested", encoding="utf-8")
+    (deeper / "report.docx").write_text("deeper", encoding="utf-8")
+    (nested / "photo.png").write_text("image", encoding="utf-8")
+    (tmp_path / "notes.bin").write_text("unsupported", encoding="utf-8")
+    (skipped / "ignored.pdf").write_text("ignored", encoding="utf-8")
+    (hidden / "config.pdf").write_text("hidden", encoding="utf-8")
+    (tmp_path / ".hidden.pdf").write_text("hidden file", encoding="utf-8")
+    return tmp_path
+
+
+def test_collect_folder_files_walks_subfolders_and_reports_skipped(tmp_path):
+    root = _build_folder_tree(tmp_path)
+
+    files, skipped = collect_folder_files(
+        str(root),
+        supported_extensions={".docx", ".pdf", ".png"},
+    )
+
+    names = [Path(path).name for path in files]
+    assert names == ["top.pdf", "photo.png", "report.pdf", "report.docx"]
+    assert all("node_modules" not in path for path in files)
+    assert all(".git" not in Path(path).parts for path in files)
+    assert all(".hidden.pdf" not in path for path in files)
+    assert skipped == 1
+
+
+def test_collect_folder_files_keeps_every_file_without_extension_filter(tmp_path):
+    root = _build_folder_tree(tmp_path)
+
+    files, skipped = collect_folder_files(str(root))
+
+    assert skipped == 0
+    assert any(path.endswith("notes.bin") for path in files)
+
+
+def test_relocated_output_stem_disambiguates_nested_same_name_files(tmp_path):
+    root = _build_folder_tree(tmp_path)
+
+    assert relocated_output_stem(str(root / "top.pdf"), str(root)) == "top"
+    stem = relocated_output_stem(str(root / "b" / "report.pdf"), str(root))
+    assert stem == "report-b"
+    assert relocated_output_stem(
+        str(root / "b" / "deep" / "report.docx"),
+        str(root),
+    ) == "report-deep"
+
+
+def test_relocated_output_stem_ignores_files_outside_the_folder_root(tmp_path):
+    root = _build_folder_tree(tmp_path)
+
+    outside = tmp_path.parent / "outside" / "report.pdf"
+    assert relocated_output_stem(str(outside), str(root)) == "report"
+    assert relocated_output_stem(
+        "https://example.com/a/report.pdf",
+        str(root),
+    ) == "example.com-report.pdf"
+
+
+def test_source_relative_label_prefixes_the_picked_folder(tmp_path):
+    root = _build_folder_tree(tmp_path)
+
+    assert source_relative_label(str(root / "top.pdf"), str(root)) == f"{root.name}/top.pdf"
+    assert source_relative_label(
+        str(root / "b" / "deep" / "report.docx"),
+        str(root),
+    ) == f"{root.name}/b/deep/report.docx"
+    assert source_relative_label(str(root / "top.pdf"), "") == "top.pdf"
+    assert source_relative_label(str(tmp_path.parent / "other" / "x.pdf"), str(root)) == (
+        "x.pdf"
+    )

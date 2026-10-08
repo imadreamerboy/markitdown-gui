@@ -198,6 +198,115 @@ def test_batch_url_import_filter_is_txt_only_without_changing_conversion_inputs(
     assert "*.txt *.md *.csv" in main_text
 
 
+def test_main_qml_exposes_a_folder_picker_for_queue_inputs(monkeypatch, tmp_path):
+    app, controller, engine, root = _load_main_qml(monkeypatch, tmp_path)
+
+    try:
+        app, controller, engine, root = _load_main_qml(monkeypatch, tmp_path)
+        controller.addFiles([str(tmp_path / "digital.pdf")])
+        app.processEvents()
+
+        folder_dialog = _find_by_property(root, "objectName", "openFolderDialog")
+        add_folder = _find_by_property(root, "objectName", "addFolderButton")
+
+        assert folder_dialog.property("title") == "Add Folder"
+        assert _accessible_name(add_folder) == "Add Folder"
+    finally:
+        _close_main_qml(app, controller, engine)
+
+
+def test_main_qml_empty_state_offers_the_folder_picker():
+    main_text = (
+        Path(__file__).resolve().parents[2]
+        / "markitdowngui"
+        / "qml"
+        / "Main.qml"
+    ).read_text(encoding="utf-8")
+
+    assert 'id: openFolderDialog' in main_text
+    assert "onAccepted: app.addFolders(selectedFolder)" in main_text
+    assert main_text.count('onClicked: openFolderDialog.open()') >= 2
+
+
+def test_folder_picker_button_stays_inside_compact_and_desktop_windows(monkeypatch, tmp_path):
+    app, controller, engine, root = _load_main_qml(monkeypatch, tmp_path)
+
+    try:
+        for width, height in ((1180, 760), (820, 560)):
+            root.setWidth(width)
+            root.setHeight(height)
+            app.processEvents()
+
+            buttons = [
+                item
+                for item in _visible_app_buttons(root)
+                if item.property("text") == "Add Folder"
+            ]
+            assert buttons
+            for button in buttons:
+                top_left = button.mapToScene(QPointF(0, 0))
+                bottom_right = button.mapToScene(QPointF(button.width(), button.height()))
+                assert 0 <= top_left.x()
+                assert 0 <= top_left.y()
+                assert bottom_right.x() <= width + 0.5
+                assert bottom_right.y() <= height + 0.5
+    finally:
+        _close_main_qml(app, controller, engine)
+
+
+def test_results_view_exposes_save_all_to_folder(monkeypatch, tmp_path):
+    app, controller, engine, root = _load_main_qml(monkeypatch, tmp_path)
+
+    try:
+        dialog = _find_by_property(root, "objectName", "saveAllResultsDialog")
+        assert dialog.property("title") == "Save all converted files to a folder"
+
+        controller.result_model.set_results(
+            {str(tmp_path / "digital.pdf"): ConversionOutcome("# Converted")}
+        )
+        controller._selected_result_index = 0
+        controller.resultsChanged.emit()
+        controller.selectedResultChanged.emit()
+        app.processEvents()
+
+        button = _find_by_property(root, "objectName", "saveAllResultsButton")
+        assert button.isVisible() is True
+        assert _accessible_name(button) == "Save all to folder"
+        interface = QAccessible.queryAccessibleInterface(button)
+        assert interface.text(QAccessible.Text.Description) == (
+            "Write every converted file into one folder, named after each input file."
+        )
+
+        root.setWidth(820)
+        root.setHeight(560)
+        app.processEvents()
+
+        toolbar = next(
+            item
+            for item in root.findChildren(QQuickItem)
+            if item.property("compactActions") is True
+        )
+        right_edge = button.mapToItem(
+            toolbar,
+            QPointF(button.width(), 0),
+        ).x()
+        assert right_edge <= toolbar.width() + 0.1
+    finally:
+        _close_main_qml(app, controller, engine)
+
+
+def test_folder_filter_keeps_conversion_inputs_and_adds_folder_formats():
+    main_text = (
+        Path(__file__).resolve().parents[2]
+        / "markitdowngui"
+        / "qml"
+        / "Main.qml"
+    ).read_text(encoding="utf-8")
+
+    for extension in ("*.odt", "*.odp", "*.ods", "*.rtf", "*.doc", "*.ppt", "*.xls", "*.msg"):
+        assert extension in main_text
+
+
 def test_main_qml_loads_secondary_pages_on_demand(monkeypatch, tmp_path):
     app, controller, engine, root = _load_main_qml(monkeypatch, tmp_path)
 

@@ -16,11 +16,13 @@
 ## 功能
 
 - 以佇列為核心的檔案流程，支援拖放。
+- 新增整個資料夾：選取資料夾後會像 `folder/*` 一樣加入其中所有受支援的文件，包括子資料夾。隱藏項目以及 `.git`、`node_modules` 等專案目錄會被略過。
 - 貼上網站 URL，並透過託管的 Defuddle API 將文章內容轉為 Markdown。
 - 批次轉換，支援開始、暫停/繼續、取消和進度回報。
 - 結果頁支援逐檔選取和 Markdown 預覽。
 - 預覽模式支援渲染後 Markdown 和原始 Markdown。
 - 儲存模式支援合併為單一檔案或分別儲存。
+- **Save all to folder**：將每個轉換結果寫入同一個資料夾，並以各自的輸入檔案名稱命名；重名會依序解決（`report.md`、`report_1.md`…）。
 - 常用操作：複製 Markdown、儲存輸出、重試失敗轉換、返回佇列、重新開始。
 - 可選 OCR，支援掃描版 PDF 和圖片檔案，可選擇 `Azure + Tesseract`、`GLM-OCR` 和通用 `HTTP OCR` 提供者。
 - 可選的快速本機轉換，適用於清晰的數位 PDF；掃描、混合、信心不足或存在編碼問題的 PDF 會繼續使用既有轉換與 OCR 流程。
@@ -169,9 +171,34 @@ pipeline:
 uv run python -m markitdowngui.main
 ```
 
+## 支援的輸入
+
+- Word: `.docx`、`.doc`、`.docm`、`.odt`、`.rtf`
+- PowerPoint: `.pptx`、`.ppt`、`.pptm`、`.ppsx`、`.ppsm`、`.pps`、`.pot`
+- Excel: `.xlsx`、`.xls`、`.xlsm`、`.xlsb`、`.ods`、`.csv`
+- 其他文件: `.pdf`、`.epub`、`.html`、`.htm`、`.msg`、`.ipynb`
+- 文字: `.txt`、`.text`、`.md`、`.markdown`、`.json`、`.jsonl`、`.xml`
+- 圖片: `.png`、`.jpg`、`.jpeg`、`.bmp`、`.gif`、`.tiff`、`.tif`、`.webp`
+- 音訊: `.mp3`、`.wav`、`.m4a`、`.mp4`
+- 壓縮檔: `.zip`
+- 網站 URL
+
+MarkItDown 原生轉換器支援 `.docx`、`.pptx`、`.xlsx`、`.xls`、`.pdf`、`.epub`、`.html`、`.csv`、`.json`、`.xml`、`.txt`、`.md`、`.ipynb`、`.msg`、`.png`、`.jpg`、`.jpeg`、`.zip`、`.mp3`、`.wav`、`.m4a` 與 `.mp4`。其餘文書處理、簡報、試算表與 OpenDocument 格式由內建的 `anydoc` 引擎處理，請保持開啟 **Use anydoc for this conversion**（或在設定中開啟 **Use anydoc by default**）。兩種引擎皆不支援的檔案會回報明確的轉換錯誤，而不會被靜默略過。
+
+## 資料夾輸入
+
+使用 **Add Folder**（`Ctrl+Shift+O`）可加入整個目錄，行為類似 `folder/*`：
+
+- 所選資料夾下的所有受支援文件都會加入佇列，包括子資料夾。
+- 隱藏項目以及 `.git`、`.svn`、`node_modules`、`__pycache__` 等專案目錄會被略過。
+- 副檔名不受支援的檔案會被略過；若資料夾中沒有可轉換的內容，應用程式會提示。
+- 當子資料夾中存在同名檔案時，輸出名稱仍保持唯一：`a/report.pdf` 儲存為 `report.md`，而 `a/b/report.pdf` 儲存為 `report-b.md`。
+- 將資料夾拖入視窗時遵循相同規則。
+
 ## 鍵盤快速鍵
 
 - `Ctrl+O`: 開啟檔案
+- `Ctrl+Shift+O`: 開啟資料夾
 - `Ctrl+S`: 儲存輸出
 - `Ctrl+C`: 複製輸出
 - `Ctrl+R`: 重試失敗轉換
