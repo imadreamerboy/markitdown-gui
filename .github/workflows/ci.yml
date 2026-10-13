@@ -36,6 +36,11 @@ jobs:
           enable-cache: true
           cache-dependency-glob: uv.lock
 
+      - name: Check requirements match the lock
+        run: |
+          uv export --format requirements.txt --no-hashes --no-emit-project --locked -o requirements.txt
+          git diff --exit-code -- requirements.txt
+
       - name: Install system dependencies
         run: |
           sudo apt-get update
