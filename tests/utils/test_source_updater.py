@@ -15,68 +15,40 @@ def test_find_source_root_finds_git_checkout(tmp_path):
     assert source_updater.find_source_root(start) == root
 
 
-def test_build_source_update_command_prefers_uv(tmp_path):
+def test_build_source_update_command_uses_the_shared_updater(tmp_path):
     root = tmp_path / "repo with spaces"
-    root.mkdir()
-
     command = source_updater.build_source_update_command(
         root,
         python_executable="C:/Python/python.exe",
         uv_executable="uv",
     )
-
-    root_arg = source_updater.quote_command_arg(str(root))
-    requirements_arg = source_updater.quote_command_arg(str(root / "requirements.txt"))
-    python_arg = source_updater.quote_command_arg("C:/Python/python.exe")
-    uv_arg = source_updater.quote_command_arg("uv")
-    assert command == (
-        f"git -C {root_arg} pull --ff-only && "
-        f"{uv_arg} pip install --python {python_arg} "
-        f"--no-deps -r {requirements_arg} -e {root_arg}"
-    )
+    arguments = [
+        "C:/Python/python.exe", "-m", "markitdowngui.utils.source_updater",
+        "--source-root", str(root), "--uv-executable", "uv",
+    ]
+    assert command == " ".join(source_updater.quote_command_arg(arg) for arg in arguments)
 
 
-def test_build_source_update_command_falls_back_to_python(tmp_path):
-    root = tmp_path / "repo"
-    root.mkdir()
-
+def test_build_source_update_command_preserves_explicit_pip_selection(tmp_path):
     command = source_updater.build_source_update_command(
-        root,
-        python_executable="python",
-        uv_executable="",
+        tmp_path, python_executable="python", uv_executable="",
     )
-
-    root_arg = source_updater.quote_command_arg(str(root))
-    requirements_arg = source_updater.quote_command_arg(str(root / "requirements.txt"))
-    python_arg = source_updater.quote_command_arg("python")
-    assert command == (
-        f"git -C {root_arg} pull --ff-only && "
-        f"{python_arg} -m pip install --no-deps -r {requirements_arg} -e {root_arg}"
-    )
+    assert command.endswith("--uv-executable " + source_updater.quote_command_arg(""))
 
 
 def test_build_source_update_command_quotes_shell_metacharacters(tmp_path):
     root = tmp_path / "R&D;repo"
-    root.mkdir()
-
     command = source_updater.build_source_update_command(
         root,
         python_executable="/opt/python&tools/python",
         uv_executable="/opt/tools/u;v",
     )
-
-    root_arg = source_updater.quote_command_arg(str(root))
-    requirements_arg = source_updater.quote_command_arg(str(root / "requirements.txt"))
-    python_arg = source_updater.quote_command_arg("/opt/python&tools/python")
-    uv_arg = source_updater.quote_command_arg("/opt/tools/u;v")
-    assert command == (
-        f"git -C {root_arg} pull --ff-only && "
-        f"{uv_arg} pip install --python {python_arg} "
-        f"--no-deps -r {requirements_arg} -e {root_arg}"
-    )
-    assert root_arg != str(root)
-    assert python_arg != "/opt/python&tools/python"
-    assert uv_arg != "/opt/tools/u;v"
+    arguments = [
+        "/opt/python&tools/python", "-m", "markitdowngui.utils.source_updater",
+        "--source-root", str(root), "--uv-executable", "/opt/tools/u;v",
+    ]
+    assert command == " ".join(source_updater.quote_command_arg(arg) for arg in arguments)
+    assert source_updater.quote_command_arg(str(root)) != str(root)
 
 
 def test_run_source_update_reports_progress_with_uv(monkeypatch, tmp_path):
@@ -245,3 +217,68 @@ def test_run_source_update_returns_command_failure(monkeypatch, tmp_path):
 
     assert result == 23
     assert progress == [("Checking source checkout", 5)]
+
+
+def test_qt_migration_removes_shared_essentials_before_pinned_install(monkeypatch, tmp_path):
+    root = tmp_path / "repo"
+    root.mkdir()
+    (root / "requirements.txt").write_text("pyside6-essentials==6.12.0\n", encoding="utf-8")
+    monkeypatch.setattr(source_updater, "_installed_distribution", lambda _name: True)
+    calls = []
+    monkeypatch.setattr(source_updater.subprocess, "run", lambda command, **kwargs:
+        calls.append(command) or subprocess.CompletedProcess(command, 0, stdout=""))
+
+    assert source_updater.run_source_update(root, uv_executable="uv") == 0
+    assert calls[2] == ["uv", "pip", "uninstall", "--python", source_updater.sys.executable,
+                        "PySide6", "PySide6-Addons", "PySide6-Essentials"]
+    assert calls[3][:5] == ["uv", "pip", "install", "--python", source_updater.sys.executable]
+    assert "--no-deps" in calls[3]
+
+
+def test_qt_migration_uses_pip_in_the_active_interpreter(monkeypatch, tmp_path):
+    requirements = tmp_path / "requirements.txt"
+    requirements.write_text("pyside6-essentials==6.12.0\n", encoding="utf-8")
+    monkeypatch.setattr(source_updater, "_installed_distribution", lambda name:
+        name in {"PySide6-Addons", "PySide6-Essentials"})
+    calls = []
+    monkeypatch.setattr(source_updater.subprocess, "run", lambda command, **kwargs: calls.append(command))
+    source_updater._migrate_legacy_qt(requirements, "")
+    assert calls == [[source_updater.sys.executable, "-m", "pip", "uninstall", "--yes",
+                      "PySide6-Addons", "PySide6-Essentials"]]
+
+
+def test_qt_migration_skips_an_essentials_only_environment(monkeypatch, tmp_path):
+    requirements = tmp_path / "requirements.txt"
+    requirements.write_text("pyside6-essentials==6.12.0\n", encoding="utf-8")
+    monkeypatch.setattr(source_updater, "_installed_distribution", lambda name: name == "PySide6-Essentials")
+    calls = []
+    monkeypatch.setattr(source_updater.subprocess, "run", lambda command, **kwargs: calls.append(command))
+    source_updater._migrate_legacy_qt(requirements, "uv")
+    assert calls == []
+
+
+def test_qt_migration_does_not_remove_full_qt_when_target_still_requires_it(monkeypatch, tmp_path):
+    requirements = tmp_path / "requirements.txt"
+    requirements.write_text("pyside6==6.12.0\npyside6-essentials==6.12.0\n", encoding="utf-8")
+    monkeypatch.setattr(source_updater, "_installed_distribution", lambda _name: True)
+    calls = []
+    monkeypatch.setattr(source_updater.subprocess, "run", lambda command, **kwargs: calls.append(command))
+    source_updater._migrate_legacy_qt(requirements, "uv")
+    assert calls == []
+
+
+def test_qt_migration_stops_on_uninstall_failure(monkeypatch, tmp_path):
+    root = tmp_path / "repo"
+    root.mkdir()
+    (root / "requirements.txt").write_text("pyside6-essentials==6.12.0\n", encoding="utf-8")
+    monkeypatch.setattr(source_updater, "_installed_distribution", lambda _name: True)
+    calls = []
+    def run(command, **kwargs):
+        calls.append(command)
+        if "uninstall" in command:
+            raise subprocess.CalledProcessError(19, command)
+        return subprocess.CompletedProcess(command, 0, stdout="")
+    monkeypatch.setattr(source_updater.subprocess, "run", run)
+    assert source_updater.run_source_update(root, uv_executable="uv") == 19
+    assert len(calls) == 3
+    assert "uninstall" in calls[-1]

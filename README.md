@@ -71,6 +71,8 @@ python -m markitdowngui.utils.source_updater
 
 The source updater first checks that the checkout has no tracked local changes and includes `requirements.txt`, then runs `git pull --ff-only`. It installs the exact exported runtime dependencies from `requirements.txt` and the editable app into the current Python environment, using `uv` when available or `pip` otherwise. Unrelated packages in that environment are retained. The Help view shows a restart action after it finishes.
 
+For the first source upgrade from full PySide6, close the app, run `git pull --ff-only`, then run the command above from that updated checkout in the app's Python environment. An updater already running from an older release cannot perform the new migration. The freshly loaded updater removes the former `PySide6` and `PySide6-Addons` packages and reinstalls `PySide6-Essentials` to replace shared files; other installed packages are retained. If installation fails after Qt removal, rerun the updated updater before starting the app. A dedicated project environment can instead use `uv sync --locked` after pulling.
+
 ### Support bundles
 
 The Help view shows a compact readiness summary for OCR, packaged updates, source updates, update checks, and logs. Copy diagnostics includes that readiness summary with home paths and obvious secret values redacted. The view can also export a support bundle for issue reports with a diagnostics report, sanitised settings, and capped recent log tails; raw recent file paths, output paths, and obvious secret values are excluded or redacted.
