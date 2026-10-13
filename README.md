@@ -114,7 +114,8 @@ pip install -e .[dev]
   - `Ollama`: easiest local path. The GUI calls Ollama's native `/api/generate` endpoint directly, with defaults `127.0.0.1:11434` and `glm-ocr:latest`.
   - `SDK Server (vLLM / SGLang)`: stronger self-hosted path. Point the app at an existing `/glmocr/parse` endpoint. Default: `http://127.0.0.1:5002/glmocr/parse`.
 - The packaged desktop app does not bundle the GLM-OCR self-hosted runtime stack (`torch`, `transformers`, `vLLM`, `SGLang`, and related server/runtime pieces stay external).
-- The project depends on `glmocr==0.1.4` for client-side Official API and SDK Server connectivity. Ollama is called directly over HTTP.
+- The project depends on `glmocr==0.1.5` for client-side Official API and SDK Server connectivity. Ollama is called directly over HTTP.
+- The GLM-OCR client also requires PyMuPDF (AGPL version 3 or an Artifex commercial licence) and tqdm (MPL-2.0 and MIT). See [third-party notices](THIRD_PARTY_NOTICES.md) for distribution details. Image regions returned by the SDK are embedded in the Markdown so copied or saved output retains them.
 - Local OCR requires a system `tesseract` binary. Install it from the [official Tesseract project](https://github.com/tesseract-ocr/tesseract). If it is not on your `PATH`, set the executable path in Settings.
 - Azure OCR requires an Azure Document Intelligence endpoint in Settings.
 - Azure Document Intelligence pricing includes [500 free pages per month](https://azure.microsoft.com/en-us/products/ai-foundry/tools/document-intelligence#Pricing) at the time of writing.

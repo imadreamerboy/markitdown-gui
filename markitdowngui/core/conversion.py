@@ -7,6 +7,7 @@ import base64
 import logging
 import mimetypes
 import os
+import re
 import shutil
 import tempfile
 from io import BytesIO
@@ -1462,8 +1463,26 @@ def _convert_with_glmocr(
     with GlmOcr(**kwargs) as parser:
         result = parser.parse(file_path)
 
-    markdown = getattr(result, "markdown_result", "")
-    return str(markdown or "").strip()
+    if error := getattr(result, "_error", None):
+        raise RuntimeError(str(error))
+
+    markdown = str(getattr(result, "markdown_result", "") or "").strip()
+    # The SDK returns cropped regions in memory and relative imgs/ references.
+    # Keep those images with the Markdown without writing into the input folder.
+    for filename, image in (getattr(result, "image_files", None) or {}).items():
+        with BytesIO() as buffer:
+            image.save(buffer, format="PNG")
+            encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
+        markdown = markdown.replace(
+            f"](imgs/{filename})", f"](data:image/png;base64,{encoded})"
+        )
+    if re.search(
+        r"!\[Image \d+-\d+\]\(imgs/cropped_page\d+_idx\d+\.jpg\)"
+        r"|!\[\]\(page=\d+,bbox=\[[^\]]*\]\)",
+        markdown,
+    ):
+        raise RuntimeError("GLM-OCR returned an image reference without its image data.")
+    return markdown
 
 
 def _convert_with_glmocr_ollama(

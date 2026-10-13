@@ -18,7 +18,7 @@ dependencies = [
     "pdf-inspector==1.25.2",
     "pytesseract",
     "pyside6>=6.8.2.1",
-    "glmocr==0.1.4",
+    "glmocr==0.1.5",
     "markitdown-pdf-images @ git+https://github.com/imadreamerboy/markitdown-pdf-images.git@b1e2fafec9545acd5713974a32a2f7fe7a37b7f4",
 ]
 
