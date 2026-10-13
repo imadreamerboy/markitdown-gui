@@ -52,7 +52,7 @@ python -m markitdowngui.utils.source_updater
 
 原始碼更新器會先確認沒有已追蹤的本機修改，接著執行 `git pull --ff-only`，並優先用 `uv`、否則用 `pip` 重新安裝 editable 環境。完成後說明頁會顯示重新啟動操作。
 
-首次從完整 PySide6 升級原始碼版時，請先關閉應用，執行 `git pull --ff-only`，然後在應用的 Python 環境中從更新後的目錄執行上面的命令。舊版已經啟動的更新程式無法執行這項新遷移。新更新程式會移除原先的 `PySide6` 和 `PySide6-Addons`，並重新安裝 `PySide6-Essentials` 以恢復共用檔案；其他已安裝的套件會保留。如果移除 Qt 後安裝失敗，請在啟動應用前重新執行更新後的更新程式。專用專案環境也可以在拉取程式碼後執行 `uv sync --locked`。
+首次從完整 PySide6 升級原始碼版時，請先關閉應用，執行 `git pull --ff-only`，然後在應用的 Python 環境中從更新後的目錄執行上面的命令。舊版已經啟動的更新程式無法執行這項新遷移。新更新程式會移除版本與鎖定的 Essentials 不一致的原先 `PySide6` 和 `PySide6-Addons`，並重新安裝 `PySide6-Essentials` 以恢復共用檔案；其他已安裝的套件會保留。如果移除 Qt 後安裝失敗，請在啟動應用前重新執行更新後的更新程式。專用專案環境也可以在拉取程式碼後執行 `uv sync --locked`。
 
 ### 支援包
 

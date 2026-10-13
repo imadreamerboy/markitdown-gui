@@ -223,7 +223,7 @@ def test_qt_migration_removes_shared_essentials_before_pinned_install(monkeypatc
     root = tmp_path / "repo"
     root.mkdir()
     (root / "requirements.txt").write_text("pyside6-essentials==6.12.0\n", encoding="utf-8")
-    monkeypatch.setattr(source_updater, "_installed_distribution", lambda _name: True)
+    monkeypatch.setattr(source_updater, "_installed_version", lambda _name: "6.9.1")
     calls = []
     monkeypatch.setattr(source_updater.subprocess, "run", lambda command, **kwargs:
         calls.append(command) or subprocess.CompletedProcess(command, 0, stdout=""))
@@ -238,8 +238,8 @@ def test_qt_migration_removes_shared_essentials_before_pinned_install(monkeypatc
 def test_qt_migration_uses_pip_in_the_active_interpreter(monkeypatch, tmp_path):
     requirements = tmp_path / "requirements.txt"
     requirements.write_text("pyside6-essentials==6.12.0\n", encoding="utf-8")
-    monkeypatch.setattr(source_updater, "_installed_distribution", lambda name:
-        name in {"PySide6-Addons", "PySide6-Essentials"})
+    monkeypatch.setattr(source_updater, "_installed_version", lambda name:
+        "6.9.1" if name in {"PySide6-Addons", "PySide6-Essentials"} else None)
     calls = []
     monkeypatch.setattr(source_updater.subprocess, "run", lambda command, **kwargs: calls.append(command))
     source_updater._migrate_legacy_qt(requirements, "")
@@ -250,7 +250,8 @@ def test_qt_migration_uses_pip_in_the_active_interpreter(monkeypatch, tmp_path):
 def test_qt_migration_skips_an_essentials_only_environment(monkeypatch, tmp_path):
     requirements = tmp_path / "requirements.txt"
     requirements.write_text("pyside6-essentials==6.12.0\n", encoding="utf-8")
-    monkeypatch.setattr(source_updater, "_installed_distribution", lambda name: name == "PySide6-Essentials")
+    monkeypatch.setattr(source_updater, "_installed_version", lambda name:
+        "6.12.0" if name == "PySide6-Essentials" else None)
     calls = []
     monkeypatch.setattr(source_updater.subprocess, "run", lambda command, **kwargs: calls.append(command))
     source_updater._migrate_legacy_qt(requirements, "uv")
@@ -260,7 +261,7 @@ def test_qt_migration_skips_an_essentials_only_environment(monkeypatch, tmp_path
 def test_qt_migration_does_not_remove_full_qt_when_target_still_requires_it(monkeypatch, tmp_path):
     requirements = tmp_path / "requirements.txt"
     requirements.write_text("pyside6==6.12.0\npyside6-essentials==6.12.0\n", encoding="utf-8")
-    monkeypatch.setattr(source_updater, "_installed_distribution", lambda _name: True)
+    monkeypatch.setattr(source_updater, "_installed_version", lambda _name: "6.9.1")
     calls = []
     monkeypatch.setattr(source_updater.subprocess, "run", lambda command, **kwargs: calls.append(command))
     source_updater._migrate_legacy_qt(requirements, "uv")
@@ -271,7 +272,7 @@ def test_qt_migration_stops_on_uninstall_failure(monkeypatch, tmp_path):
     root = tmp_path / "repo"
     root.mkdir()
     (root / "requirements.txt").write_text("pyside6-essentials==6.12.0\n", encoding="utf-8")
-    monkeypatch.setattr(source_updater, "_installed_distribution", lambda _name: True)
+    monkeypatch.setattr(source_updater, "_installed_version", lambda _name: "6.9.1")
     calls = []
     def run(command, **kwargs):
         calls.append(command)
@@ -282,3 +283,14 @@ def test_qt_migration_stops_on_uninstall_failure(monkeypatch, tmp_path):
     assert source_updater.run_source_update(root, uv_executable="uv") == 19
     assert len(calls) == 3
     assert "uninstall" in calls[-1]
+
+
+def test_qt_migration_retains_compatible_full_qt_distributions(monkeypatch, tmp_path):
+    requirements = tmp_path / "requirements.txt"
+    requirements.write_text("pyside6-essentials==6.12.0\n", encoding="utf-8")
+    # Compatible Addons may be required by a separately installed WebEngine.
+    monkeypatch.setattr(source_updater, "_installed_version", lambda _name: "6.12.0")
+    calls = []
+    monkeypatch.setattr(source_updater.subprocess, "run", lambda command, **kwargs: calls.append(command))
+    source_updater._migrate_legacy_qt(requirements, "uv")
+    assert calls == []
