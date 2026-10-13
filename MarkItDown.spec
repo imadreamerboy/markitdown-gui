@@ -1,12 +1,13 @@
 # -*- mode: python ; coding: utf-8 -*-
 import os
 import sys
-from PyInstaller.utils.hooks import collect_data_files, collect_submodules
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules, copy_metadata
 from markitdowngui.build_config import build_datas, build_excludes, build_hiddenimports
 from markitdowngui import __version__
 
 hiddenimports = build_hiddenimports(collect_submodules, warn=print)
 datas = build_datas(collect_data_files, warn=print)
+datas += copy_metadata("pymupdf") + copy_metadata("tqdm")
 excludes = build_excludes()
 
 a = Analysis(

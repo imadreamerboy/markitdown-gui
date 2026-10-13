@@ -103,6 +103,7 @@ pip install -e .[dev]
 ### OCR Notes
 
 - OCR is optional and disabled by default.
+- **Anydoc conversion** is optional and runs locally. If any PDF page needs OCR, conversion asks you to enable OCR instead of returning incomplete text. Existing OCR and image-preservation settings take precedence.
 - **Fast PDF conversion** is optional and disabled by default. Enable it from the conversion controls for text-based PDFs where speed matters. PDF OCR and image preservation take precedence over fast PDF and `anydoc` conversion. Otherwise, fast PDF conversion falls back to the established PDF pipeline when the document is scanned, mixed, uncertain, or has encoding issues.
 - `Azure + Tesseract` uses Azure Document Intelligence first when configured, then Tesseract as its local fallback.
 - With `Azure + Tesseract` OCR enabled, digital-only PDFs retain native MarkItDown formatting. Mixed PDFs also process detected image and scan content, including scanned bodies beneath a native page heading. Local OCR uses the existing image-aware PDF pipeline to keep text in page order; OCR errors fail the conversion instead of returning partial text.
@@ -117,7 +118,8 @@ pip install -e .[dev]
   - `Ollama`: easiest local path. The GUI calls Ollama's native `/api/generate` endpoint directly, with defaults `127.0.0.1:11434` and `glm-ocr:latest`.
   - `SDK Server (vLLM / SGLang)`: stronger self-hosted path. Point the app at an existing `/glmocr/parse` endpoint. Default: `http://127.0.0.1:5002/glmocr/parse`.
 - The packaged desktop app does not bundle the GLM-OCR self-hosted runtime stack (`torch`, `transformers`, `vLLM`, `SGLang`, and related server/runtime pieces stay external).
-- The project depends on `glmocr==0.1.4` for client-side Official API and SDK Server connectivity. Ollama is called directly over HTTP.
+- The project depends on `glmocr==0.1.5` for client-side Official API and SDK Server connectivity. Ollama is called directly over HTTP.
+- The GLM-OCR client also requires PyMuPDF (AGPL version 3 or an Artifex commercial licence) and tqdm (MPL-2.0 and MIT). See [third-party notices](THIRD_PARTY_NOTICES.md) for distribution details. Image regions returned by the SDK are embedded in the Markdown so copied or saved output retains them.
 - Local OCR requires a system `tesseract` binary. Install it from the [official Tesseract project](https://github.com/tesseract-ocr/tesseract). If it is not on your `PATH`, set the executable path in Settings.
 - Azure OCR requires an Azure Document Intelligence endpoint in Settings.
 - Azure Document Intelligence pricing includes [500 free pages per month](https://azure.microsoft.com/en-us/products/ai-foundry/tools/document-intelligence#Pricing) at the time of writing.

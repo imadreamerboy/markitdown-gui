@@ -12,13 +12,13 @@ license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md"]
 readme = "README.md"
 requires-python = ">=3.10,<3.15"
 dependencies = [
-    "firecrawl-anydoc==0.1.6",
+    "firecrawl-anydoc==0.2.4",
     "markitdown[az-doc-intel,docx,pdf,pptx,xls,xlsx]==0.1.8",
     "pypdfium2>=5.14.0",
-    "pdf-inspector==0.2.6",
+    "pdf-inspector==1.25.2",
     "pytesseract",
     "pyside6-essentials>=6.12.0",
-    "glmocr==0.1.4",
+    "glmocr==0.1.5",
     "markitdown-pdf-images @ git+https://github.com/imadreamerboy/markitdown-pdf-images.git@b1e2fafec9545acd5713974a32a2f7fe7a37b7f4",
 ]
 
