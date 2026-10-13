@@ -33,7 +33,10 @@ def test_build_source_update_command_preserves_explicit_pip_selection(tmp_path):
     command = source_updater.build_source_update_command(
         tmp_path, python_executable="python", uv_executable="",
     )
-    assert command.endswith("--uv-executable " + source_updater.quote_command_arg(""))
+    assert command.endswith(
+        source_updater.quote_command_arg("--uv-executable") + " "
+        + source_updater.quote_command_arg("")
+    )
 
 
 def test_build_source_update_command_quotes_shell_metacharacters(tmp_path):
