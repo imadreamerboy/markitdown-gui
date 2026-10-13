@@ -129,7 +129,7 @@ pandas==2.3.0
     # via
     #   docling-core
     #   markitdown
-pdf-inspector==0.2.6
+pdf-inspector==1.25.2
     # via markitdowngui
 pdfminer-six==20251230
     # via
