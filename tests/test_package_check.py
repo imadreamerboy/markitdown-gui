@@ -20,8 +20,11 @@ def test_real_native_package_checks_write_receipt_and_clean_fixture(tmp_path, mo
     report = json.loads(report_path.read_text())
     assert report["schema_version"] == 1
     assert report["status"] == "passed"
+    assert report["phase"] == "complete"
+    assert report["elapsed_seconds"] >= report["fixture_seconds"] >= 0
     assert set(report["checks"]) == set(package_check.BACKENDS)
     assert all(check["status"] == "passed" for check in report["checks"].values())
+    assert all(check["duration_seconds"] >= 0 for check in report["checks"].values())
     assert report["checks"]["glmocr"]["pdf_payload_verified"] is True
     assert report["checks"]["glmocr"]["localhost_requests"] == 1
     assert list(tmp_path.iterdir()) == [report_path]
@@ -34,6 +37,10 @@ def test_failure_receipt_has_traceback_without_console(tmp_path, monkeypatch):
     monkeypatch.setattr(package_check.sys, "stderr", None)
 
     def fail(_path):
+        progress = json.loads((tmp_path / "receipt.json").read_text())
+        assert progress["status"] == "running"
+        assert progress["phase"] == "pdf_inspector"
+        assert progress["checks"]["anydoc"]["status"] == "passed"
         raise RuntimeError("native inspector unavailable")
 
     monkeypatch.setattr(package_check, "_check_pdf_inspector", fail)
@@ -43,6 +50,7 @@ def test_failure_receipt_has_traceback_without_console(tmp_path, monkeypatch):
 
     report = json.loads(report_path.read_text())
     assert report["status"] == "failed"
+    assert report["phase"] == "pdf_inspector"
     assert report["checks"]["anydoc"]["status"] == "passed"
     assert report["checks"]["pdf_inspector"]["status"] == "failed"
     assert "RuntimeError: native inspector unavailable" in report["traceback"]
@@ -52,16 +60,41 @@ def test_failure_receipt_has_traceback_without_console(tmp_path, monkeypatch):
 
 def test_real_checks_with_no_standard_streams(tmp_path):
     report_path = tmp_path / "windowed.json"
-    process = subprocess.run(
-        [sys.executable, "-c",
-         "import sys; sys.stdout = None; sys.stderr = None; "
-         "from pathlib import Path; "
-         "from markitdowngui.package_check import run_package_checks; "
-         "sys.exit(run_package_checks(Path(sys.argv[1])))", str(report_path)],
-        capture_output=True, text=True, timeout=30, check=False,
-    )
+    stack_path = tmp_path / "windowed-stacks.log"
+    # Match the frozen backend harness's bounded budget. Keep a file-backed
+    # stack dump so a slow native import remains diagnosable without a console.
+    program = """
+import faulthandler
+from pathlib import Path
+import sys
 
-    assert process.returncode == 0, process.stderr
+with open(sys.argv[2], "w", encoding="utf-8") as trace:
+    faulthandler.enable(file=trace)
+    faulthandler.dump_traceback_later(25, repeat=True, file=trace)
+    sys.stdout = None
+    sys.stderr = None
+    try:
+        from markitdowngui.package_check import run_package_checks
+        result = run_package_checks(Path(sys.argv[1]))
+    finally:
+        faulthandler.cancel_dump_traceback_later()
+        faulthandler.disable()
+sys.exit(result)
+"""
+    try:
+        process = subprocess.run(
+            [sys.executable, "-c", program, str(report_path), str(stack_path)],
+            capture_output=True, text=True, timeout=60, check=False,
+        )
+    except subprocess.TimeoutExpired:
+        diagnostics = [f"{path.name}:\n{path.read_text()[-20000:]}"
+                       for path in (report_path, stack_path) if path.is_file()]
+        pytest.fail("Package checks exceeded 60s.\n" + "\n".join(diagnostics), pytrace=False)
+
+    assert process.returncode == 0, (
+        process.stderr, report_path.read_text() if report_path.is_file() else "No receipt",
+        stack_path.read_text(),
+    )
     assert json.loads(report_path.read_text())["status"] == "passed"
 
 

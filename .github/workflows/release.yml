@@ -39,7 +39,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgl1 libegl1 libxkbcommon-x11-0 libxcb-cursor0 xvfb xauth
+          sudo apt-get install -y libgl1 libegl1 libxkbcommon-x11-0 libxcb-cursor0 libxcb-shape0 libxcb-keysyms1 libxcb-icccm4 xvfb xauth
 
       - name: Install Inno Setup
         if: runner.os == 'Windows'

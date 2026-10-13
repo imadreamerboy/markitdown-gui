@@ -11,6 +11,7 @@ from pathlib import Path
 import sys
 import tempfile
 from threading import Thread
+from time import perf_counter
 import traceback
 
 from markitdowngui import __version__
@@ -156,7 +157,8 @@ def run_package_checks(report_path: Path) -> int:
     """Write a receipt even on backend failure; never rely on a GUI app's stdout."""
     report = {
         "schema_version": 1,
-        "status": "failed",
+        "status": "running",
+        "phase": "fixture",
         "app_version": __version__,
         "executable": sys.executable,
         "frozen": bool(getattr(sys, "frozen", False)),
@@ -164,27 +166,45 @@ def run_package_checks(report_path: Path) -> int:
         "python": sys.version.split()[0],
         "checks": {},
     }
+    started = perf_counter()
+
+    def write_report() -> None:
+        report["elapsed_seconds"] = round(perf_counter() - started, 3)
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+
     current = "fixture"
     try:
+        write_report()
         with tempfile.TemporaryDirectory(prefix="markitdown-package-check-") as directory:
             source = Path(directory) / "native.pdf"
             _create_pdf(source)
+            report["fixture_seconds"] = round(perf_counter() - started, 3)
             for current, check in zip(BACKENDS, (
                 _check_anydoc, _check_pdf_inspector, _check_pdfium, _check_glmocr,
             )):
-                report["checks"][current] = {"status": "passed", **check(source)}
+                report["phase"] = current
+                write_report()
+                check_started = perf_counter()
+                report["checks"][current] = {
+                    "status": "passed", **check(source),
+                    "duration_seconds": round(perf_counter() - check_started, 3),
+                }
+            current = report["phase"] = "cleanup"
+            write_report()
             _require(list(Path(directory).iterdir()) == [source],
                      "A backend wrote unexpected files beside the fixture.")
         report["status"] = "passed"
+        report["phase"] = "complete"
     except Exception as error:
+        report["status"] = "failed"
         report["checks"][current] = {"status": "failed", "error": str(error)}
         report["traceback"] = traceback.format_exc()
         if sys.stderr is not None:
             sys.stderr.write(report["traceback"])
 
     try:
-        report_path.parent.mkdir(parents=True, exist_ok=True)
-        report_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+        write_report()
     except OSError:
         if sys.stderr is not None:
             sys.stderr.write(traceback.format_exc())
