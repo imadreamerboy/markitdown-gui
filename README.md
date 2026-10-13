@@ -69,7 +69,7 @@ paru -S markitdown-gui-appimage
 python -m markitdowngui.utils.source_updater
 ```
 
-The source updater first checks that the checkout has no tracked local changes, then runs `git pull --ff-only` and reinstalls the app in editable mode with `uv` when available or `pip` otherwise. The Help view shows a restart action after it finishes.
+The source updater first checks that the checkout has no tracked local changes and includes `requirements.txt`, then runs `git pull --ff-only`. It installs the exact exported runtime dependencies from `requirements.txt` and the editable app into the current Python environment, using `uv` when available or `pip` otherwise. Unrelated packages in that environment are retained. The Help view shows a restart action after it finishes.
 
 ### Support bundles
 

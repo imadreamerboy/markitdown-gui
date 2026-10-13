@@ -44,11 +44,13 @@ def build_source_update_command(
     python_executable: str | None = None,
     uv_executable: str | None = None,
 ) -> str:
+    """Update source and install the exported runtime pins in the active environment."""
     root = source_root or find_source_root()
     if root is None:
         return ""
 
     root_arg = quote_command_arg(str(root))
+    requirements_arg = quote_command_arg(str(root / "requirements.txt"))
     git_command = f"git -C {root_arg} pull --ff-only"
 
     uv_path = uv_executable if uv_executable is not None else shutil.which("uv")
@@ -56,11 +58,13 @@ def build_source_update_command(
     if uv_path:
         python_arg = quote_command_arg(python_path)
         install_command = (
-            f"{quote_command_arg(uv_path)} pip install --python {python_arg} -e {root_arg}"
+            f"{quote_command_arg(uv_path)} pip install --python {python_arg} "
+            f"--no-deps -r {requirements_arg} -e {root_arg}"
         )
     else:
         install_command = (
-            f"{quote_command_arg(python_path)} -m pip install -e {root_arg}"
+            f"{quote_command_arg(python_path)} -m pip install "
+            f"--no-deps -r {requirements_arg} -e {root_arg}"
         )
 
     return f"{git_command} && {install_command}"
@@ -88,6 +92,7 @@ def run_source_update(
     *,
     progress_callback: ProgressCallback | None = None,
 ) -> int:
+    """Refresh the checkout and exact runtime pins without pruning unrelated packages."""
     root = source_root or find_source_root()
     if root is None:
         print("No Git source checkout found for this installation.", file=sys.stderr)
@@ -102,6 +107,14 @@ def run_source_update(
             )
             return SOURCE_UPDATE_DIRTY
 
+        requirements = root / "requirements.txt"
+        if not requirements.is_file():
+            print(
+                f"Source update requires the exported runtime dependencies: {requirements}",
+                file=sys.stderr,
+            )
+            return SOURCE_UPDATE_FAILED
+
         _emit_progress(progress_callback, "Pulling latest source", 15)
         subprocess.run(["git", "-C", str(root), "pull", "--ff-only"], check=True)
 
@@ -115,6 +128,9 @@ def run_source_update(
                     "install",
                     "--python",
                     sys.executable,
+                    "--no-deps",
+                    "-r",
+                    str(requirements),
                     "-e",
                     str(root),
                 ],
@@ -122,7 +138,17 @@ def run_source_update(
             )
         else:
             subprocess.run(
-                [sys.executable, "-m", "pip", "install", "-e", str(root)],
+                [
+                    sys.executable,
+                    "-m",
+                    "pip",
+                    "install",
+                    "--no-deps",
+                    "-r",
+                    str(requirements),
+                    "-e",
+                    str(root),
+                ],
                 check=True,
             )
     except subprocess.CalledProcessError as exc:

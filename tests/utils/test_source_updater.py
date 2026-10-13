@@ -26,11 +26,13 @@ def test_build_source_update_command_prefers_uv(tmp_path):
     )
 
     root_arg = source_updater.quote_command_arg(str(root))
+    requirements_arg = source_updater.quote_command_arg(str(root / "requirements.txt"))
     python_arg = source_updater.quote_command_arg("C:/Python/python.exe")
     uv_arg = source_updater.quote_command_arg("uv")
     assert command == (
         f"git -C {root_arg} pull --ff-only && "
-        f"{uv_arg} pip install --python {python_arg} -e {root_arg}"
+        f"{uv_arg} pip install --python {python_arg} "
+        f"--no-deps -r {requirements_arg} -e {root_arg}"
     )
 
 
@@ -45,10 +47,11 @@ def test_build_source_update_command_falls_back_to_python(tmp_path):
     )
 
     root_arg = source_updater.quote_command_arg(str(root))
+    requirements_arg = source_updater.quote_command_arg(str(root / "requirements.txt"))
     python_arg = source_updater.quote_command_arg("python")
     assert command == (
         f"git -C {root_arg} pull --ff-only && "
-        f"{python_arg} -m pip install -e {root_arg}"
+        f"{python_arg} -m pip install --no-deps -r {requirements_arg} -e {root_arg}"
     )
 
 
@@ -63,11 +66,13 @@ def test_build_source_update_command_quotes_shell_metacharacters(tmp_path):
     )
 
     root_arg = source_updater.quote_command_arg(str(root))
+    requirements_arg = source_updater.quote_command_arg(str(root / "requirements.txt"))
     python_arg = source_updater.quote_command_arg("/opt/python&tools/python")
     uv_arg = source_updater.quote_command_arg("/opt/tools/u;v")
     assert command == (
         f"git -C {root_arg} pull --ff-only && "
-        f"{uv_arg} pip install --python {python_arg} -e {root_arg}"
+        f"{uv_arg} pip install --python {python_arg} "
+        f"--no-deps -r {requirements_arg} -e {root_arg}"
     )
     assert root_arg != str(root)
     assert python_arg != "/opt/python&tools/python"
@@ -77,6 +82,7 @@ def test_build_source_update_command_quotes_shell_metacharacters(tmp_path):
 def test_run_source_update_reports_progress_with_uv(monkeypatch, tmp_path):
     root = tmp_path / "repo"
     root.mkdir()
+    (root / "requirements.txt").write_text("pyjwt==2.15.1\n", encoding="utf-8")
     calls: list[list[str]] = []
     progress: list[tuple[str, int]] = []
 
@@ -114,6 +120,9 @@ def test_run_source_update_reports_progress_with_uv(monkeypatch, tmp_path):
             "install",
             "--python",
             source_updater.sys.executable,
+            "--no-deps",
+            "-r",
+            str(root / "requirements.txt"),
             "-e",
             str(root),
         ],
@@ -163,6 +172,7 @@ def test_run_source_update_stops_when_checkout_has_local_changes(
 def test_run_source_update_ignores_untracked_files(monkeypatch, tmp_path):
     root = tmp_path / "repo"
     root.mkdir()
+    (root / "requirements.txt").write_text("pyjwt==2.15.1\n", encoding="utf-8")
     calls: list[list[str]] = []
 
     def fake_run(command, **_kwargs):
@@ -186,6 +196,36 @@ def test_run_source_update_ignores_untracked_files(monkeypatch, tmp_path):
         "--untracked-files=no",
     ]
     assert calls[1] == ["git", "-C", str(root), "pull", "--ff-only"]
+    assert calls[2] == [
+        source_updater.sys.executable,
+        "-m",
+        "pip",
+        "install",
+        "--no-deps",
+        "-r",
+        str(root / "requirements.txt"),
+        "-e",
+        str(root),
+    ]
+
+
+def test_run_source_update_rejects_missing_requirements_before_pull(
+    monkeypatch, tmp_path, capsys,
+):
+    root = tmp_path / "repo"
+    root.mkdir()
+    calls: list[list[str]] = []
+    monkeypatch.setattr(
+        source_updater.subprocess,
+        "run",
+        lambda command, **_kwargs: calls.append(command)
+        or subprocess.CompletedProcess(command, 0, stdout=""),
+    )
+
+    assert source_updater.run_source_update(root) == source_updater.SOURCE_UPDATE_FAILED
+    assert len(calls) == 1
+    assert calls[0][:4] == ["git", "-C", str(root), "status"]
+    assert str(root / "requirements.txt") in capsys.readouterr().err
 
 
 def test_run_source_update_returns_command_failure(monkeypatch, tmp_path):
