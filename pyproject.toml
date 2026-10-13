@@ -15,7 +15,7 @@ dependencies = [
     "firecrawl-anydoc==0.1.6",
     "markitdown[az-doc-intel,docx,pdf,pptx,xls,xlsx]==0.1.8",
     "pypdfium2",
-    "pdf-inspector==0.2.6",
+    "pdf-inspector==1.25.2",
     "pytesseract",
     "pyside6>=6.8.2.1",
     "glmocr==0.1.4",
