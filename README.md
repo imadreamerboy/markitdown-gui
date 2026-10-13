@@ -43,7 +43,7 @@ Download prebuilt binaries from [Releases](https://github.com/imadreamerboy/mark
 
 - Windows: use `MarkItDown-Windows-Setup-<version>.exe` for the normal installer, or `MarkItDown-Windows-<version>.zip` for a portable folder.
 - Linux: use `MarkItDown-Linux-<version>.AppImage` for a single-file app, or `MarkItDown-Linux-<version>.zip` for a portable folder.
-- macOS: use `MarkItDown-macOS-<version>.dmg` and drag the app into Applications.
+- macOS 14 or newer: use `MarkItDown-macOS-<version>.dmg` and drag the app into Applications.
 
 ### Arch Linux (AUR)
 
@@ -71,6 +71,8 @@ python -m markitdowngui.utils.source_updater
 
 The source updater first checks that the checkout has no tracked local changes and includes `requirements.txt`, then runs `git pull --ff-only`. It installs the exact exported runtime dependencies from `requirements.txt` and the editable app into the current Python environment, using `uv` when available or `pip` otherwise. Unrelated packages in that environment are retained. The Help view shows a restart action after it finishes.
 
+For the first source upgrade from full PySide6, close the app, run `git pull --ff-only`, then run the command above from that updated checkout in the app's Python environment. An updater already running from an older release cannot perform the new migration. The freshly loaded updater removes former `PySide6` and `PySide6-Addons` packages whose versions differ from the pinned Essentials runtime, and reinstalls `PySide6-Essentials` to replace shared files; other installed packages are retained. If installation fails after Qt removal, rerun the updated updater before starting the app. A dedicated project environment can instead use `uv sync --locked` after pulling.
+
 ### Support bundles
 
 The Help view shows a compact readiness summary for OCR, packaged updates, source updates, update checks, and logs. Copy diagnostics includes that readiness summary with home paths and obvious secret values redacted. The view can also export a support bundle for issue reports with a diagnostics report, sanitised settings, and capped recent log tails; raw recent file paths, output paths, and obvious secret values are excluded or redacted.
@@ -82,6 +84,8 @@ The Settings view can export or import a portable JSON profile for OCR, update, 
 ### Prerequisites
 
 - Python `3.10`–`3.14`
+- macOS 14 or newer (required by Qt 6.12); older macOS releases need an older app release.
+- For source installs on Linux, the Qt wheels require glibc 2.34 or newer on x86_64, or glibc 2.39 or newer on aarch64.
 - `uv` (recommended)
 
 Install dependencies:
@@ -215,6 +219,7 @@ pyinstaller MarkItDown.spec --clean --noconfirm
 The default spec builds an `onedir` app in `dist/MarkItDown/`. On macOS it also emits `dist/MarkItDown.app`.
 Release workflows package Windows and Linux builds into platform-specific `.zip` artifacts, add a Windows Inno Setup `.exe` installer, add a Linux `.AppImage`, and package macOS builds into a drag-to-Applications `.dmg` from the `.app` bundle. The macOS bundle is signed with `MACOS_CODESIGN_IDENTITY` when configured, otherwise it uses ad-hoc signing. Each release also includes `markitdown-release-manifest.json` for update metadata and checksums.
 That build intentionally excludes the GLM-OCR self-hosted runtime stack; local hosting stays external to the GUI.
+The GUI installs `PySide6-Essentials` for Qt Quick and its controls; unused Qt WebEngine and Qt PDF packages are not required. macOS builds require macOS 14 or newer, matching the Qt 6.12 wheels.
 
 ## License
 

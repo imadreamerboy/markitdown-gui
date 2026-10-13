@@ -170,21 +170,15 @@ pyjwt==2.15.1
     # via msal
 pymupdf==1.28.2
     # via glmocr
-pypdfium2==5.6.0
+pypdfium2==5.14.0
     # via
     #   markitdown-pdf-images
     #   markitdowngui
     #   pdfplumber
 pyreadline3==3.5.4 ; sys_platform == 'win32'
     # via humanfriendly
-pyside6==6.9.1
+pyside6-essentials==6.12.0
     # via markitdowngui
-pyside6-addons==6.9.1
-    # via pyside6
-pyside6-essentials==6.9.1
-    # via
-    #   pyside6
-    #   pyside6-addons
 pytesseract==0.3.13
     # via
     #   markitdown-pdf-images
@@ -226,11 +220,8 @@ rpds-py==0.30.0
     #   referencing
 shellingham==1.5.4
     # via typer
-shiboken6==6.9.1
-    # via
-    #   pyside6
-    #   pyside6-addons
-    #   pyside6-essentials
+shiboken6==6.12.0
+    # via pyside6-essentials
 six==1.17.0
     # via
     #   markdownify

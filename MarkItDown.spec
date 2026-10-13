@@ -69,5 +69,6 @@ if sys.platform == "darwin":
             "CFBundleShortVersionString": __version__,
             "CFBundleVersion": __version__,
             "NSHighResolutionCapable": True,
+            "LSMinimumSystemVersion": "14.0",
         },
     )

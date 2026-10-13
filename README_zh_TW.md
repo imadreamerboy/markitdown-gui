@@ -35,7 +35,7 @@
 
 - Windows：一般使用者使用 `MarkItDown-Windows-Setup-<version>.exe` 安裝器；需要可攜版時使用 `MarkItDown-Windows-<version>.zip`。
 - Linux：一般使用者使用 `MarkItDown-Linux-<version>.AppImage` 單檔應用；需要可攜資料夾時使用 `MarkItDown-Linux-<version>.zip`。
-- macOS：使用 `MarkItDown-macOS-<version>.dmg`，並把應用拖入 Applications。
+- macOS 14 或更新版本：使用 `MarkItDown-macOS-<version>.dmg`，並把應用拖入 Applications。
 
 ### 更新
 
@@ -52,6 +52,8 @@ python -m markitdowngui.utils.source_updater
 
 原始碼更新器會先確認沒有已追蹤的本機修改，接著執行 `git pull --ff-only`，並優先用 `uv`、否則用 `pip` 重新安裝 editable 環境。完成後說明頁會顯示重新啟動操作。
 
+首次從完整 PySide6 升級原始碼版時，請先關閉應用，執行 `git pull --ff-only`，然後在應用的 Python 環境中從更新後的目錄執行上面的命令。舊版已經啟動的更新程式無法執行這項新遷移。新更新程式會移除版本與鎖定的 Essentials 不一致的原先 `PySide6` 和 `PySide6-Addons`，並重新安裝 `PySide6-Essentials` 以恢復共用檔案；其他已安裝的套件會保留。如果移除 Qt 後安裝失敗，請在啟動應用前重新執行更新後的更新程式。專用專案環境也可以在拉取程式碼後執行 `uv sync --locked`。
+
 ### 支援包
 
 說明頁會顯示 OCR、打包更新、原始碼更新、更新檢查和日誌的簡短就緒狀態。複製診斷會包含該狀態，並會隱藏使用者家目錄和明顯 secret。支援包會匯出診斷報告、已清理的設定和截斷後的最近日誌；原始最近檔案路徑、輸出路徑和明顯 secret 會被排除或脫敏。
@@ -63,6 +65,8 @@ python -m markitdowngui.utils.source_updater
 ### 前置需求
 
 - Python `3.10`–`3.14`
+- macOS 需要 14 或更新版本（Qt 6.12 的要求）；更早的 macOS 需使用舊版應用。
+- Linux 原始碼安裝的 Qt wheel 要求：x86_64 需要 glibc 2.34 或更新版本，aarch64 需要 glibc 2.39 或更新版本。
 - 建議使用 `uv`
 
 安裝相依套件：

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import argparse
+from importlib.metadata import PackageNotFoundError, version
 import shutil
 import shlex
 import subprocess
@@ -49,25 +51,57 @@ def build_source_update_command(
     if root is None:
         return ""
 
-    root_arg = quote_command_arg(str(root))
-    requirements_arg = quote_command_arg(str(root / "requirements.txt"))
-    git_command = f"git -C {root_arg} pull --ff-only"
-
     uv_path = uv_executable if uv_executable is not None else shutil.which("uv")
-    python_path = python_executable or sys.executable
-    if uv_path:
-        python_arg = quote_command_arg(python_path)
-        install_command = (
-            f"{quote_command_arg(uv_path)} pip install --python {python_arg} "
-            f"--no-deps -r {requirements_arg} -e {root_arg}"
-        )
-    else:
-        install_command = (
-            f"{quote_command_arg(python_path)} -m pip install "
-            f"--no-deps -r {requirements_arg} -e {root_arg}"
-        )
+    command = [
+        python_executable or sys.executable,
+        "-m",
+        "markitdowngui.utils.source_updater",
+        "--source-root",
+        str(root),
+        "--uv-executable",
+        uv_path or "",
+    ]
+    return " ".join(quote_command_arg(argument) for argument in command)
 
-    return f"{git_command} && {install_command}"
+
+def _installed_version(name: str) -> str | None:
+    try:
+        return version(name)
+    except PackageNotFoundError:
+        return None
+
+
+def _migrate_legacy_qt(requirements: Path, uv_path: str | None) -> None:
+    """Remove former full-Qt packages before installing the Essentials-only runtime."""
+    pins = requirements.read_text(encoding="utf-8").lower().splitlines()
+    essentials_pin = next(
+        (line.partition("==")[2].split(";", 1)[0].strip()
+         for line in pins if line.startswith("pyside6-essentials==")),
+        None,
+    )
+    if essentials_pin is None:
+        return
+    if any(line.startswith("pyside6==") for line in pins):
+        return
+
+    legacy = [
+        name
+        for name in ("PySide6", "PySide6-Addons")
+        if (installed := _installed_version(name)) is not None
+        and installed != essentials_pin
+    ]
+    if not legacy:
+        return
+    # Older distributions share namespace files with Essentials. Remove Essentials
+    # too so even an already-upgraded environment gets those files reinstalled.
+    if _installed_version("PySide6-Essentials") is not None:
+        legacy.append("PySide6-Essentials")
+    print("Replacing former Qt distributions: " + ", ".join(legacy))
+    if uv_path:
+        command = [uv_path, "pip", "uninstall", "--python", sys.executable, *legacy]
+    else:
+        command = [sys.executable, "-m", "pip", "uninstall", "--yes", *legacy]
+    subprocess.run(command, check=True)
 
 
 def source_checkout_has_local_changes(source_root: Path) -> bool:
@@ -91,6 +125,7 @@ def run_source_update(
     source_root: Path | None = None,
     *,
     progress_callback: ProgressCallback | None = None,
+    uv_executable: str | None = None,
 ) -> int:
     """Refresh the checkout and exact runtime pins without pruning unrelated packages."""
     root = source_root or find_source_root()
@@ -119,7 +154,8 @@ def run_source_update(
         subprocess.run(["git", "-C", str(root), "pull", "--ff-only"], check=True)
 
         _emit_progress(progress_callback, "Reinstalling app", 70)
-        uv_path = shutil.which("uv")
+        uv_path = uv_executable if uv_executable is not None else shutil.which("uv")
+        _migrate_legacy_qt(requirements, uv_path)
         if uv_path:
             subprocess.run(
                 [
@@ -162,7 +198,15 @@ def run_source_update(
 
 
 def main() -> int:
-    return run_source_update()
+    parser = argparse.ArgumentParser(
+        description="Update this source checkout and its runtime dependencies."
+    )
+    parser.add_argument("--source-root", type=Path)
+    parser.add_argument(
+        "--uv-executable", help="uv executable; an empty value selects python -m pip"
+    )
+    args = parser.parse_args()
+    return run_source_update(args.source_root, uv_executable=args.uv_executable)
 
 
 if __name__ == "__main__":

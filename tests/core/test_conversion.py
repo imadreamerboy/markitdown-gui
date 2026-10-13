@@ -2,6 +2,7 @@ import base64
 import importlib
 import io
 import logging
+from pathlib import Path
 import sys
 import types
 import zipfile
@@ -1305,7 +1306,7 @@ def test_convert_docx_with_preserved_images_uses_upstream_converter_and_assets(
     ]
     assert asset.source_path is not None
     assert asset.preview_markdown_path in outcome.markdown
-    assert asset.preview_markdown_path.startswith("/")
+    assert Path(asset.preview_markdown_path).is_absolute()
     assert asset.preview_markdown_path.endswith("/image-001.png")
     assert io.open(asset.source_path, "rb").read().startswith(b"\x89PNG")
 
