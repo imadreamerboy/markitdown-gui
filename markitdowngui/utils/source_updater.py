@@ -64,30 +64,37 @@ def build_source_update_command(
     return " ".join(quote_command_arg(argument) for argument in command)
 
 
-def _installed_distribution(name: str) -> bool:
+def _installed_version(name: str) -> str | None:
     try:
-        version(name)
+        return version(name)
     except PackageNotFoundError:
-        return False
-    return True
+        return None
 
 
 def _migrate_legacy_qt(requirements: Path, uv_path: str | None) -> None:
     """Remove former full-Qt packages before installing the Essentials-only runtime."""
     pins = requirements.read_text(encoding="utf-8").lower().splitlines()
-    if not any(line.startswith("pyside6-essentials==") for line in pins):
+    essentials_pin = next(
+        (line.partition("==")[2].split(";", 1)[0].strip()
+         for line in pins if line.startswith("pyside6-essentials==")),
+        None,
+    )
+    if essentials_pin is None:
         return
     if any(line.startswith("pyside6==") for line in pins):
         return
 
     legacy = [
-        name for name in ("PySide6", "PySide6-Addons") if _installed_distribution(name)
+        name
+        for name in ("PySide6", "PySide6-Addons")
+        if (installed := _installed_version(name)) is not None
+        and installed != essentials_pin
     ]
     if not legacy:
         return
     # Older distributions share namespace files with Essentials. Remove Essentials
     # too so even an already-upgraded environment gets those files reinstalled.
-    if _installed_distribution("PySide6-Essentials"):
+    if _installed_version("PySide6-Essentials") is not None:
         legacy.append("PySide6-Essentials")
     print("Replacing former Qt distributions: " + ", ".join(legacy))
     if uv_path:
