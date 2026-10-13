@@ -43,7 +43,7 @@ Download prebuilt binaries from [Releases](https://github.com/imadreamerboy/mark
 
 - Windows: use `MarkItDown-Windows-Setup-<version>.exe` for the normal installer, or `MarkItDown-Windows-<version>.zip` for a portable folder.
 - Linux: use `MarkItDown-Linux-<version>.AppImage` for a single-file app, or `MarkItDown-Linux-<version>.zip` for a portable folder.
-- macOS: use `MarkItDown-macOS-<version>.dmg` and drag the app into Applications.
+- macOS 14 or newer: use `MarkItDown-macOS-<version>.dmg` and drag the app into Applications.
 
 ### Arch Linux (AUR)
 
@@ -82,6 +82,8 @@ The Settings view can export or import a portable JSON profile for OCR, update, 
 ### Prerequisites
 
 - Python `3.10`–`3.14`
+- macOS 14 or newer (required by Qt 6.12); older macOS releases need an older app release.
+- For source installs on Linux, the Qt wheels require glibc 2.34 or newer on x86_64, or glibc 2.39 or newer on aarch64.
 - `uv` (recommended)
 
 Install dependencies:
@@ -99,6 +101,7 @@ pip install -e .[dev]
 ### OCR Notes
 
 - OCR is optional and disabled by default.
+- **Anydoc conversion** is optional and runs locally. If any PDF page needs OCR, conversion asks you to enable OCR instead of returning incomplete text. Existing OCR and image-preservation settings take precedence.
 - **Fast PDF conversion** is optional and disabled by default. Enable it from the conversion controls for text-based PDFs where speed matters. PDF OCR and image preservation take precedence over fast PDF and `anydoc` conversion. Otherwise, fast PDF conversion falls back to the established PDF pipeline when the document is scanned, mixed, uncertain, or has encoding issues.
 - `Azure + Tesseract` uses Azure Document Intelligence first when configured, then Tesseract as its local fallback.
 - With `Azure + Tesseract` OCR enabled, digital-only PDFs retain native MarkItDown formatting. Mixed PDFs also process detected image and scan content, including scanned bodies beneath a native page heading. Local OCR uses the existing image-aware PDF pipeline to keep text in page order; OCR errors fail the conversion instead of returning partial text.
@@ -113,7 +116,8 @@ pip install -e .[dev]
   - `Ollama`: easiest local path. The GUI calls Ollama's native `/api/generate` endpoint directly, with defaults `127.0.0.1:11434` and `glm-ocr:latest`.
   - `SDK Server (vLLM / SGLang)`: stronger self-hosted path. Point the app at an existing `/glmocr/parse` endpoint. Default: `http://127.0.0.1:5002/glmocr/parse`.
 - The packaged desktop app does not bundle the GLM-OCR self-hosted runtime stack (`torch`, `transformers`, `vLLM`, `SGLang`, and related server/runtime pieces stay external).
-- The project depends on `glmocr==0.1.4` for client-side Official API and SDK Server connectivity. Ollama is called directly over HTTP.
+- The project depends on `glmocr==0.1.5` for client-side Official API and SDK Server connectivity. Ollama is called directly over HTTP.
+- The GLM-OCR client also requires PyMuPDF (AGPL version 3 or an Artifex commercial licence) and tqdm (MPL-2.0 and MIT). See [third-party notices](THIRD_PARTY_NOTICES.md) for distribution details. Image regions returned by the SDK are embedded in the Markdown so copied or saved output retains them.
 - Local OCR requires a system `tesseract` binary. Install it from the [official Tesseract project](https://github.com/tesseract-ocr/tesseract). If it is not on your `PATH`, set the executable path in Settings.
 - Azure OCR requires an Azure Document Intelligence endpoint in Settings.
 - Azure Document Intelligence pricing includes [500 free pages per month](https://azure.microsoft.com/en-us/products/ai-foundry/tools/document-intelligence#Pricing) at the time of writing.
@@ -213,6 +217,7 @@ pyinstaller MarkItDown.spec --clean --noconfirm
 The default spec builds an `onedir` app in `dist/MarkItDown/`. On macOS it also emits `dist/MarkItDown.app`.
 Release workflows package Windows and Linux builds into platform-specific `.zip` artifacts, add a Windows Inno Setup `.exe` installer, add a Linux `.AppImage`, and package macOS builds into a drag-to-Applications `.dmg` from the `.app` bundle. The macOS bundle is signed with `MACOS_CODESIGN_IDENTITY` when configured, otherwise it uses ad-hoc signing. Each release also includes `markitdown-release-manifest.json` for update metadata and checksums.
 That build intentionally excludes the GLM-OCR self-hosted runtime stack; local hosting stays external to the GUI.
+The GUI installs `PySide6-Essentials` for Qt Quick and its controls; unused Qt WebEngine and Qt PDF packages are not required. macOS builds require macOS 14 or newer, matching the Qt 6.12 wheels.
 
 ## License
 

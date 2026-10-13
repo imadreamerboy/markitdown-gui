@@ -239,8 +239,11 @@ def _install_fake_pdf_inspector(monkeypatch, conversion, process_pdf):
 
 
 def _install_fake_anydoc(monkeypatch, to_markdown):
+    from anydoc import NeedsOcrError
+
     package = types.ModuleType("anydoc")
     package.to_markdown = to_markdown
+    package.NeedsOcrError = NeedsOcrError
     monkeypatch.setitem(sys.modules, "anydoc", package)
 
 
@@ -599,6 +602,94 @@ def test_anydoc_does_not_override_docx_image_preservation(monkeypatch, conversio
     )
 
     assert outcome is expected
+
+
+def test_anydoc_converts_real_csv(conversion, tmp_path):
+    source = tmp_path / "table.csv"
+    source.write_text("Name,Value\nCSV_SENTINEL,42\n", encoding="utf-8")
+
+    outcome = conversion.convert_file_with_details(
+        str(source), conversion.ConversionOptions(anydoc_conversion=True)
+    )
+
+    assert outcome.backend == conversion.BACKEND_ANYDOC
+    assert "| CSV_SENTINEL | 42 |" in outcome.markdown
+
+
+def test_anydoc_converts_real_docx(conversion, docx_with_image_and_underline):
+    outcome = conversion.convert_file_with_details(
+        str(docx_with_image_and_underline),
+        conversion.ConversionOptions(anydoc_conversion=True),
+    )
+
+    assert outcome.backend == conversion.BACKEND_ANYDOC
+    assert "DOCX_SENTINEL" in outcome.markdown
+
+
+def test_anydoc_converts_real_xlsx(conversion, tmp_path):
+    from openpyxl import Workbook
+
+    source = tmp_path / "table.xlsx"
+    workbook = Workbook()
+    try:
+        workbook.active.append(["Name", "Value"])
+        workbook.active.append(["XLSX_SENTINEL", 42])
+        workbook.save(source)
+    finally:
+        workbook.close()
+
+    outcome = conversion.convert_file_with_details(
+        str(source), conversion.ConversionOptions(anydoc_conversion=True)
+    )
+
+    assert outcome.backend == conversion.BACKEND_ANYDOC
+    assert "| XLSX_SENTINEL | 42 |" in outcome.markdown
+
+
+def test_anydoc_converts_real_digital_pdf(conversion, pdf_factory):
+    source = pdf_factory("digital.pdf", [{"text": "DIGITAL_SENTINEL"}])
+
+    outcome = conversion.convert_file_with_details(
+        str(source), conversion.ConversionOptions(anydoc_conversion=True)
+    )
+
+    assert outcome.backend == conversion.BACKEND_ANYDOC
+    assert "DIGITAL_SENTINEL" in outcome.markdown
+
+
+@pytest.mark.parametrize(
+    "pages, expected_ocr_pages",
+    [
+        ([{"image": True}], [1]),
+        ([{"text": "DIGITAL_SENTINEL"}, {"image": True}], [2]),
+    ],
+    ids=("scanned", "mixed"),
+)
+def test_real_anydoc_reports_pdf_pages_needing_ocr(
+    monkeypatch, conversion, pdf_factory, pages, expected_ocr_pages
+):
+    import anydoc
+
+    source = pdf_factory("needs-ocr.pdf", pages)
+    monkeypatch.setattr(
+        anydoc.urllib.request,
+        "urlopen",
+        lambda *_args, **_kwargs: pytest.fail("local conversion must not use hosted OCR"),
+    )
+
+    with pytest.raises(anydoc.NeedsOcrError) as error:
+        anydoc.to_markdown(source)
+
+    assert error.value.pages == expected_ocr_pages
+    assert error.value.page_count == len(pages)
+
+    with pytest.raises(RuntimeError, match="Enable OCR to convert all PDF pages") as error:
+        conversion.convert_file_with_details(
+            str(source), conversion.ConversionOptions(anydoc_conversion=True)
+        )
+
+    assert isinstance(error.value.__cause__, anydoc.NeedsOcrError)
+    assert error.value.__cause__.pages == expected_ocr_pages
 
 
 def test_fast_pdf_conversion_uses_pdf_inspector_for_trusted_text_pdf(monkeypatch, conversion):

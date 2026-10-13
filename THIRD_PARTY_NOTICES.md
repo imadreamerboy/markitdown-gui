@@ -30,6 +30,11 @@ terms.
 - Docling Core and Docling Parse: MIT License for the codebases; any model usage
   remains subject to the applicable model licences.
 - GLM-OCR Python package: Apache-2.0 License.
+- PyMuPDF / MuPDF: GNU Affero General Public License version 3 or an Artifex
+  commercial licence. GLM-OCR's client imports PyMuPDF for PDF image processing;
+  packaged builds include its native libraries and wheel licence metadata.
+- tqdm: Mozilla Public License 2.0 and MIT License; the bundled wheel's
+  `LICENCE` file identifies the applicable authors and files.
 - pytesseract: Apache-2.0 License. Tesseract OCR itself is an external runtime
   when installed separately by the user.
 - pypdfium2: BSD-3-Clause, Apache-2.0, and dependency licences.

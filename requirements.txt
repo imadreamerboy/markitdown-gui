@@ -36,7 +36,9 @@ click==8.2.1
 cobble==0.1.4
     # via mammoth
 colorama==0.4.6 ; sys_platform == 'win32'
-    # via click
+    # via
+    #   click
+    #   tqdm
 coloredlogs==15.0.1
     # via onnxruntime
 cryptography==50.0.0
@@ -57,11 +59,11 @@ docling-parse==5.6.2
     # via markitdown-pdf-images
 et-xmlfile==2.0.0
     # via openpyxl
-firecrawl-anydoc==0.1.6
+firecrawl-anydoc==0.2.4
     # via markitdowngui
 flatbuffers==25.2.10
     # via onnxruntime
-glmocr==0.1.4
+glmocr==0.1.5
     # via markitdowngui
 humanfriendly==10.0
     # via coloredlogs
@@ -129,7 +131,7 @@ pandas==2.3.0
     # via
     #   docling-core
     #   markitdown
-pdf-inspector==0.2.6
+pdf-inspector==1.25.2
     # via markitdowngui
 pdfminer-six==20251230
     # via
@@ -166,22 +168,17 @@ pygments==2.20.0
     # via rich
 pyjwt==2.15.1
     # via msal
-pypdfium2==5.6.0
+pymupdf==1.28.2
+    # via glmocr
+pypdfium2==5.14.0
     # via
-    #   glmocr
     #   markitdown-pdf-images
     #   markitdowngui
     #   pdfplumber
 pyreadline3==3.5.4 ; sys_platform == 'win32'
     # via humanfriendly
-pyside6==6.9.1
+pyside6-essentials==6.12.0
     # via markitdowngui
-pyside6-addons==6.9.1
-    # via pyside6
-pyside6-essentials==6.9.1
-    # via
-    #   pyside6
-    #   pyside6-addons
 pytesseract==0.3.13
     # via
     #   markitdown-pdf-images
@@ -223,11 +220,8 @@ rpds-py==0.30.0
     #   referencing
 shellingham==1.5.4
     # via typer
-shiboken6==6.9.1
-    # via
-    #   pyside6
-    #   pyside6-addons
-    #   pyside6-essentials
+shiboken6==6.12.0
+    # via pyside6-essentials
 six==1.17.0
     # via
     #   markdownify
@@ -240,6 +234,8 @@ tabulate==0.10.0
     # via
     #   docling-core
     #   docling-parse
+tqdm==4.70.1
+    # via glmocr
 typer==0.24.1
     # via docling-core
 typing-extensions==4.15.0
