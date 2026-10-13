@@ -641,7 +641,9 @@ def test_windows_replace_helper_rolls_back_after_immediate_startup_exit(
         check=False,
         capture_output=True,
         text=True,
-        timeout=10,
+        # Include cold PowerShell/.NET startup on hosted runners; the helper's
+        # own wait and startup limits remain bounded independently.
+        timeout=30,
     )
 
     assert completed.returncode != 0
