@@ -16,3 +16,6 @@ README_files/
 # Local macOS and planning artefacts
 .DS_Store
 plans/
+
+# Package validation receipts
+/package-check-reports/
