@@ -35,7 +35,7 @@
 
 - Windows：一般使用者使用 `MarkItDown-Windows-Setup-<version>.exe` 安裝器；需要可攜版時使用 `MarkItDown-Windows-<version>.zip`。
 - Linux：一般使用者使用 `MarkItDown-Linux-<version>.AppImage` 單檔應用；需要可攜資料夾時使用 `MarkItDown-Linux-<version>.zip`。
-- macOS：使用 `MarkItDown-macOS-<version>.dmg`，並把應用拖入 Applications。
+- macOS 14 或更新版本：使用 `MarkItDown-macOS-<version>.dmg`，並把應用拖入 Applications。
 
 ### 更新
 
@@ -63,6 +63,8 @@ python -m markitdowngui.utils.source_updater
 ### 前置需求
 
 - Python `3.10`–`3.14`
+- macOS 需要 14 或更新版本（Qt 6.12 的要求）；更早的 macOS 需使用舊版應用。
+- Linux 原始碼安裝的 Qt wheel 要求：x86_64 需要 glibc 2.34 或更新版本，aarch64 需要 glibc 2.39 或更新版本。
 - 建議使用 `uv`
 
 安裝相依套件：

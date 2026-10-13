@@ -104,6 +104,7 @@ def test_spec_defines_macos_app_bundle():
     assert 'name="MarkItDown.app"' in spec
     assert 'icon=os.path.abspath("markitdowngui/resources/markitdown-gui.icns")' in spec
     assert 'bundle_identifier="com.imadreamerboy.markitdown-gui"' in spec
+    assert '"LSMinimumSystemVersion": "14.0"' in spec
 
 
 def test_native_app_icon_assets_are_present():

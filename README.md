@@ -43,7 +43,7 @@ Download prebuilt binaries from [Releases](https://github.com/imadreamerboy/mark
 
 - Windows: use `MarkItDown-Windows-Setup-<version>.exe` for the normal installer, or `MarkItDown-Windows-<version>.zip` for a portable folder.
 - Linux: use `MarkItDown-Linux-<version>.AppImage` for a single-file app, or `MarkItDown-Linux-<version>.zip` for a portable folder.
-- macOS: use `MarkItDown-macOS-<version>.dmg` and drag the app into Applications.
+- macOS 14 or newer: use `MarkItDown-macOS-<version>.dmg` and drag the app into Applications.
 
 ### Arch Linux (AUR)
 
@@ -82,6 +82,8 @@ The Settings view can export or import a portable JSON profile for OCR, update, 
 ### Prerequisites
 
 - Python `3.10`–`3.14`
+- macOS 14 or newer (required by Qt 6.12); older macOS releases need an older app release.
+- For source installs on Linux, the Qt wheels require glibc 2.34 or newer on x86_64, or glibc 2.39 or newer on aarch64.
 - `uv` (recommended)
 
 Install dependencies:
@@ -213,6 +215,7 @@ pyinstaller MarkItDown.spec --clean --noconfirm
 The default spec builds an `onedir` app in `dist/MarkItDown/`. On macOS it also emits `dist/MarkItDown.app`.
 Release workflows package Windows and Linux builds into platform-specific `.zip` artifacts, add a Windows Inno Setup `.exe` installer, add a Linux `.AppImage`, and package macOS builds into a drag-to-Applications `.dmg` from the `.app` bundle. The macOS bundle is signed with `MACOS_CODESIGN_IDENTITY` when configured, otherwise it uses ad-hoc signing. Each release also includes `markitdown-release-manifest.json` for update metadata and checksums.
 That build intentionally excludes the GLM-OCR self-hosted runtime stack; local hosting stays external to the GUI.
+The GUI installs `PySide6-Essentials` for Qt Quick and its controls; unused Qt WebEngine and Qt PDF packages are not required. macOS builds require macOS 14 or newer, matching the Qt 6.12 wheels.
 
 ## License
 
