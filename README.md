@@ -99,6 +99,7 @@ pip install -e .[dev]
 ### OCR Notes
 
 - OCR is optional and disabled by default.
+- **Anydoc conversion** is optional and runs locally. If any PDF page needs OCR, conversion asks you to enable OCR instead of returning incomplete text. Existing OCR and image-preservation settings take precedence.
 - **Fast PDF conversion** is optional and disabled by default. Enable it from the conversion controls for text-based PDFs where speed matters. PDF OCR and image preservation take precedence over fast PDF and `anydoc` conversion. Otherwise, fast PDF conversion falls back to the established PDF pipeline when the document is scanned, mixed, uncertain, or has encoding issues.
 - `Azure + Tesseract` uses Azure Document Intelligence first when configured, then Tesseract as its local fallback.
 - With `Azure + Tesseract` OCR enabled, digital-only PDFs retain native MarkItDown formatting. Mixed PDFs also process detected image and scan content, including scanned bodies beneath a native page heading. Local OCR uses the existing image-aware PDF pipeline to keep text in page order; OCR errors fail the conversion instead of returning partial text.

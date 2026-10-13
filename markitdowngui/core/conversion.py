@@ -852,6 +852,10 @@ def _try_convert_with_anydoc(file_path: str) -> ConversionOutcome | None:
 
     try:
         markdown = anydoc.to_markdown(file_path)
+    except anydoc.NeedsOcrError as exc:
+        # Native extraction cannot recover the image-only pages either.
+        # Keep this explicit rather than accepting an incomplete document.
+        raise RuntimeError(f"Enable OCR to convert all PDF pages ({exc}).") from exc
     except Exception as exc:
         logging.warning(
             "Anydoc conversion fell back after an error (%s)",
