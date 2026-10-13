@@ -138,7 +138,7 @@ def test_release_workflow_smokes_packaged_app_before_packaging():
     package_index = workflow.index("- name: Package artifact")
 
     assert build_index < smoke_index < package_index
-    assert "uv run python packaging/smoke_packaged_app.py" in workflow[smoke_index:package_index]
+    assert "uv run --locked python packaging/smoke_packaged_app.py --check-backends" in workflow[smoke_index:package_index]
 
 
 def test_release_workflow_builds_windows_setup_and_linux_appimage():
@@ -152,7 +152,7 @@ def test_release_workflow_builds_windows_setup_and_linux_appimage():
     assert r"DefaultDirName={localappdata}\Programs\MarkItDown" in inno_script
     assert "MarkItDown-Windows-Setup-{#AppVersion}" in inno_script
     assert "{userdesktop}" in inno_script
-    assert "MarkItDown-Linux-${VERSION}.AppImage" in workflow
+    assert "MarkItDown-Linux-${BUILD_VERSION}.AppImage" in workflow
     assert "appimagetool-x86_64.AppImage" in workflow
     assert "Exec=AppRun" in workflow
     assert '"**/*.exe"' in workflow
