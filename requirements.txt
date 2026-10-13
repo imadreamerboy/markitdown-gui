@@ -59,7 +59,7 @@ docling-parse==5.6.2
     # via markitdown-pdf-images
 et-xmlfile==2.0.0
     # via openpyxl
-firecrawl-anydoc==0.1.6
+firecrawl-anydoc==0.2.4
     # via markitdowngui
 flatbuffers==25.2.10
     # via onnxruntime
@@ -131,7 +131,7 @@ pandas==2.3.0
     # via
     #   docling-core
     #   markitdown
-pdf-inspector==0.2.6
+pdf-inspector==1.25.2
     # via markitdowngui
 pdfminer-six==20251230
     # via
