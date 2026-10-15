@@ -693,6 +693,106 @@ def test_real_anydoc_reports_pdf_pages_needing_ocr(
     assert error.value.__cause__.pages == expected_ocr_pages
 
 
+@pytest.mark.parametrize(
+    "extension",
+    [".odt", ".odp", ".ods", ".rtf", ".doc", ".ppt", ".pptm", ".xlsm"],
+)
+def test_anydoc_covers_widened_office_formats(monkeypatch, conversion, extension):
+    _install_fake_anydoc(monkeypatch, lambda _file_path: "# anydoc output")
+    monkeypatch.setattr(
+        conversion,
+        "_convert_with_markitdown",
+        lambda *_args, **_kwargs: pytest.fail("native converter must not run"),
+    )
+
+    outcome = conversion.convert_file_with_details(
+        f"report{extension}",
+        conversion.ConversionOptions(anydoc_conversion=True),
+    )
+
+    assert outcome.markdown == "# anydoc output"
+    assert outcome.backend == conversion.BACKEND_ANYDOC
+
+
+@pytest.mark.parametrize(
+    "source",
+    ["notes.txt", "notes.md", "report.xml", "data.json", "page.html"],
+)
+def test_text_inputs_keep_the_native_pipeline_when_anydoc_is_enabled(
+    monkeypatch,
+    conversion,
+    source,
+):
+    _install_fake_anydoc(
+        monkeypatch,
+        lambda _file_path: pytest.fail(f"anydoc must not convert {source}"),
+    )
+    monkeypatch.setattr(
+        conversion,
+        "_convert_with_markitdown",
+        lambda *_args, **_kwargs: "native text",
+    )
+
+    outcome = conversion.convert_file_with_details(
+        source,
+        conversion.ConversionOptions(anydoc_conversion=True),
+    )
+
+    assert outcome.markdown == "native text"
+    assert outcome.backend == conversion.BACKEND_NATIVE
+
+
+def test_folder_input_extensions_cover_text_and_ocr_images(conversion):
+    for extension in (".xml", ".bmp", ".gif", ".tif", ".tiff", ".webp"):
+        assert extension in conversion.FOLDER_INPUT_EXTENSIONS
+    assert ".odt" in conversion.FOLDER_INPUT_EXTENSIONS
+    assert ".pdf" in conversion.FOLDER_INPUT_EXTENSIONS
+
+
+def test_folder_input_extensions_exclude_unsupported_audio_and_outlook(conversion):
+    for extension in (".msg", ".mp3", ".wav", ".m4a", ".mp4"):
+        assert extension not in conversion.FOLDER_INPUT_EXTENSIONS
+
+
+def test_ocr_enabled_bmp_routes_through_image_ocr(monkeypatch, conversion):
+    calls: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        conversion,
+        "_convert_image_with_ocr",
+        lambda file_path, options, extension: calls.append((file_path, extension))
+        or conversion.ConversionOutcome("# ocr", backend=conversion.BACKEND_LOCAL),
+    )
+
+    outcome = conversion.convert_file_with_details(
+        "scan.bmp",
+        conversion.ConversionOptions(ocr_enabled=True),
+    )
+
+    assert calls == [("scan.bmp", ".bmp")]
+    assert outcome.backend == conversion.BACKEND_LOCAL
+    assert outcome.markdown == "# ocr"
+
+
+def test_xml_input_is_handled_by_the_native_pipeline(conversion, monkeypatch):
+    _install_fake_anydoc(
+        monkeypatch,
+        lambda _file_path: pytest.fail("anydoc must not convert XML"),
+    )
+    monkeypatch.setattr(
+        conversion,
+        "_convert_with_markitdown",
+        lambda *_args, **_kwargs: "<root>markup</root>",
+    )
+
+    outcome = conversion.convert_file_with_details(
+        "data.xml",
+        conversion.ConversionOptions(anydoc_conversion=True),
+    )
+
+    assert outcome.markdown == "<root>markup</root>"
+    assert outcome.backend == conversion.BACKEND_NATIVE
+
+
 def test_fast_pdf_conversion_uses_pdf_inspector_for_trusted_text_pdf(monkeypatch, conversion):
     native_calls = []
 

@@ -88,6 +88,32 @@ ANYDOC_EXTENSIONS = frozenset(
     }
 )
 PDF_INSPECTOR_MIN_CONFIDENCE = 0.9
+TEXT_EXTENSIONS = frozenset(
+    {
+        ".csv",
+        ".htm",
+        ".html",
+        ".json",
+        ".jsonl",
+        ".markdown",
+        ".md",
+        ".text",
+        ".txt",
+        ".xml",
+    }
+)
+# Documents MarkItDown converts natively without optional extras. Audio and
+# Outlook are excluded because their converters depend on optional extras that
+# this project does not ship (pydub/speech_recognition and olefile).
+NATIVE_DOCUMENT_EXTENSIONS = frozenset(
+    {".docx", ".epub", ".ipynb", ".pdf", ".pptx", ".xls", ".xlsx", ".zip"}
+)
+# Every extension the app can actually convert, used as the folder picker
+# allow-list. It includes text (with XML), the full OCR-capable image set, the
+# anydoc-supported Office formats, and the native documents above.
+FOLDER_INPUT_EXTENSIONS = (
+    ANYDOC_EXTENSIONS | TEXT_EXTENSIONS | IMAGE_EXTENSIONS | NATIVE_DOCUMENT_EXTENSIONS
+)
 process_pdf = None
 OCR_PROVIDER_AZURE_TESSERACT = "azure_tesseract"
 OCR_PROVIDER_GLMOCR = "glmocr"

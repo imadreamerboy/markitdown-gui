@@ -19,3 +19,6 @@ plans/
 
 # Package validation receipts
 /package-check-reports/
+
+# PyInstaller and Inno Setup output
+dist_output/

@@ -26,14 +26,15 @@ class FileManager:
     
     SUPPORTED_TYPES = {
         "Auto Detect": "*.*",
-        "Word Documents": "*.docx",
-        "PowerPoint": "*.pptx",
-        "Excel": "*.xlsx *.xls",
+        "Word Documents": "*.docx *.doc *.docm *.odt *.rtf",
+        "PowerPoint": "*.pptx *.ppt *.pptm *.ppsx *.ppsm *.pps *.pot",
+        "Excel": "*.xlsx *.xls *.xlsm *.xlsb *.ods *.csv",
         "PDF": "*.pdf",
         "EPUB": "*.epub",
         "HTML": "*.html *.htm",
-        "Text": "*.txt *.md *.csv *.json *.xml",
-        "Images": "*.png *.jpg *.jpeg *.bmp *.gif *.tiff *.webp",
+        "Text": "*.txt *.text *.md *.markdown *.json *.jsonl *.xml *.csv",
+        "Notebooks": "*.ipynb",
+        "Images": "*.png *.jpg *.jpeg *.bmp *.gif *.tiff *.tif *.webp",
         "Archives": "*.zip",
         "All Files": "*.*"
     }

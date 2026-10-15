@@ -11,10 +11,11 @@ from markitdowngui.core.input_sources import is_web_url, source_display_name
 @dataclass(frozen=True)
 class QueueItem:
     source: str
+    display_name: str = ""
 
     @property
     def name(self) -> str:
-        return source_display_name(self.source)
+        return self.display_name or source_display_name(self.source)
 
     @property
     def kind(self) -> str:
@@ -26,10 +27,11 @@ class ResultItem:
     source: str
     outcome: ConversionOutcome
     failed: bool = False
+    display_name: str = ""
 
     @property
     def name(self) -> str:
-        return source_display_name(self.source)
+        return self.display_name or source_display_name(self.source)
 
     @property
     def backend_label(self) -> str:
@@ -102,14 +104,22 @@ class QueueModel(QAbstractListModel):
             self.KindRole: b"kind",
         }
 
-    def add_sources(self, sources: list[str]) -> int:
+    def add_sources(
+        self,
+        sources: list[str],
+        *,
+        display_names: dict[str, str] | None = None,
+    ) -> int:
+        """Add unique sources, keeping an optional per-source display label."""
+
         existing = {item.source for item in self._items}
+        labels = display_names or {}
         new_items: list[QueueItem] = []
         for source in sources:
             if source in existing:
                 continue
             existing.add(source)
-            new_items.append(QueueItem(source))
+            new_items.append(QueueItem(source, labels.get(source, "")))
         if not new_items:
             return 0
 
@@ -187,11 +197,19 @@ class ResultModel(QAbstractListModel):
         self,
         results: dict[str, ConversionOutcome],
         failed_sources: set[str] | None = None,
+        *,
+        display_names: dict[str, str] | None = None,
     ) -> None:
         failed_sources = failed_sources or set()
+        labels = display_names or {}
         self.beginResetModel()
         self._items = [
-            ResultItem(source, outcome, source in failed_sources)
+            ResultItem(
+                source,
+                outcome,
+                source in failed_sources,
+                labels.get(source, ""),
+            )
             for source, outcome in results.items()
         ]
         self.endResetModel()
@@ -202,9 +220,10 @@ class ResultModel(QAbstractListModel):
         outcome: ConversionOutcome,
         *,
         failed: bool = False,
+        display_name: str = "",
     ) -> None:
         """Append or replace one completed conversion without resetting the model."""
-        item = ResultItem(source, outcome, failed)
+        item = ResultItem(source, outcome, failed, display_name)
         for row, existing in enumerate(self._items):
             if existing.source != source:
                 continue
