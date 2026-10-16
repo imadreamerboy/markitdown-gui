@@ -1,13 +1,22 @@
 import pytest
 
+import os
+import stat
+import subprocess
+from contextlib import contextmanager
+from pathlib import Path
+
 from markitdowngui.core.input_sources import (
     BATCH_URL_LIMIT,
+    collect_folder_files,
     decode_batch_url_file,
     is_web_url,
     parse_batch_urls,
+    relocated_output_stem,
     source_display_name,
     source_output_dir,
     source_output_stem,
+    source_relative_label,
 )
 
 
@@ -190,3 +199,196 @@ def test_source_output_dir_returns_file_parent():
 
 def test_source_output_dir_is_empty_for_urls():
     assert source_output_dir("https://example.com/posts/hello-world") == ""
+
+
+def _build_folder_tree(tmp_path):
+    nested = tmp_path / "b"
+    nested.mkdir()
+    deeper = nested / "deep"
+    deeper.mkdir()
+    skipped = tmp_path / "node_modules"
+    skipped.mkdir()
+    hidden = tmp_path / ".git"
+    hidden.mkdir()
+
+    (tmp_path / "top.pdf").write_text("top", encoding="utf-8")
+    (nested / "report.pdf").write_text("nested", encoding="utf-8")
+    (deeper / "report.docx").write_text("deeper", encoding="utf-8")
+    (nested / "photo.png").write_text("image", encoding="utf-8")
+    (tmp_path / "notes.bin").write_text("unsupported", encoding="utf-8")
+    (skipped / "ignored.pdf").write_text("ignored", encoding="utf-8")
+    (hidden / "config.pdf").write_text("hidden", encoding="utf-8")
+    (tmp_path / ".hidden.pdf").write_text("hidden file", encoding="utf-8")
+    return tmp_path
+
+
+def test_collect_folder_files_walks_subfolders_and_reports_skipped(tmp_path):
+    root = _build_folder_tree(tmp_path)
+
+    files, skipped = collect_folder_files(
+        str(root),
+        supported_extensions={".docx", ".pdf", ".png"},
+    )
+
+    names = [Path(path).name for path in files]
+    assert names == ["top.pdf", "photo.png", "report.pdf", "report.docx"]
+    assert all("node_modules" not in path for path in files)
+    assert all(".git" not in Path(path).parts for path in files)
+    assert all(".hidden.pdf" not in path for path in files)
+    assert skipped == 1
+
+
+def test_collect_folder_files_keeps_every_file_without_extension_filter(tmp_path):
+    root = _build_folder_tree(tmp_path)
+
+    files, skipped = collect_folder_files(str(root))
+
+    assert skipped == 0
+    assert any(path.endswith("notes.bin") for path in files)
+
+
+def test_relocated_output_stem_disambiguates_nested_same_name_files(tmp_path):
+    root = _build_folder_tree(tmp_path)
+
+    assert relocated_output_stem(str(root / "top.pdf"), str(root)) == "top"
+    stem = relocated_output_stem(str(root / "b" / "report.pdf"), str(root))
+    assert stem == "report-b"
+    assert relocated_output_stem(
+        str(root / "b" / "deep" / "report.docx"),
+        str(root),
+    ) == "report-deep"
+
+
+def test_relocated_output_stem_ignores_files_outside_the_folder_root(tmp_path):
+    root = _build_folder_tree(tmp_path)
+
+    outside = tmp_path.parent / "outside" / "report.pdf"
+    assert relocated_output_stem(str(outside), str(root)) == "report"
+    assert relocated_output_stem(
+        "https://example.com/a/report.pdf",
+        str(root),
+    ) == "example.com-report.pdf"
+
+
+def test_source_relative_label_prefixes_the_picked_folder(tmp_path):
+    root = _build_folder_tree(tmp_path)
+
+    assert source_relative_label(str(root / "top.pdf"), str(root)) == f"{root.name}/top.pdf"
+    assert source_relative_label(
+        str(root / "b" / "deep" / "report.docx"),
+        str(root),
+    ) == f"{root.name}/b/deep/report.docx"
+    assert source_relative_label(str(root / "top.pdf"), "") == "top.pdf"
+    assert source_relative_label(str(tmp_path.parent / "other" / "x.pdf"), str(root)) == (
+        "x.pdf"
+    )
+
+
+def test_collect_folder_files_skips_a_directory_symlink_cycle(tmp_path):
+    root = _build_folder_tree(tmp_path)
+    # A directory that points back at its own parent would loop forever if
+    # followed, and must not expand beyond the selected root.
+    try:
+        (root / "loop").symlink_to(root, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("directory symlinks are unavailable on this platform")
+
+    files, _ = collect_folder_files(
+        str(root),
+        supported_extensions={".docx", ".pdf", ".png"},
+    )
+
+    assert all("loop" not in Path(path).parts for path in files)
+    assert len(files) == 4  # top.pdf, photo.png, report.pdf, report.docx
+
+
+def test_collect_folder_files_skips_symlinks_pointing_outside_the_root(tmp_path):
+    root = _build_folder_tree(tmp_path)
+    outside = tmp_path.parent / "outside"
+    outside.mkdir()
+    (outside / "external.pdf").write_text("outside", encoding="utf-8")
+
+    try:
+        (root / "external").symlink_to(outside, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("directory symlinks are unavailable on this platform")
+
+    files, _ = collect_folder_files(str(root))
+
+    assert all("external.pdf" not in Path(path).name for path in files)
+
+
+def test_collect_folder_files_skips_file_symlinks(tmp_path):
+    root = _build_folder_tree(tmp_path)
+    target = root / "top.pdf"
+    try:
+        (root / "top-link.pdf").symlink_to(target)
+    except (OSError, NotImplementedError):
+        pytest.skip("file symlinks are unavailable on this platform")
+
+    files, _ = collect_folder_files(str(root))
+
+    assert all("top-link.pdf" not in Path(path).name for path in files)
+
+
+@contextmanager
+def _windows_directory_junction(path, target):
+    try:
+        subprocess.run(
+            ["cmd.exe", "/c", "mklink", "/J", str(path), str(target)],
+            check=True, capture_output=True, text=True,
+        )
+        assert path.lstat().st_reparse_tag == stat.IO_REPARSE_TAG_MOUNT_POINT
+        yield path
+    finally:
+        if path.exists():
+            # Remove the junction itself before pytest cleans the folder tree.
+            path.rmdir()
+
+
+@pytest.mark.skipif(os.name != "nt", reason="requires Windows directory junctions")
+def test_collect_folder_files_skips_external_windows_junction(tmp_path):
+    root = tmp_path / "root"
+    root.mkdir()
+    document = root / "doc.pdf"
+    document.write_text("selected", encoding="utf-8")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    external_document = outside / "external.pdf"
+    external_document.write_text("outside", encoding="utf-8")
+
+    with _windows_directory_junction(root / "external", outside) as junction:
+        assert junction.is_symlink() is False
+        assert junction.is_dir() is True
+        assert collect_folder_files(str(root)) == ([str(document)], 0)
+        # An explicitly selected root may itself be a junction.
+        assert collect_folder_files(str(junction)) == ([str(junction / "external.pdf")], 0)
+
+    assert external_document.read_text(encoding="utf-8") == "outside"
+
+
+@pytest.mark.skipif(os.name != "nt", reason="requires Windows directory junctions")
+def test_collect_folder_files_skips_windows_junction_cycle(tmp_path):
+    root = tmp_path / "root"
+    root.mkdir()
+    document = root / "doc.pdf"
+    document.write_text("selected", encoding="utf-8")
+
+    with _windows_directory_junction(root / "loop", root) as junction:
+        assert junction.is_symlink() is False
+        assert junction.is_dir() is True
+        assert collect_folder_files(str(root)) == ([str(document)], 0)
+
+
+def test_folder_skip_set_ignores_macosx_metadata_directory(tmp_path):
+    root = tmp_path / "project"
+    macosx = root / "__MACOSX"
+    macosx.mkdir(parents=True)
+    (root / "doc.pdf").write_text("doc", encoding="utf-8")
+    (macosx / "._doc.pdf").write_text("apple metadata", encoding="utf-8")
+
+    files, skipped = collect_folder_files(str(root), supported_extensions={".pdf"})
+
+    names = [Path(path).name for path in files]
+    assert names == ["doc.pdf"]
+    assert skipped == 0
