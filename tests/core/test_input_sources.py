@@ -1,7 +1,9 @@
 import pytest
 
 import os
+import stat
 import subprocess
+from contextlib import contextmanager
 from pathlib import Path
 
 from markitdowngui.core.input_sources import (
@@ -329,32 +331,53 @@ def test_collect_folder_files_skips_file_symlinks(tmp_path):
     assert all("top-link.pdf" not in Path(path).name for path in files)
 
 
-def test_collect_folder_files_skips_windows_directory_junctions(tmp_path):
-    if os.name != "nt":
-        pytest.skip("directory junctions only exist on Windows")
+@contextmanager
+def _windows_directory_junction(path, target):
+    try:
+        subprocess.run(
+            ["cmd.exe", "/c", "mklink", "/J", str(path), str(target)],
+            check=True, capture_output=True, text=True,
+        )
+        assert path.lstat().st_reparse_tag == stat.IO_REPARSE_TAG_MOUNT_POINT
+        yield path
+    finally:
+        if path.exists():
+            # Remove the junction itself before pytest cleans the folder tree.
+            path.rmdir()
 
-    root = tmp_path / "picked"
+
+@pytest.mark.skipif(os.name != "nt", reason="requires Windows directory junctions")
+def test_collect_folder_files_skips_external_windows_junction(tmp_path):
+    root = tmp_path / "root"
     root.mkdir()
-    (root / "inside.pdf").write_text("inside", encoding="utf-8")
+    document = root / "doc.pdf"
+    document.write_text("selected", encoding="utf-8")
     outside = tmp_path / "outside"
     outside.mkdir()
-    (outside / "external.pdf").write_text("outside", encoding="utf-8")
+    external_document = outside / "external.pdf"
+    external_document.write_text("outside", encoding="utf-8")
 
-    junction = root / "external"
-    result = subprocess.run(
-        ["cmd", "/c", "mklink", "/J", str(junction), str(outside)],
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        pytest.skip("could not create a directory junction")
+    with _windows_directory_junction(root / "external", outside) as junction:
+        assert junction.is_symlink() is False
+        assert junction.is_dir() is True
+        assert collect_folder_files(str(root)) == ([str(document)], 0)
+        # An explicitly selected root may itself be a junction.
+        assert collect_folder_files(str(junction)) == ([str(junction / "external.pdf")], 0)
 
-    files, skipped = collect_folder_files(str(root), supported_extensions={".pdf"})
+    assert external_document.read_text(encoding="utf-8") == "outside"
 
-    names = [Path(path).name for path in files]
-    assert names == ["inside.pdf"]
-    assert "external.pdf" not in names
-    assert skipped == 0
+
+@pytest.mark.skipif(os.name != "nt", reason="requires Windows directory junctions")
+def test_collect_folder_files_skips_windows_junction_cycle(tmp_path):
+    root = tmp_path / "root"
+    root.mkdir()
+    document = root / "doc.pdf"
+    document.write_text("selected", encoding="utf-8")
+
+    with _windows_directory_junction(root / "loop", root) as junction:
+        assert junction.is_symlink() is False
+        assert junction.is_dir() is True
+        assert collect_folder_files(str(root)) == ([str(document)], 0)
 
 
 def test_folder_skip_set_ignores_macosx_metadata_directory(tmp_path):

@@ -139,22 +139,17 @@ def _should_skip_directory(name: str) -> bool:
     return _is_hidden_file(name) or name.lower() in FOLDER_INPUT_SKIP_DIRECTORIES
 
 
-def _is_reparse_point(entry: Path) -> bool:
-    """Return whether a path is a Windows reparse point (junction, symlink).
+def _is_directory_junction(entry: Path) -> bool:
+    """Identify Windows directory junctions without following their targets.
 
     An NTFS directory junction reports directory mode rather than symlink mode,
-    so ``Path.is_symlink()`` is false for it on Python 3.10. Check the
-    ``FILE_ATTRIBUTE_REPARSE_POINT`` flag directly to skip both junctions and
-    ordinary symlinks, keeping the walk inside the selected root.
+    so ``Path.is_symlink()`` is false for it on Python 3.10. Its reparse tag
+    identifies the junction without excluding other reparse-point files.
     """
 
     if os.name != "nt":
         return False
-    try:
-        attributes = entry.stat(follow_symlinks=False).st_file_attributes
-    except (AttributeError, OSError):
-        return False
-    return bool(attributes & stat_module.FILE_ATTRIBUTE_REPARSE_POINT)
+    return entry.lstat().st_reparse_tag == stat_module.IO_REPARSE_TAG_MOUNT_POINT
 
 
 def iter_input_files(root: Path) -> Iterator[Path]:
@@ -177,7 +172,7 @@ def iter_input_files(root: Path) -> Iterator[Path]:
             if _is_hidden_file(entry.name):
                 continue
             try:
-                if entry.is_symlink() or _is_reparse_point(entry):
+                if entry.is_symlink() or _is_directory_junction(entry):
                     continue
                 if entry.is_dir():
                     if not _should_skip_directory(entry.name):
